@@ -8,7 +8,7 @@ export type ToolCallReq = { callId: string, tool: string, args: string };
 
 export type ProviderReply = { text: string, calls: ToolCallReq[], failed: bool, errorCode: string, errorMessage: string };
 
-export type Provider = { ask: (historyText: string, onDelta: (text: string) => void) => ProviderReply };
+export type Provider = { ask: (history: Message[], onDelta: (text: string) => void) => ProviderReply };
 
 export type ToolResult = { ok: bool, output: string, truncated: bool };
 

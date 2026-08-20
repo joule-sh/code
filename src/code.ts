@@ -1,5 +1,6 @@
 import { VERSION } from "./version.ts";
 import { runDemo } from "./demo/demo.ts";
+import { runTerminal } from "./terminal/terminal.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -25,7 +26,7 @@ if (hasFlagIn(currentArgs(), "--version")) {
 } else if (hasFlagIn(currentArgs(), "--demo")) {
   runDemo();
 } else {
-  console.log("joule: v0 skeleton, run with --version or --demo");
+  runTerminal(currentArgs());
 }
 
 test("hasFlagIn finds --version among other args", () => {
