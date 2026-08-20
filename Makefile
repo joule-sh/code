@@ -1,6 +1,7 @@
 .PHONY: build release test clean
 
 ALL_TS := $(shell find src -name '*.ts')
+TEST_TS := $(shell find src -name '*.test.ts')
 
 build: bin/joule bin/relay
 
@@ -27,8 +28,7 @@ release: src/demo/tty_shim.o
 test: src/demo/tty_shim.o
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
-	lumen test src/protocol/frames.test.ts
-	lumen test src/session/session.test.ts
+	for f in $(TEST_TS); do lumen test $$f || exit 1; done
 
 clean:
 	rm -rf bin code relay src/demo/tty_shim.o
