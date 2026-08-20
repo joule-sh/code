@@ -1,4 +1,4 @@
-.PHONY: build release test clean
+.PHONY: build release test e2e clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -18,6 +18,11 @@ bin/relay: $(ALL_TS)
 	lumen compile src/relay/relay.ts
 	mv relay bin/relay
 
+bin/stub_model: $(ALL_TS)
+	mkdir -p bin
+	lumen compile src/e2e/stub_model.ts
+	mv stub_model bin/stub_model
+
 release: src/vendor/tty/tty_shim.o
 	mkdir -p bin
 	lumen compile --release-fast src/code.ts
@@ -28,7 +33,11 @@ release: src/vendor/tty/tty_shim.o
 test: src/vendor/tty/tty_shim.o
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
+	lumen test src/e2e/stub_model.ts
 	for f in $(TEST_TS); do lumen test $$f || exit 1; done
+
+e2e: build bin/stub_model
+	node scripts/e2e_full_stack.mjs
 
 clean:
 	rm -rf bin code relay src/vendor/tty/tty_shim.o

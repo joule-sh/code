@@ -352,3 +352,100 @@ back was forwarded to the terminal side. Phone usability was checked in a
 real Chromium context resized to 375x812: no horizontal scroll on either
 screen, and the allow/deny/always buttons render at roughly 106x49px each,
 above the usual 44px touch-target minimum.
+
+## #12 landing notes: the v0-closing end-to-end test
+
+`src/e2e/` (`stub_script.ts`, `stub_http.ts`, `stub_model.ts`) plus
+`scripts/e2e_full_stack.mjs` prove the whole path once, in CI: a scripted
+browser pairs against a real `bin/relay`, a real `bin/joule --share` reads a
+file, proposes a change, and the change lands on disk (or does not) depending
+on an `approval.reply` the browser sent - the same claim `docs/00-plan.md`'s
+"What v0 is" section has made since the first day of this project.
+
+**Standalone Node script, not a `lumen test` file, and this was forced, not
+preferred.** `child_process.spawn`'s `ChildProcess` has no `kill()`, no
+timeout, and `close()` blocks in `wait()` until the child exits (spec 450,
+also [lumen#6](https://github.com/lumen-lang-org/lumen/issues/6)) - a real
+blocker for a harness that has to tear down a relay and a terminal that
+otherwise run forever. `joule` also refuses to start without a real tty
+(`isatty(STDIN)`), and Lumen has no pty allocation for a child it spawns.
+Node's `child_process` has neither problem: `spawn(..., {detached:true})`
+plus `process.kill(-pid, "SIGTERM")` kills a whole process group cleanly, and
+`script -qec "<cmd>" logfile` (util-linux, already on the runner) allocates a
+real pty for `joule` even when the harness's own stdin is closed - confirmed
+directly before relying on it. The "browser" is a hand-rolled WebSocket
+client because `websockets` isn't installed for Python and `ws` isn't
+installed for Node on this box (checked, not assumed, matching the ticket's
+own instruction) - `scripts/e2e_full_stack.mjs` imports `connect` straight
+from `scripts/miniws.mjs`, the same hand-rolled client #9's own verification
+script already used, rather than writing a second one.
+
+**The stub model is a real Lumen program**, `net.createServer` plus a
+hand-rolled HTTP/1.1 parser and chunked-transfer response writer
+(`src/e2e/stub_http.ts`), the same shape `relay/http_transport.ts` uses and
+for the same reason - `http.createServer`'s thread pool is what
+lumen#12 needed to reproduce, and a server that only ever holds one
+connection at a time (`net.createServer`'s own limit, lumen#11) sidesteps it
+entirely rather than risking it in new code. `src/e2e/stub_script.ts` builds
+three fixed, scripted SSE response bodies (read the file, propose a fix via
+the `run` tool, close out) keyed purely by a request counter - no history
+parsing needed, since each scenario is one turn against a freshly started
+server.
+
+**The ticket's own text needed two corrections against what's actually
+shipped, both confirmed by reading the real code before writing the harness,
+not assumed:**
+
+1. "The browser side is SSE and POSTs" is stale, same as several earlier
+   tickets - it's WebSocket (spec 003, #9/#11), and the harness drives it as
+   one.
+2. The demo gates a `run` tool call, not `edit`/`write`. `approval/gate.ts`'s
+   `needsAsking` only asks for `edit`/`write` when the mode is not `auto-edit`
+   (the terminal's actual startup default) - in `auto-edit` mode, an edit or a
+   write is auto-approved by design, and only `run` ever reaches the gate.
+   The scripted model proposes a `run` command that appends to the seeded
+   file, which is the one call in this codebase that can actually produce an
+   `approval.request` today.
+
+**A real gap this test surfaced and fixed: no `approval.request` frame was
+ever put on the wire.** `Gate.check()` already called its `onRequest`
+callback at exactly the right moment, and `renderFrame`/`styleFrame` already
+knew how to render an `APPROVAL_REQUEST` frame if one arrived - but
+`terminal.ts`'s `onRequest` only appended text to the local scrollback, never
+called `session.emit`. A browser had no way to ever see or act on an
+approval, in any version of this codebase before this ticket, which is
+exactly the flow "What v0 is" describes as the point of the whole project.
+Fixed in `src/terminal/terminal.ts`: `onApprovalRequest` now builds a real
+`ApprovalRequestFrame` and calls `session.emit`, reusing `live.sessionSlot`
+(already populated after `live.setSession(session)`) the same
+box-indirection way `gateBox`/`relayBox` already work around `session` being
+declared after the closures that need it. One frame now flows through the
+same subscriber pipeline every other frame type already used, so local
+scrollback rendering and relay publishing both come from the one path
+instead of two.
+
+**A genuine Lumen compiler bug, minimal repro filed as
+[lumen#13](https://github.com/lumen-lang-org/lumen/issues/13):** a
+`void`-returning function passed to `net.createServer` **by its bare name**
+fails native codegen with `expected type 'void', found
+'error{LumenThrow}!void'` if and only if that function's body calls
+`fs.appendFileSync` (likely any throwing stdlib call). Wrapping the same
+reference in an inline arrow - `net.createServer(port, (s: Socket) => {
+handleConnection(s); })` - compiles cleanly regardless of what the handler
+does. `src/e2e/stub_model.ts` ships with the arrow form.
+
+**Timing and reliability.** Both cases together run in 1.4-5.9 seconds
+locally (no artificial delays anywhere - the stub model answers instantly,
+every wait in the harness is a polled condition with its own deadline, never
+a fixed sleep assumed to be long enough), comfortably inside the ticket's
+one-minute budget. Run 14 times in a row during development: 13 clean passes
+and one real flake (a log-file read that ran once before the stub model's
+`fs.appendFileSync` for the final request was visible to the harness's own
+read), fixed by polling the log content with a deadline instead of a single
+read after a fixed sleep - the same pattern already used for every other
+wait in the script. Zero flakes in the 10 runs after that fix.
+
+**CI**: a new `e2e` job in `.github/workflows/test.yml`, `runs-on:
+[self-hosted, diff]` (the same runner label the existing `test` job already
+uses), separate from it, `make e2e` (which depends on `build` plus a new
+`bin/stub_model` target).
