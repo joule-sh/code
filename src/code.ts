@@ -20,9 +20,9 @@ function currentArgs(): string[] {
 }
 
 if (hasFlagIn(currentArgs(), "--version")) {
-  console.log("code " + VERSION);
+  console.log("joule " + VERSION);
 } else {
-  console.log("code: v0 skeleton, run with --version");
+  console.log("joule: v0 skeleton, run with --version");
 }
 
 test("hasFlagIn finds --version among other args", () => {
