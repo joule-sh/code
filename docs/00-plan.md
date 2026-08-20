@@ -57,6 +57,44 @@ is already draining the model stream and may have a child process running, so
 the relay connection is owned by a `Worker`. That is what #14 has to prove
 before #10 is written. Full reasoning in [spec 003](../specs/003-transport/spec.md).
 
+**#9 shipped as two listeners plus a discovered third, and a vendored
+websocket package.** `http.createServer` (the pairing endpoints) and
+`serveWebSocket` (the frame relay) are both blocking accept loops and
+cannot share a call stack, exactly as #14 was expected to answer for the
+terminal side -- the same mechanism works here: `Worker.run` hosts one
+accept loop on a background thread (a genuinely zero-capture top-level
+function, the safe case spec 059 describes) while the other runs on the
+main thread, keeping the process alive. This is the same answer #14 has to
+independently prove for the terminal's `receive()` loop, not a different
+one -- worth confirming when #14 lands.
+
+What #14's own framing did not anticipate: `net.createServer` (which
+`serveWebSocket` is built on) turned out to accept **one connection at a
+time, process-wide** -- its accept loop only calls `accept()` again after
+the previous handler returns, and a WebSocket handler never returns while
+the connection is open. A `Worker`-hosted accept loop doesn't fix this,
+since the socket is closed unconditionally the instant the handler
+returns, so a handler can't hand the connection off and let the loop
+continue. Filed upstream as
+[lumen#11](https://github.com/lumen-lang-org/lumen/issues/11). The
+workaround actually shipped: a third listener, so the terminal and the
+browser each get their own accept loop and their own port
+(`JOULE_RELAY_WS_PORT` for the terminal, `JOULE_RELAY_WS_BROWSER_PORT` for
+the browser, alongside `JOULE_RELAY_HTTP_PORT` for pairing) -- sufficient
+for v0's one-terminal-one-browser-per-session scope, not a fix for a relay
+serving many sessions' connections concurrently on one port, which needs
+the upstream fix.
+
+Separately, `packages/websocket`'s handshake parses every header off the
+upgrade request and then keeps only five of them -- fine for a package with
+no caller needing the rest, wrong for a relay that trusts a proxy-set
+`x-user` header and carries a bearer secret over the handshake rather than
+the frames. Vendored locally under `src/vendor/websocket/` (the same
+reason `tty` is vendored, files rather than a URL import, though here
+because the package needed a local change rather than a native shim) with
+an added `headers: Map<string,string>` on `Upgrade` and `Peer`, built the
+same way spec 459 built it for `HttpRequest`.
+
 **The terminal is a full TUI, via a std-contrib shim, not a compiler feature.**
 Lumen has no `setRawMode`, no `isatty`, no termios, and its FFI only marshals
 scalars and strings across the C boundary (specs 009/023) -- a `struct termios*`
