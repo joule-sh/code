@@ -7,7 +7,7 @@ import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPL
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
-import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
@@ -137,8 +137,14 @@ export function runTerminal(argv: string[]): void {
 
   let onApprovalRequest = (callId: string, tool: string, summary: string) => {
     pendingApproval.set(callId);
-    sb.append("\n  ? " + summary + " (y/n/a)");
-    drawScreen(sb, input);
+    if (live.sessionSlot.length > 0) {
+      let s = live.sessionSlot[0];
+      let frame: ApprovalRequestFrame = {
+        v: PROTOCOL_VERSION, seq: s.takeSeq(), type: APPROVAL_REQUEST,
+        turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: summary,
+      };
+      s.emit(encodeApprovalRequest(frame));
+    }
   };
 
   let onApprovalPoll = () => {
