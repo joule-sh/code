@@ -28,6 +28,7 @@ test: src/demo/tty_shim.o
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
 	lumen test src/protocol/frames.test.ts
+	lumen test src/session/session.test.ts
 
 clean:
 	rm -rf bin code relay src/demo/tty_shim.o
