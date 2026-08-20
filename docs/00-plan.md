@@ -63,7 +63,8 @@ scalars and strings across the C boundary (specs 009/023) -- a `struct termios*`
 cannot cross it directly. std-contrib's `tty` package hides that struct
 entirely inside a small C shim and exposes raw-mode enable/disable and a
 byte-at-a-time read as plain scalar functions; terminal size comes the same
-way, an ioctl behind two `Ref<int>` out-params. Cursor movement, the alternate
+way, two scalar-returning functions rather than one call with out-params, since
+`Ref<T>` is disallowed on FFI parameters (spec 024). Cursor movement, the alternate
 screen, and redraw are ANSI escape sequences, plain strings, no FFI needed for
 those at all. zig-spoon was considered and dropped: GPLv3, and every other
 native terminal library here (SQLite, QuickJS) is permissively licensed. The
