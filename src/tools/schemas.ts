@@ -30,6 +30,16 @@ export const GREP_SCHEMA: ToolSchema = {
   parametersJson: "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"glob\":{\"type\":\"string\"}},\"required\":[\"pattern\"]}",
 };
 
+export const RUN_SCHEMA: ToolSchema = {
+  name: "run",
+  description: "Run a shell command in the workspace root and capture its output. A non-zero exit is a normal result, not an error - read stdout/stderr to see what happened. Output is capped; check truncated. The command's stdin is not connected to anything, so an interactive prompt fails fast rather than hanging.",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"timeout_ms\":{\"type\":\"integer\",\"description\":\"best-effort budget in milliseconds; a command that overruns it is flagged but not forcibly stopped\"}},\"required\":[\"command\"]}",
+};
+
 export function allFileToolSchemas(): ToolSchema[] {
   return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA];
+}
+
+export function allToolSchemas(): ToolSchema[] {
+  return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA];
 }
