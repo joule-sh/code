@@ -1,3 +1,5 @@
+import { VERSION } from "../version.ts";
+
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
     if (a == name) {
@@ -18,7 +20,7 @@ function currentArgs(): string[] {
 }
 
 if (hasFlagIn(currentArgs(), "--version")) {
-  console.log("relay 0.1.0");
+  console.log("relay " + VERSION);
 } else {
   console.log("relay: v0 skeleton, run with --version");
 }

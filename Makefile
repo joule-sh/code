@@ -1,4 +1,4 @@
-.PHONY: build test clean
+.PHONY: build release test clean
 
 build: bin/code bin/relay
 
@@ -10,6 +10,13 @@ bin/code: src/code.ts
 bin/relay: src/relay/relay.ts
 	mkdir -p bin
 	lumen compile src/relay/relay.ts
+	mv relay bin/relay
+
+release:
+	mkdir -p bin
+	lumen compile --release-fast src/code.ts
+	mv code bin/code
+	lumen compile --release-fast src/relay/relay.ts
 	mv relay bin/relay
 
 test:
