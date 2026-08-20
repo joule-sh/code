@@ -135,7 +135,7 @@ test("a non-JSON error body falls back to the raw text", () => {
 });
 
 test("requestBody serializes messages and marks stream true", () => {
-  let messages: Message[] = [{ role: "user", text: "hi \"there\"" }];
+  let messages: Message[] = [{ role: "user", text: "hi \"there\"", toolCallId: "", toolCalls: [] }];
   let body = requestBody("gpt-4o", messages, []);
 
   expect(body.indexOf("\"model\":\"gpt-4o\"") >= 0);
@@ -146,11 +146,28 @@ test("requestBody serializes messages and marks stream true", () => {
 });
 
 test("requestBody includes tools when given, parameters embedded raw", () => {
-  let messages: Message[] = [{ role: "user", text: "hi" }];
+  let messages: Message[] = [{ role: "user", text: "hi", toolCallId: "", toolCalls: [] }];
   let tools: ToolSchema[] = [{ name: "read_file", description: "reads a file", parametersJson: "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}" }];
   let body = requestBody("gpt-4o", messages, tools);
 
   expect(body.indexOf("\"tools\"") >= 0);
   expect(body.indexOf("\"name\":\"read_file\"") >= 0);
   expect(body.indexOf("\"properties\":{\"path\"") >= 0);
+});
+
+test("an assistant message with tool calls serializes tool_calls, not content only", () => {
+  let messages: Message[] = [{ role: "assistant", text: "", toolCallId: "", toolCalls: [{ callId: "c1", tool: "read", args: "{\"path\":\"a.ts\"}" }] }];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("\"tool_calls\"") >= 0);
+  expect(body.indexOf("\"id\":\"c1\"") >= 0);
+  expect(body.indexOf("\"name\":\"read\"") >= 0);
+});
+
+test("a tool result message serializes its tool_call_id", () => {
+  let messages: Message[] = [{ role: "tool", text: "file contents", toolCallId: "c1", toolCalls: [] }];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("\"tool_call_id\":\"c1\"") >= 0);
+  expect(body.indexOf("\"role\":\"tool\"") >= 0);
 });

@@ -109,10 +109,11 @@ test("one tool call then an answer", () => {
   expect(hasCall);
   expect(hasResult);
 
-  expect(session.history.length == 3);
+  expect(session.history.length == 4);
   expect(session.history[0].role == "user");
-  expect(session.history[1].role == "tool");
-  expect(session.history[2].role == "assistant");
+  expect(session.history[1].role == "assistant");
+  expect(session.history[2].role == "tool");
+  expect(session.history[3].role == "assistant");
 });
 
 test("two sequential tool calls before the answer", () => {
@@ -134,7 +135,7 @@ test("two sequential tool calls before the answer", () => {
   }
   expect(callCount == 2);
   expect(kinds[kinds.length - 1] == TURN_END);
-  expect(session.history.length == 4);
+  expect(session.history.length == 6);
 });
 
 test("the step cap ends the turn with error, not an infinite loop", () => {
@@ -244,7 +245,7 @@ test("a denied tool call is recorded in history but not run", () => {
     if (k == TOOL_CALL) { hasCall = true; }
   }
   expect(!hasCall);
-  expect(session.history[1].text.indexOf("denied") >= 0);
+  expect(session.history[2].text.indexOf("denied") >= 0);
 });
 
 test("seq is monotonic across a whole turn", () => {

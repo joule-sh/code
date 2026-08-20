@@ -2,9 +2,9 @@ export const ROLE_USER: string = "user";
 export const ROLE_ASSISTANT: string = "assistant";
 export const ROLE_TOOL: string = "tool";
 
-export type Message = { role: string, text: string };
-
 export type ToolCallReq = { callId: string, tool: string, args: string };
+
+export type Message = { role: string, text: string, toolCallId: string, toolCalls: ToolCallReq[] };
 
 export type ProviderReply = { text: string, calls: ToolCallReq[], failed: bool, errorCode: string, errorMessage: string };
 

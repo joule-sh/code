@@ -10,6 +10,7 @@ import { frameType, decodeTurnStart, TURN_START } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
+import { styleFrame, stylePrompt, styleBanner } from "./style.ts";
 
 const STDIN: int = 0;
 const KEY_Y: int = 121;
@@ -49,7 +50,7 @@ function drawScreen(sb: Scrollback, input: InputLine): void {
     row = row + 1;
     i = i + 1;
   }
-  console.log(cursorTo(r, 1) + CLEAR_LINE + "> " + input.buf);
+  console.log(cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf);
 }
 
 function isValidMode(mode: string): bool {
@@ -122,7 +123,7 @@ export function runTerminal(argv: string[]): void {
         tracker.setCurrent(f.turnId);
       }
     }
-    sb.append(renderFrame(frameJson));
+    sb.append(styleFrame(frameType(frameJson), renderFrame(frameJson)));
     drawScreen(sb, input);
   });
 
@@ -130,7 +131,7 @@ export function runTerminal(argv: string[]): void {
   console.log(HIDE_CURSOR);
   rawEnable(STDIN);
 
-  sb.append("joule - type a request, /help for commands, ctrl-d to quit");
+  sb.append(styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   drawScreen(sb, input);
 
   let running = true;
@@ -178,7 +179,7 @@ export function runTerminal(argv: string[]): void {
     let cmd = parseCommand(line);
 
     if (cmd.kind == CMD_NONE) {
-      sb.append("\n> " + line);
+      sb.append("\n" + stylePrompt("> ") + line);
       drawScreen(sb, input);
       session.submit(line);
       drawScreen(sb, input);

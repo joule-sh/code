@@ -88,3 +88,24 @@ test("clip truncates a line to the given width", () => {
   expect(clip("hi", 5) == "hi");
   expect(clip("hello", 0) == "hello");
 });
+
+test("clip does not count an ANSI color code toward the visible width", () => {
+  let esc = String.fromCharCode(27);
+  let colored = esc + "[38;2;139;92;246m" + "hi" + esc + "[0m";
+  let out = clip(colored, 5);
+  expect(out.indexOf("hi") >= 0);
+  expect(out.indexOf(esc + "[38;2;139;92;246m") >= 0);
+});
+
+test("clip appends a reset when it truncates a colored line mid-content", () => {
+  let esc = String.fromCharCode(27);
+  let colored = esc + "[38;2;139;92;246m" + "hello world" + esc + "[0m";
+  let out = clip(colored, 5);
+  expect(out.indexOf("hello") >= 0);
+  expect(out.indexOf("world") < 0);
+  expect(out.slice(out.length - 4, out.length) == esc + "[0m");
+});
+
+test("clip leaves a plain uncolored line under width untouched", () => {
+  expect(clip("plain text", 40) == "plain text");
+});
