@@ -105,7 +105,7 @@ export class Session {
       }
 
       for (const call of reply.calls) {
-        let decision = this.approval.check(call.tool, call.tool + " " + call.args);
+        let decision = this.approval.check(call.callId, call.tool, call.tool + " " + call.args);
         if (!decision.allow) {
           this.history.push({ role: ROLE_TOOL, text: call.tool + ": denied" });
           continue;

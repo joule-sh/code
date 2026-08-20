@@ -50,7 +50,7 @@ class FrameCapture {
 }
 
 function allowAll(): ApprovalGate {
-  return { check: (tool: string, summary: string): ApprovalDecision => {
+  return { check: (callId: string, tool: string, summary: string): ApprovalDecision => {
     let d: ApprovalDecision = { allow: true };
     return d;
   } };
@@ -191,7 +191,7 @@ test("a provider error ends the turn with error, and does not throw", () => {
 
 test("a denied tool call is recorded in history but not run", () => {
   let calls: ToolCallReq[] = [{ callId: "c1", tool: "run_shell", args: "rm -rf /" }];
-  let denyAll: ApprovalGate = { check: (tool: string, summary: string): ApprovalDecision => {
+  let denyAll: ApprovalGate = { check: (callId: string, tool: string, summary: string): ApprovalDecision => {
     let d: ApprovalDecision = { allow: false };
     return d;
   } };
