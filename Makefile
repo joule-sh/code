@@ -1,4 +1,4 @@
-.PHONY: build release test e2e clean
+.PHONY: build release test e2e terminal-harness clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -38,6 +38,9 @@ test: src/vendor/tty/tty_shim.o
 
 e2e: build bin/stub_model
 	node scripts/e2e_full_stack.mjs
+
+terminal-harness: build bin/stub_model
+	python3 scripts/terminal_structural_harness.py
 
 clean:
 	rm -rf bin code relay src/vendor/tty/tty_shim.o
