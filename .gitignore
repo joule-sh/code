@@ -1,0 +1,6 @@
+.lumen-packages/
+.lumen-libxev-*/
+.lumen-api.log
+zig-out/
+.zig-cache/
+/bin/
