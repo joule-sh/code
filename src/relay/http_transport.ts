@@ -118,7 +118,7 @@ function writeResponse(socket: Socket, resp: RelayHttpResponse): void {
   socket.close();
 }
 
-export function socketHandler(store: SessionStore): (socket: Socket) => void {
+export function socketHandler(store: SessionStore, wsBrowserPort: int): (socket: Socket) => void {
   return (socket: Socket) => {
     let parsed = readRequest(socket);
     if (!parsed.ok) {
@@ -129,7 +129,7 @@ export function socketHandler(store: SessionStore): (socket: Socket) => void {
       }
       return;
     }
-    let handler = makeHttpHandler(store);
+    let handler = makeHttpHandler(store, wsBrowserPort);
     let resp = handler(parsed.req);
     writeResponse(socket, resp);
   };
