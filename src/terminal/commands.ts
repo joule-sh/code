@@ -2,6 +2,7 @@ export const CMD_HELP: string = "help";
 export const CMD_MODEL: string = "model";
 export const CMD_MODE: string = "mode";
 export const CMD_SHARE: string = "share";
+export const CMD_CAT: string = "cat";
 export const CMD_CLEAR: string = "clear";
 export const CMD_EXIT: string = "exit";
 export const CMD_UNKNOWN: string = "unknown";
@@ -33,6 +34,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "model") { return withKind(CMD_MODEL, arg); }
   if (name == "mode") { return withKind(CMD_MODE, arg); }
   if (name == "share") { return withKind(CMD_SHARE, arg); }
+  if (name == "cat") { return withKind(CMD_CAT, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
   if (name == "exit") { return withKind(CMD_EXIT, arg); }
   return withKind(CMD_UNKNOWN, name);
@@ -44,6 +46,7 @@ export function helpText(): string {
     "/model [name]  show or set the model",
     "/mode [mode]   show or set the approval mode (read-only, auto-edit, full-auto)",
     "/share         print the pairing URL for this session",
+    "/cat <path>    show a file's contents without asking the model",
     "/clear         clear the scrollback",
     "/exit          quit",
   ];

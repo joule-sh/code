@@ -1,4 +1,4 @@
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -29,6 +29,18 @@ test("/share /clear /exit all parse", () => {
   expect(parseCommand("/exit").kind == CMD_EXIT);
 });
 
+test("/cat with a path argument", () => {
+  let p = parseCommand("/cat src/main.ts");
+  expect(p.kind == CMD_CAT);
+  expect(p.arg == "src/main.ts");
+});
+
+test("/cat with no argument parses with an empty arg", () => {
+  let p = parseCommand("/cat");
+  expect(p.kind == CMD_CAT);
+  expect(p.arg == "");
+});
+
 test("an unknown slash command is flagged, not silently ignored", () => {
   let p = parseCommand("/frobnicate");
   expect(p.kind == CMD_UNKNOWN);
@@ -47,6 +59,7 @@ test("helpText lists every command", () => {
   expect(h.indexOf("/model") >= 0);
   expect(h.indexOf("/mode") >= 0);
   expect(h.indexOf("/share") >= 0);
+  expect(h.indexOf("/cat") >= 0);
   expect(h.indexOf("/clear") >= 0);
   expect(h.indexOf("/exit") >= 0);
 });

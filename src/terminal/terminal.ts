@@ -1,16 +1,17 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
+import { readFile } from "../tools/files.ts";
 import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
-import { styleFrame, stylePrompt, styleBanner } from "./style.ts";
+import { styleFrame, stylePrompt, styleBanner, styleScrollIndicator } from "./style.ts";
 import { RelayClient } from "../relay/client.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
@@ -75,8 +76,13 @@ function drawScreen(sb: Scrollback, input: InputLine): void {
   if (c <= 0) { c = 80; }
   if (r <= 1) { r = 24; }
 
-  let visible = r - 1;
-  let tail = sb.tail(visible);
+  let atBottom = sb.isAtBottom();
+  let indicatorRows = 0;
+  if (!atBottom) { indicatorRows = 1; }
+
+  let visible = r - 1 - indicatorRows;
+  if (visible < 0) { visible = 0; }
+  let tail = sb.tailFrom(visible, sb.offset);
   let blanks = visible - tail.length;
   if (blanks < 0) { blanks = 0; }
 
@@ -91,6 +97,10 @@ function drawScreen(sb: Scrollback, input: InputLine): void {
     out = out + cursorTo(row, 1) + CLEAR_LINE + clip(tail[i], c);
     row = row + 1;
     i = i + 1;
+  }
+  if (!atBottom) {
+    out = out + cursorTo(row, 1) + CLEAR_LINE + styleScrollIndicator(clip("-- scrolled up, PageDown to return to the live view --", c));
+    row = row + 1;
   }
   out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;
   process.stdout().write(out);
@@ -249,6 +259,22 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
+    if (k.kind == KEY_PAGE_UP) {
+      let r = rows(STDIN);
+      if (r <= 1) { r = 24; }
+      sb.scrollUp(r - 1, r - 1);
+      drawScreen(sb, input);
+      continue;
+    }
+
+    if (k.kind == KEY_PAGE_DOWN) {
+      let r = rows(STDIN);
+      if (r <= 1) { r = 24; }
+      sb.scrollDown(r - 1, r - 1);
+      drawScreen(sb, input);
+      continue;
+    }
+
     if (k.kind != KEY_ENTER) {
       continue;
     }
@@ -302,6 +328,24 @@ export function runTerminal(argv: string[]): void {
 
     if (cmd.kind == CMD_SHARE) {
       attachToRelay();
+      continue;
+    }
+
+    if (cmd.kind == CMD_CAT) {
+      if (cmd.arg == "") {
+        sb.append("\nusage: /cat <path>");
+      } else {
+        let r = readFile(workspaceRoot, cmd.arg, 0, 0);
+        if (!r.ok) {
+          sb.append("\ncat: " + cmd.arg + ": " + r.error);
+        } else {
+          sb.append("\n" + r.content);
+          if (r.truncated) {
+            sb.append("\n(truncated)");
+          }
+        }
+      }
+      drawScreen(sb, input);
       continue;
     }
 

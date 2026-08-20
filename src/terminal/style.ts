@@ -56,3 +56,7 @@ export function stylePrompt(text: string): string {
 export function styleBanner(text: string): string {
   return wrap(DIM, text);
 }
+
+export function styleScrollIndicator(text: string): string {
+  return wrap(BOLD + YELLOW, text);
+}

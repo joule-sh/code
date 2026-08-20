@@ -40,6 +40,117 @@ test("tail returns the last n lines", () => {
   expect(t[1] == "5");
 });
 
+test("Scrollback starts at the bottom with offset 0", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  expect(sb.offset == 0);
+  expect(sb.isAtBottom());
+});
+
+test("tailFrom with offset 0 matches tail", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  let t = sb.tailFrom(2, 0);
+  expect(t.length == 2);
+  expect(t[0] == "4");
+  expect(t[1] == "5");
+});
+
+test("tailFrom with a positive offset shows older lines", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  let t = sb.tailFrom(2, 2);
+  expect(t.length == 2);
+  expect(t[0] == "2");
+  expect(t[1] == "3");
+});
+
+test("tailFrom clamps an offset past the top of history", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  let t = sb.tailFrom(2, 100);
+  expect(t.length == 2);
+  expect(t[0] == "1");
+  expect(t[1] == "2");
+});
+
+test("maxOffset is 0 when everything fits on screen", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3");
+  expect(sb.maxOffset(10) == 0);
+});
+
+test("maxOffset grows with history past the visible height", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  expect(sb.maxOffset(2) == 3);
+});
+
+test("scrollUp moves the offset up and clamps at the top", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  sb.scrollUp(2, 1);
+  expect(sb.offset == 1);
+  sb.scrollUp(2, 50);
+  expect(sb.offset == sb.maxOffset(2));
+  expect(sb.offset == 3);
+});
+
+test("scrollDown moves the offset back toward the bottom and clamps at 0", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  sb.scrollUp(2, 3);
+  sb.scrollDown(2, 1);
+  expect(sb.offset == 2);
+  sb.scrollDown(2, 50);
+  expect(sb.offset == 0);
+  expect(sb.isAtBottom());
+});
+
+test("resetToBottom snaps straight back to offset 0", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  sb.scrollUp(2, 3);
+  expect(!sb.isAtBottom());
+  sb.resetToBottom();
+  expect(sb.isAtBottom());
+  expect(sb.offset == 0);
+});
+
+test("append auto-follows the bottom when offset is 0", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  expect(sb.isAtBottom());
+  sb.append("\n6");
+  expect(sb.isAtBottom());
+  let t = sb.tailFrom(2, sb.offset);
+  expect(t[0] == "5");
+  expect(t[1] == "6");
+});
+
+test("append does not yank a scrolled up view back to the bottom", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  sb.scrollUp(2, 3);
+  let before = sb.tailFrom(2, sb.offset);
+  expect(before[0] == "1");
+  expect(before[1] == "2");
+  sb.append("\n6\n7");
+  expect(!sb.isAtBottom());
+  let after = sb.tailFrom(2, sb.offset);
+  expect(after[0] == "1");
+  expect(after[1] == "2");
+});
+
+test("clear resets the scroll offset back to the bottom", () => {
+  let sb = new Scrollback();
+  sb.append("1\n2\n3\n4\n5");
+  sb.scrollUp(2, 3);
+  sb.clear();
+  expect(sb.isAtBottom());
+  expect(sb.offset == 0);
+});
+
 test("tail with n larger than the buffer returns everything", () => {
   let sb = new Scrollback();
   sb.append("1\n2");
