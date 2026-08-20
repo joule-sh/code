@@ -80,18 +80,20 @@ function drawScreen(sb: Scrollback, input: InputLine): void {
   let blanks = visible - tail.length;
   if (blanks < 0) { blanks = 0; }
 
+  let out = "";
   let row = 1;
   while (row <= blanks) {
-    console.log(cursorTo(row, 1) + CLEAR_LINE);
+    out = out + cursorTo(row, 1) + CLEAR_LINE;
     row = row + 1;
   }
   let i = 0;
   while (i < tail.length) {
-    console.log(cursorTo(row, 1) + CLEAR_LINE + clip(tail[i], c));
+    out = out + cursorTo(row, 1) + CLEAR_LINE + clip(tail[i], c);
     row = row + 1;
     i = i + 1;
   }
-  console.log(cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf);
+  out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;
+  process.stdout().write(out);
 }
 
 function isValidMode(mode: string): bool {
@@ -201,8 +203,7 @@ export function runTerminal(argv: string[]): void {
     runRelayTick(relay, session, gate, bridge, sb, input);
   });
 
-  console.log(ENTER_ALT_SCREEN);
-  console.log(HIDE_CURSOR);
+  process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR);
   rawEnable(STDIN);
 
   sb.append(styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
@@ -321,7 +322,6 @@ export function runTerminal(argv: string[]): void {
 
   relay.detach();
 
-  console.log(SHOW_CURSOR);
-  console.log(EXIT_ALT_SCREEN);
+  process.stdout().write(SHOW_CURSOR + EXIT_ALT_SCREEN);
   rawDisable(STDIN);
 }
