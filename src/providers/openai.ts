@@ -1,7 +1,7 @@
 import { jsonChoiceText, jsonChoiceString, jsonErrorText, jsonHasError } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { jsonObjectOf, jsonArrayOf, JsonField } from "https://lumen-lang.org/package/std-contrib/jsonrpc/rpc.ts";
 import { toolCallFragments, ToolCallAssembler } from "./toolcalls.ts";
-import { Message, ProviderReply } from "../session/types.ts";
+import { Message, ProviderReply, ToolCallReq } from "../session/types.ts";
 
 export type ProviderConfig = { baseUrl: string, model: string, apiKey: string };
 
@@ -16,11 +16,34 @@ export function authHeaders(apiKey: string): Map<string, string> {
   return h;
 }
 
+function toolCallReqJson(t: ToolCallReq): string {
+  let fnFields: JsonField[] = [
+    { key: "name", json: JSON.stringify(t.tool) },
+    { key: "arguments", json: JSON.stringify(t.args) },
+  ];
+  let outer: JsonField[] = [
+    { key: "id", json: JSON.stringify(t.callId) },
+    { key: "type", json: JSON.stringify("function") },
+    { key: "function", json: jsonObjectOf(fnFields) },
+  ];
+  return jsonObjectOf(outer);
+}
+
 function messageJson(m: Message): string {
   let fields: JsonField[] = [
     { key: "role", json: JSON.stringify(m.role) },
     { key: "content", json: JSON.stringify(m.text) },
   ];
+  if (m.toolCallId != "") {
+    fields.push({ key: "tool_call_id", json: JSON.stringify(m.toolCallId) });
+  }
+  if (m.toolCalls.length > 0) {
+    let parts: string[] = [];
+    for (const t of m.toolCalls) {
+      parts.push(toolCallReqJson(t));
+    }
+    fields.push({ key: "tool_calls", json: jsonArrayOf(parts) });
+  }
   return jsonObjectOf(fields);
 }
 

@@ -89,12 +89,50 @@ export class PendingApproval {
   }
 }
 
+const ESC_CODE: int = 27;
+
+function isSgrTerminator(c: string): bool {
+  return (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
+}
+
 export function clip(line: string, width: int): string {
   if (width <= 0) {
     return line;
   }
-  if (line.length <= width) {
-    return line;
+
+  let visible = 0;
+  let out = "";
+  let hadEscape = false;
+  let i = 0;
+
+  while (i < line.length) {
+    if (line.charCodeAt(i) == ESC_CODE) {
+      hadEscape = true;
+      let j = i + 1;
+      if (j < line.length && line.charAt(j) == "[") {
+        j = j + 1;
+        while (j < line.length && !isSgrTerminator(line.charAt(j))) {
+          j = j + 1;
+        }
+        if (j < line.length) {
+          j = j + 1;
+        }
+      }
+      out = out + line.slice(i, j);
+      i = j;
+      continue;
+    }
+
+    if (visible >= width) {
+      break;
+    }
+    out = out + line.charAt(i);
+    visible = visible + 1;
+    i = i + 1;
   }
-  return line.slice(0, width);
+
+  if (hadEscape) {
+    out = out + String.fromCharCode(ESC_CODE) + "[0m";
+  }
+  return out;
 }

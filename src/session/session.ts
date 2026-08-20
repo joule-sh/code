@@ -56,7 +56,7 @@ export class Session {
   submit(text: string): string {
     let turnId = "t" + `${this.nextTurn}`;
     this.nextTurn = this.nextTurn + 1;
-    this.history.push({ role: ROLE_USER, text: text });
+    this.history.push({ role: ROLE_USER, text: text, toolCallId: "", toolCalls: [] });
 
     let startFrame: TurnStartFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TURN_START, turnId: turnId, prompt: text };
     this.emit(encodeTurnStart(startFrame));
@@ -93,8 +93,8 @@ export class Session {
         continue;
       }
 
-      if (reply.text != "") {
-        this.history.push({ role: ROLE_ASSISTANT, text: reply.text });
+      if (reply.text != "" || reply.calls.length > 0) {
+        this.history.push({ role: ROLE_ASSISTANT, text: reply.text, toolCallId: "", toolCalls: reply.calls });
       }
 
       if (reply.calls.length == 0) {
@@ -105,7 +105,7 @@ export class Session {
       for (const call of reply.calls) {
         let decision = this.approval.check(call.callId, call.tool, call.tool + " " + call.args);
         if (!decision.allow) {
-          this.history.push({ role: ROLE_TOOL, text: call.tool + ": denied" });
+          this.history.push({ role: ROLE_TOOL, text: call.tool + ": denied", toolCallId: call.callId, toolCalls: [] });
           continue;
         }
 
@@ -117,7 +117,7 @@ export class Session {
         let resultFrame: ToolResultFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TOOL_RESULT, turnId: turnId, callId: call.callId, ok: result.ok, output: result.output, truncated: result.truncated };
         this.emit(encodeToolResult(resultFrame));
 
-        this.history.push({ role: ROLE_TOOL, text: call.tool + ": " + result.output });
+        this.history.push({ role: ROLE_TOOL, text: call.tool + ": " + result.output, toolCallId: call.callId, toolCalls: [] });
       }
 
       step = step + 1;
