@@ -1,11 +1,14 @@
 export class Scrollback {
   lines: string[];
+  offset: int;
 
   constructor() {
     this.lines = [""];
+    this.offset = 0;
   }
 
   append(text: string): void {
+    let before = this.lines.length;
     let parts = text.split("\n");
     let i = 0;
     while (i < parts.length) {
@@ -18,24 +21,78 @@ export class Scrollback {
       }
       i = i + 1;
     }
+    if (this.offset > 0) {
+      let added = this.lines.length - before;
+      if (added > 0) {
+        this.offset = this.offset + added;
+      }
+    }
   }
 
   clear(): void {
     this.lines = [""];
+    this.offset = 0;
   }
 
   tail(n: int): string[] {
-    let start = this.lines.length - n;
+    return this.tailFrom(n, 0);
+  }
+
+  tailFrom(visible: int, offset: int): string[] {
+    let off = offset;
+    if (off < 0) {
+      off = 0;
+    }
+    let m = this.maxOffset(visible);
+    if (off > m) {
+      off = m;
+    }
+    let end = this.lines.length - off;
+    if (end < 0) {
+      end = 0;
+    }
+    let start = end - visible;
     if (start < 0) {
       start = 0;
     }
     let out: string[] = [];
     let i = start;
-    while (i < this.lines.length) {
+    while (i < end) {
       out.push(this.lines[i]);
       i = i + 1;
     }
     return out;
+  }
+
+  maxOffset(visible: int): int {
+    let m = this.lines.length - visible;
+    if (m < 0) {
+      m = 0;
+    }
+    return m;
+  }
+
+  scrollUp(visible: int, n: int): void {
+    this.offset = this.offset + n;
+    let m = this.maxOffset(visible);
+    if (this.offset > m) {
+      this.offset = m;
+    }
+  }
+
+  scrollDown(visible: int, n: int): void {
+    this.offset = this.offset - n;
+    if (this.offset < 0) {
+      this.offset = 0;
+    }
+  }
+
+  resetToBottom(): void {
+    this.offset = 0;
+  }
+
+  isAtBottom(): bool {
+    return this.offset <= 0;
   }
 }
 

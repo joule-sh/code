@@ -49,6 +49,8 @@ export const KEY_ARROW_UP: string = "arrow_up";
 export const KEY_ARROW_DOWN: string = "arrow_down";
 export const KEY_ARROW_LEFT: string = "arrow_left";
 export const KEY_ARROW_RIGHT: string = "arrow_right";
+export const KEY_PAGE_UP: string = "page_up";
+export const KEY_PAGE_DOWN: string = "page_down";
 export const KEY_EOF: string = "eof";
 export const KEY_UNKNOWN: string = "unknown";
 export const KEY_TIMEOUT: string = "timeout";
@@ -96,6 +98,14 @@ function readEscapeSequence(fd: int): Key {
   if (b3 == 66) { return simpleKey(KEY_ARROW_DOWN); }
   if (b3 == 67) { return simpleKey(KEY_ARROW_RIGHT); }
   if (b3 == 68) { return simpleKey(KEY_ARROW_LEFT); }
+  if (b3 == 53 || b3 == 54) {
+    let b4 = readByteTimeout(fd, 50);
+    if (b4 == 126) {
+      if (b3 == 53) { return simpleKey(KEY_PAGE_UP); }
+      return simpleKey(KEY_PAGE_DOWN);
+    }
+    return simpleKey(KEY_UNKNOWN);
+  }
   return simpleKey(KEY_UNKNOWN);
 }
 
@@ -231,6 +241,29 @@ test("readKey decodes the arrow keys", () => {
   tty_write_byte_to_test_pipe(91);
   tty_write_byte_to_test_pipe(68);
   expect(readKey(fd).kind == KEY_ARROW_LEFT);
+});
+
+test("readKey decodes PageUp and PageDown", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(53);
+  tty_write_byte_to_test_pipe(126);
+  expect(readKey(fd).kind == KEY_PAGE_UP);
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(54);
+  tty_write_byte_to_test_pipe(126);
+  expect(readKey(fd).kind == KEY_PAGE_DOWN);
+});
+
+test("readKey falls back to unknown for an unterminated CSI digit sequence", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(53);
+  tty_write_byte_to_test_pipe(50);
+  expect(readKey(fd).kind == KEY_UNKNOWN);
 });
 
 test("readKey decodes a lone Escape with nothing following", () => {
