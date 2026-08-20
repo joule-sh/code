@@ -107,6 +107,21 @@ No hosted sandbox, the agent runs on your machine only. No multi-agent, no
 subagents, no MCP. No session persistence across restarts. Each of these is a
 follow-up, not a gap we forgot.
 
+## Code organization
+
+No file over 450 lines, enforced the same way the no-comments rule is: the
+pre-commit hook refuses a commit that leaves a `.ts` or `.c` file past the cap.
+A file that wants to grow past it is telling you it holds more than one
+concern - split it into a module, in a folder named for the concern, rather
+than letting one file keep absorbing everything nearby.
+
+One folder per concern, not a flat pile in `src/`: `protocol/` for the frames,
+`relay/` for the service, `demo/` for the terminal spike, and the same going
+forward - `session/` for #3, `providers/` for #4, `tools/` for #5 and #6,
+`approval/` for #7, `terminal/` for #8. A concern that needs one file gets one
+file in its folder; a concern that needs three gets three, still findable by
+where they live rather than by scrolling a folder of forty flat files.
+
 ## Order
 
 ```

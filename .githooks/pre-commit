@@ -1,18 +1,24 @@
 #!/bin/sh
 set -eu
 
-files=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' | grep -v '^\.github/' || true)
-
-if [ -z "$files" ]; then
-  exit 0
-fi
-
 bad=0
-for f in $files; do
+
+comment_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' | grep -v '^\.github/' || true)
+for f in $comment_files; do
   added=$(git diff --cached -- "$f" | grep -E '^\+[^+]' | sed 's/^\+//')
   stripped=$(printf '%s\n' "$added" | sed -E 's#[a-zA-Z]+://[^ "'"'"']*##g')
   if printf '%s\n' "$stripped" | grep -qE '(^|[^:])//|/\*'; then
     echo "pre-commit: $f adds a comment line. Not allowed (ticket #1). Use git commit --no-verify to bypass." >&2
+    bad=1
+  fi
+done
+
+size_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.c' | grep -v '^\.github/' || true)
+for f in $size_files; do
+  [ -f "$f" ] || continue
+  lines=$(wc -l < "$f" | tr -d ' ')
+  if [ "$lines" -gt 450 ]; then
+    echo "pre-commit: $f is $lines lines, over the 450-line cap. Split it into a module (a new file under a folder for the concern), not one file that keeps growing." >&2
     bad=1
   fi
 done
