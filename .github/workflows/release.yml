@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: [self-hosted, diff]
+    env:
+      LUMEN_VERSION: v0.5.0
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "export const VERSION: string = \"$version\";" > src/version.ts
+          cat src/version.ts
+      - run: make release
+      - run: ./bin/code --version
+      - run: |
+          dir="code-x86_64-linux"
+          mkdir -p "$dir"
+          cp bin/code bin/relay README.md "$dir/"
+          tar -czf "$dir.tar.gz" "$dir"
+      - run: |
+          gh release create "$GITHUB_REF_NAME" "code-x86_64-linux.tar.gz" \
+            --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

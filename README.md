@@ -12,15 +12,46 @@ machine**. The browser is a remote control, never an executor.
 
 ## Status
 
-v0 is not built yet. What exists is the design and the work breakdown:
+v0 is in progress. Landed: the repo skeleton and CI
+([#1](https://github.com/joule-sh/code/issues/1)), the shared frame protocol
+([#2](https://github.com/joule-sh/code/issues/2)). Not yet: the turn loop, a
+model provider, the file and run tools, approval, the terminal front end, the
+relay, and the web page. There is no working demo until those land.
 
 - [docs/00-plan.md](docs/00-plan.md): architecture, the decisions and what
   forced them, and the order the work goes in.
 - [specs/](specs/): one directory per decided piece, in the same numbered form
   the Lumen repo uses.
-- [The v0 milestone](https://github.com/joule-sh/code/milestone/1) holds fifteen
+- [The v0 milestone](https://github.com/joule-sh/code/milestone/1) holds the
   tickets. [#15](https://github.com/joule-sh/code/issues/15) is the plan,
   [#1](https://github.com/joule-sh/code/issues/1) is where the code starts.
+
+## Install
+
+Once a release is tagged, the released binaries install with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
+```
+
+x86_64 Linux only for now, matching the one self-hosted CI runner this project
+builds on. No release has been tagged yet: the command above has nothing to
+fetch until one is. Build from source until then.
+
+## Build from source
+
+Requires the [Lumen](https://lumen-lang.org) toolchain (`lumen`, and `zig`
+alongside it on `PATH`, as the release archive ships them).
+
+```sh
+git clone https://github.com/joule-sh/code.git
+cd code
+make build
+./bin/code --version
+```
+
+`make test` runs the test suite, `make release` builds the `--release-fast`
+binaries the release workflow packages.
 
 ## The one invariant
 
@@ -41,3 +72,9 @@ The terminal and the browser each hold one WebSocket to the relay, using the
 `http.stream`, because that is what providers speak. The reasoning, including
 the concurrency problem a blocking `receive()` creates for the terminal, is in
 [spec 003](specs/003-transport/spec.md).
+
+## Honest limits (v0)
+
+No hosted sandbox, the agent only ever runs on your own machine. No session
+persistence across restarts. No multi-agent, no subagents, no MCP. See
+[docs/00-plan.md](docs/00-plan.md) for the reasoning behind each.
