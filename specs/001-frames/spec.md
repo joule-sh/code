@@ -26,10 +26,12 @@ sprawl where the transcript of a session is not something you can read. If you
 cannot tail the frames and understand what happened, you cannot debug the
 distributed part, and the distributed part is the whole product here.
 
-**Server-Sent Events** contributes the piece worth copying outright: an event
-carries an `id`, and a client that reconnects sends `Last-Event-ID` to resume.
-Resumption is not an extra feature bolted on; it is the same field the transport
-already carries. Our `seq` is that field.
+**Server-Sent Events** contributes the piece worth copying even though we do not
+use it here: an event carries an `id`, and a client that reconnects sends
+`Last-Event-ID`. Resumption is a field the transport already carries rather than
+a feature bolted on. WebSocket has no equivalent, so `seq` plus an explicit
+`resume` frame is ours.
+
 
 ## What this adds
 
@@ -49,21 +51,23 @@ Terminal to everyone:
 | `turn.end` | `turnId`, `reason`: `done` \| `cancelled` \| `error` |
 | `error` | `code`, `message` |
 
-Browser to terminal — and this list is exhaustive, which is the point:
+Browser to terminal, and this list is exhaustive, which is the point:
 
 | frame | payload |
 | --- | --- |
 | `input` | `text` |
 | `cancel` | `turnId` |
 | `approval.reply` | `callId`, `decision`: `allow` \| `deny` \| `always` |
+| `resume` | `since` (the last `seq` seen; first frame on a reconnect) |
 
-Three frames inbound. A browser cannot name a tool, cannot set a mode, cannot
+Three frames of intent inbound, plus `resume`, which carries no intent at all.
+A browser cannot name a tool, cannot set a mode, cannot
 reach the filesystem. Whatever the page is talked into sending, the worst it can
-do is what a person sitting at the terminal could do — ask, cancel, or approve
+do is what a person sitting at the terminal could do: ask, cancel, or approve
 something the terminal itself proposed.
 
 Every frame carries `v` (protocol version) and `seq` (monotonic per session,
-assigned by the terminal). `seq` is what `?since=` resumes from, and it is
+assigned by the terminal). `seq` is what `resume` resumes from, and it is
 assigned by the terminal because the terminal is the only participant that sees
 every frame in order.
 
