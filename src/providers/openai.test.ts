@@ -35,7 +35,7 @@ test("a plain completion assembles text and streams deltas", () => {
     "data: [DONE]",
   ]);
   let collector = new Collector();
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => { collector.add(t); });
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => { collector.add(t); });
 
   expect(!reply.failed);
   expect(reply.text == "Hello world");
@@ -57,7 +57,7 @@ test("fragmented tool-call arguments assemble by index across chunks", () => {
     "data: [DONE]",
   ]);
   let collector = new Collector();
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => { collector.add(t); });
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => { collector.add(t); });
 
   expect(!reply.failed);
   expect(reply.calls.length == 1);
@@ -76,7 +76,7 @@ test("two interleaved tool calls assemble into separate entries", () => {
     "",
     "data: [DONE]",
   ]);
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => {});
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
 
   expect(reply.calls.length == 2);
   expect(reply.calls[0].tool == "a");
@@ -90,7 +90,7 @@ test("a mid-stream disconnect returns whatever was assembled, does not throw", (
     "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}",
     "",
   ]);
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => {});
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
 
   expect(reply.text == "partial");
   expect(!reply.failed);
@@ -102,7 +102,7 @@ test("an empty answer with a finish_reason is surfaced as an error, not a blank 
     "",
     "data: [DONE]",
   ]);
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => {});
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
 
   expect(reply.failed);
   expect(reply.errorCode == "E_EMPTY_ANSWER");
@@ -113,7 +113,7 @@ test("a stream-level error frame ends the reply as failed", () => {
     "data: {\"error\":{\"message\":\"context length exceeded\"}}",
     "",
   ]);
-  let reply = consumeStream(() => q.next(), () => q.finished(), (t: string) => {});
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
 
   expect(reply.failed);
   expect(reply.errorMessage == "context length exceeded");

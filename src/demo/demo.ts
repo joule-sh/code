@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "./tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "../vendor/tty/tty.ts";
 
 const STDIN: int = 0;
 const ESC: string = String.fromCharCode(27);

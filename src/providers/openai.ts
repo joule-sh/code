@@ -65,12 +65,12 @@ export function errorReplyFromBody(status: int, raw: string): ProviderReply {
   return { text: "", calls: [], failed: true, errorCode: code, errorMessage: msg };
 }
 
-export function consumeStream(readLine: () => string, isDone: () => bool, onDelta: (text: string) => void): ProviderReply {
+export function consumeStream(readLine: () => string, isDone: () => bool, shouldStop: () => bool, onDelta: (text: string) => void): ProviderReply {
   let assembler = new ToolCallAssembler();
   let text = "";
   let sawFinish = false;
 
-  while (!isDone()) {
+  while (!isDone() && !shouldStop()) {
     let line = readLine();
     if (line == "") { continue; }
     if (line.length < 6 || line.slice(0, 6) != "data: ") { continue; }
@@ -109,7 +109,7 @@ export function consumeStream(readLine: () => string, isDone: () => bool, onDelt
   return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "" };
 }
 
-export function streamChat(cfg: ProviderConfig, messages: Message[], tools: ToolSchema[], onDelta: (text: string) => void): ProviderReply {
+export function streamChat(cfg: ProviderConfig, messages: Message[], tools: ToolSchema[], onDelta: (text: string) => void, shouldStop: () => bool): ProviderReply {
   let body = requestBody(cfg.model, messages, tools);
   let url = cfg.baseUrl + "/v1/chat/completions";
   let s = http.stream(url, "POST", body, authHeaders(cfg.apiKey));
@@ -124,7 +124,9 @@ export function streamChat(cfg: ProviderConfig, messages: Message[], tools: Tool
     return errorReplyFromBody(status, raw);
   }
 
-  let reply = consumeStream(() => s.readLine(), () => s.done(), onDelta);
+  let readLineFn = () => s.readLine();
+  let isDoneFn = () => s.done();
+  let reply = consumeStream(readLineFn, isDoneFn, shouldStop, onDelta);
   s.close();
   return reply;
 }

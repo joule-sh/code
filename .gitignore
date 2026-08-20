@@ -8,4 +8,4 @@ src/code
 src/relay/relay
 *.exe
 .lumen-*.zig
-src/demo/tty_shim.o
+src/vendor/tty/tty_shim.o

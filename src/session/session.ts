@@ -48,14 +48,6 @@ export class Session {
     this.cancelledTurnId = turnId;
   }
 
-  historyText(): string {
-    let out = "";
-    for (const m of this.history) {
-      out = out + m.role + ": " + m.text + "\n";
-    }
-    return out;
-  }
-
   emitDelta(turnId: string, chunk: string): void {
     let frame: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TEXT_DELTA, turnId: turnId, text: chunk };
     this.emit(encodeTextDelta(frame));
@@ -85,7 +77,13 @@ export class Session {
         continue;
       }
 
-      let reply = this.provider.ask(this.historyText(), (chunk: string) => { this.emitDelta(turnId, chunk); });
+      let reply = this.provider.ask(this.history, (chunk: string) => { this.emitDelta(turnId, chunk); });
+
+      if (this.cancelledTurnId == turnId) {
+        endReason = REASON_CANCELLED;
+        finished = true;
+        continue;
+      }
 
       if (reply.failed) {
         endReason = REASON_ERROR;

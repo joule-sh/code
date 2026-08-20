@@ -19,7 +19,7 @@ class StepProvider {
     this.lastIdx = replies.length - 1;
     this.replies = replies;
   }
-  ask(historyText: string, onDelta: (text: string) => void): ProviderReply {
+  ask(history: Message[], onDelta: (text: string) => void): ProviderReply {
     let idx = this.callCount;
     if (idx > this.lastIdx) {
       idx = this.lastIdx;
@@ -66,7 +66,7 @@ function typesOf(frames: string[]): string[] {
 
 test("a plain answer: turn.start, text.delta, turn.end done", () => {
   let sp = new StepProvider([okReply("hi there", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -89,7 +89,7 @@ test("a plain answer: turn.start, text.delta, turn.end done", () => {
 test("one tool call then an answer", () => {
   let calls: ToolCallReq[] = [{ callId: "c1", tool: "read_file", args: "a.ts" }];
   let sp = new StepProvider([okReply("", calls), okReply("done reading", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -119,7 +119,7 @@ test("two sequential tool calls before the answer", () => {
   let c1: ToolCallReq[] = [{ callId: "c1", tool: "read_file", args: "a.ts" }];
   let c2: ToolCallReq[] = [{ callId: "c2", tool: "read_file", args: "b.ts" }];
   let sp = new StepProvider([okReply("", c1), okReply("", c2), okReply("both read", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -140,7 +140,7 @@ test("two sequential tool calls before the answer", () => {
 test("the step cap ends the turn with error, not an infinite loop", () => {
   let calls: ToolCallReq[] = [{ callId: "c1", tool: "loop_tool", args: "" }];
   let sp = new StepProvider([okReply("", calls)]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -154,7 +154,7 @@ test("the step cap ends the turn with error, not an infinite loop", () => {
 
 test("cancel set for the upcoming turn ends it immediately, never calling the provider", () => {
   let sp = new StepProvider([okReply("should never be seen", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -170,9 +170,43 @@ test("cancel set for the upcoming turn ends it immediately, never calling the pr
   expect(sp.callCount == 0);
 });
 
+class MidStreamCanceller {
+  sessionSlot: Session[];
+  constructor() {
+    this.sessionSlot = [];
+  }
+  setSession(s: Session): void {
+    this.sessionSlot = [s];
+  }
+  ask(history: Message[], onDelta: (text: string) => void): ProviderReply {
+    onDelta("partial");
+    if (this.sessionSlot.length > 0) {
+      this.sessionSlot[0].cancel("t1");
+    }
+    return okReply("partial", []);
+  }
+}
+
+test("cancel requested mid-stream still ends the turn as cancelled, not done", () => {
+  let canceller = new MidStreamCanceller();
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => canceller.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  let cap = new FrameCapture();
+  let session = new Session("/repo", "agent", provider, tools, allowAll());
+  canceller.setSession(session);
+  session.subscribe((frameJson: string) => { cap.add(frameJson); });
+  session.submit("hello");
+
+  let kinds = typesOf(cap.frames);
+  expect(kinds[kinds.length - 1] == TURN_END);
+  let last = cap.frames[cap.frames.length - 1];
+  expect(last.indexOf("cancelled") >= 0);
+});
+
 test("a provider error ends the turn with error, and does not throw", () => {
   let sp = new StepProvider([failReply("E_TIMEOUT", "the provider timed out")]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -196,7 +230,7 @@ test("a denied tool call is recorded in history but not run", () => {
     return d;
   } };
   let sp = new StepProvider([okReply("", calls), okReply("stopped", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
@@ -216,7 +250,7 @@ test("a denied tool call is recorded in history but not run", () => {
 test("seq is monotonic across a whole turn", () => {
   let calls: ToolCallReq[] = [{ callId: "c1", tool: "read_file", args: "a.ts" }];
   let sp = new StepProvider([okReply("", calls), okReply("done", [])]);
-  let provider: Provider = { ask: (h: string, d: (text: string) => void) => sp.ask(h, d) };
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   let cap = new FrameCapture();
