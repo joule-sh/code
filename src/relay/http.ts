@@ -1,20 +1,23 @@
 import { SessionStore, PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
 import { generateCode, generateSecret, generateSessionId } from "./pairing.ts";
 
+export type RelayHttpRequest = { method: string, path: string, body: string, headers: Map<string, string> };
+export type RelayHttpResponse = { status: int, body: string, ok: bool, headers: Map<string, string> };
+
 type CreateSessionRequest = { workspace: string, model: string };
 type CreateSessionResponse = { sessionId: string, secret: string, code: string, expiresAt: i64 };
 type PairRequest = { code: string };
 type PairResponse = { sessionId: string };
 type ErrorResponse = { error: string };
 
-function jsonResponse(status: int, bodyJson: string): HttpResponse {
+function jsonResponse(status: int, bodyJson: string): RelayHttpResponse {
   let h = new Map<string, string>();
   h.set("content-type", "application/json");
-  let resp: HttpResponse = { status: status, body: bodyJson, ok: status < 400, headers: h };
+  let resp: RelayHttpResponse = { status: status, body: bodyJson, ok: status < 400, headers: h };
   return resp;
 }
 
-function errorResponse(status: int, message: string): HttpResponse {
+function errorResponse(status: int, message: string): RelayHttpResponse {
   let e: ErrorResponse = { error: message };
   return jsonResponse(status, JSON.stringify(e));
 }
@@ -35,7 +38,7 @@ function parsePair(body: string): PairRequest | null {
   }
 }
 
-function handleCreateSession(store: SessionStore, req: HttpRequest, now: i64): HttpResponse {
+function handleCreateSession(store: SessionStore, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let createReq = parseCreateSession(req.body);
   if (createReq == null) {
     return errorResponse(400, "malformed request body");
@@ -59,7 +62,7 @@ function statusForPairFailure(status: string): int {
   return 400;
 }
 
-function handlePair(store: SessionStore, req: HttpRequest, now: i64): HttpResponse {
+function handlePair(store: SessionStore, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let userId = req.headers.get("x-user") ?? "";
   if (userId == "") {
     return errorResponse(401, "missing x-user");
@@ -79,8 +82,8 @@ function handlePair(store: SessionStore, req: HttpRequest, now: i64): HttpRespon
   return jsonResponse(200, JSON.stringify(resp));
 }
 
-export function makeHttpHandler(store: SessionStore): (req: HttpRequest) => HttpResponse {
-  return (req: HttpRequest) => {
+export function makeHttpHandler(store: SessionStore): (req: RelayHttpRequest) => RelayHttpResponse {
+  return (req: RelayHttpRequest) => {
     let now: i64 = Date.now();
     store.sweepIdle(now);
     if (req.method == "POST" && req.path == "/sessions") {

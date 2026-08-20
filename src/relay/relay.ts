@@ -1,6 +1,6 @@
 import { VERSION } from "../version.ts";
 import { SessionStore } from "./store.ts";
-import { makeHttpHandler } from "./http.ts";
+import { socketHandler } from "./http_transport.ts";
 import { PeerRegistry, serveRelayWebSocket } from "./ws.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
@@ -35,7 +35,7 @@ let store = new SessionStore();
 let registry = new PeerRegistry();
 
 function runHttpListener(): int {
-  http.createServer(HTTP_PORT, makeHttpHandler(store));
+  net.createServer(HTTP_PORT, socketHandler(store));
   return 0;
 }
 

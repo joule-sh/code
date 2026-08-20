@@ -235,3 +235,17 @@ reliably. Out of scope for #10 to fix - it is #9's `SessionStore` design
 running into a Lumen runtime bug, not anything this ticket's own code
 touches - but it blocks a real multi-session relay today and deserves a
 dedicated ticket.
+
+**lumen#12 fixed for the pairing endpoints by dropping `http.createServer`
+entirely.** The bug needs `http.createServer`'s own thread pool to
+reproduce - it does not occur with `net.createServer`, which only ever
+runs one connection at a time. `runHttpListener` now parses HTTP/1.1
+itself on top of `net.createServer` (`src/relay/http_transport.ts`), the
+same technique `src/vendor/websocket/handshake.ts` already used to read an
+upgrade request off a raw socket, extended to also read a body sized by
+`content-length`. `makeHttpHandler` in `http.ts` is untouched - it is
+still the pure `(HttpRequest) -> HttpResponse` function the tests exercise
+directly, only what calls it changed. Same trade-off already accepted for
+the WS ports: single-connection-at-a-time in exchange for never letting
+two threads touch `SessionStore`'s `Map`s at once, which is what the crash
+actually needed.
