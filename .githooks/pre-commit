@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' | grep -v '^\.github/' || true)
+
+if [ -z "$files" ]; then
+  exit 0
+fi
+
+bad=0
+for f in $files; do
+  added=$(git diff --cached -- "$f" | grep -E '^\+[^+]' | sed 's/^\+//')
+  stripped=$(printf '%s\n' "$added" | sed -E 's#[a-zA-Z]+://[^ "'"'"']*##g')
+  if printf '%s\n' "$stripped" | grep -qE '(^|[^:])//|/\*'; then
+    echo "pre-commit: $f adds a comment line. Not allowed (ticket #1). Use git commit --no-verify to bypass." >&2
+    bad=1
+  fi
+done
+
+exit $bad
