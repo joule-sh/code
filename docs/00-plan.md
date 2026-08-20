@@ -187,3 +187,51 @@ Lanes that can run in parallel once #2 and #3 land: the tools (#5, #6), the rela
 **#14 is a spike and it runs first in the relay lane.** Whether one process can
 hold two `http.stream` handles and a spawned child at once decides whether #10
 is a live downstream or a poll. Answer it before #10 is written, not after.
+
+## #10 landing notes
+
+`src/vendor/websocket/client.ts` is now vendored (std-contrib's `client.ts`,
+`connectWebSocket`/`sendText`/`receive`/`closeConnection`), alongside a small,
+attributed extension: `upgradeRequest` (`handshake.ts`) takes a 5th
+`extraHeaders: Map<string, string>` argument so the terminal can send
+`x-relay-secret` on the upgrade request, the same header shape #9 already
+taught the server side to read.
+
+The terminal's relay connection follows #14's proven shape exactly: a
+zero-capture top-level `receiveLoop` (`src/relay/client_worker.ts`), spawned
+via `Worker.run`, blocks in `receive()` and appends each inbound frame to a
+single-writer/single-reader mailbox file; the main thread drains it on the
+same poll ticks the approval gate's `onPoll` and a new `readKeyTimeout`
+(`vendor/tty/tty.ts`, a polling sibling of `readKey`) already provide, so no
+new blocking-vs-polling structure was invented. Outbound frames write
+directly to the connection's socket from the main thread via a small
+module-level box the worker populates on connect - the same
+shared-object-across-`Worker.run`-threads pattern `relay.ts` itself already
+uses for `store`/`registry`, not a new hazard.
+
+`server.ts`'s `handleConnection` gained an `onClose(peer, graceful)` callback,
+fired on all three paths that end a connection (a bare hangup, a real WS
+close frame, and a protocol failure) - `graceful` distinguishes a real close
+frame from the other two. `store.ts` gained `detachTerminal`. `ws.ts` only
+calls it for a *graceful* close on a terminal peer: an unexpected drop must
+not delete the session, or reconnect+resume would have nothing to resume
+into.
+
+**A severe pre-existing bug, found while verifying this ticket end to end,
+filed as
+[lumen-lang-org/lumen#12](https://github.com/lumen-lang-org/lumen/issues/12):**
+a `Map` (or any object holding one) shared between an `http.createServer`
+handler and anything else segfaults inside the hashmap's own `eql` the first
+time a request lands on a different thread-pool worker than whichever one
+last touched it. Reproduces with a bare `Map<string, int>` and a
+`http.createServer` handler, no relay or WebSocket code involved at all.
+This is `SessionStore`'s exact shape (`sessions`, `rings`, and
+`RateLimiter.attempts` are all plain `Map`s touched from the HTTP handler,
+the terminal-WS listener, and the browser-WS listener). Attach and detach,
+each of which only crosses the HTTP thread and the terminal's own WS thread,
+verified live and repeatedly clean; a live browser sending a frame that
+reaches `store.appendFrame` crosses a third thread and reproduces the crash
+reliably. Out of scope for #10 to fix - it is #9's `SessionStore` design
+running into a Lumen runtime bug, not anything this ticket's own code
+touches - but it blocks a real multi-session relay today and deserves a
+dedicated ticket.

@@ -130,13 +130,24 @@ function hexValue(ch: string): int {
   return -1;
 }
 
-export function upgradeRequest(host: string, port: int, path: string, key: string): string {
+export function extraHeaderLines(extraHeaders: Map<string, string>): string {
+  let out = "";
+  for (const name of extraHeaders.keys()) {
+    let value = extraHeaders.get(name) ?? "";
+    out = out + name + ": " + value + "\r\n";
+  }
+  return out;
+}
+
+export function upgradeRequest(host: string, port: int, path: string, key: string, extraHeaders: Map<string, string>): string {
   return "GET " + path + " HTTP/1.1\r\n"
     + "Host: " + host + ":" + `${port}` + "\r\n"
     + "Upgrade: websocket\r\n"
     + "Connection: Upgrade\r\n"
     + "Sec-WebSocket-Key: " + key + "\r\n"
-    + "Sec-WebSocket-Version: 13\r\n\r\n";
+    + "Sec-WebSocket-Version: 13\r\n"
+    + extraHeaderLines(extraHeaders)
+    + "\r\n";
 }
 
 export type Accepted = {

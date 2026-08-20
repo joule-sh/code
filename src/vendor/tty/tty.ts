@@ -51,6 +51,7 @@ export const KEY_ARROW_LEFT: string = "arrow_left";
 export const KEY_ARROW_RIGHT: string = "arrow_right";
 export const KEY_EOF: string = "eof";
 export const KEY_UNKNOWN: string = "unknown";
+export const KEY_TIMEOUT: string = "timeout";
 
 export type Key = { kind: string, char: string };
 
@@ -98,8 +99,7 @@ function readEscapeSequence(fd: int): Key {
   return simpleKey(KEY_UNKNOWN);
 }
 
-export function readKey(fd: int): Key {
-  let b = readByte(fd);
+function decodeFromByte(fd: int, b: int): Key {
   if (b == -1) { return simpleKey(KEY_EOF); }
   if (b < 0) { return simpleKey(KEY_UNKNOWN); }
   if (b == 13 || b == 10) { return simpleKey(KEY_ENTER); }
@@ -109,6 +109,17 @@ export function readKey(fd: int): Key {
   if (b == 4) { return simpleKey(KEY_CTRL_D); }
   if (b == 27) { return readEscapeSequence(fd); }
   return charKey(readUtf8Char(fd, b));
+}
+
+export function readKey(fd: int): Key {
+  let b = readByte(fd);
+  return decodeFromByte(fd, b);
+}
+
+export function readKeyTimeout(fd: int, timeoutMs: int): Key {
+  let b = readByteTimeout(fd, timeoutMs);
+  if (b == -3) { return simpleKey(KEY_TIMEOUT); }
+  return decodeFromByte(fd, b);
 }
 
 const ESC: string = String.fromCharCode(27);
@@ -165,6 +176,19 @@ test("cols and rows are -1 on a non-terminal fd", () => {
 test("readByteTimeout times out on a pipe with no writer activity", () => {
   let fd = tty_open_test_pipe();
   expect(readByteTimeout(fd, 30) == -3);
+});
+
+test("readKeyTimeout times out with KEY_TIMEOUT on an idle pipe", () => {
+  let fd = tty_open_test_pipe();
+  expect(readKeyTimeout(fd, 30).kind == KEY_TIMEOUT);
+});
+
+test("readKeyTimeout decodes a real key exactly like readKey", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(97);
+  let k = readKeyTimeout(fd, 50);
+  expect(k.kind == KEY_CHAR);
+  expect(k.char == "a");
 });
 
 test("readKey decodes Enter, Backspace, Tab, Ctrl-C, Ctrl-D", () => {

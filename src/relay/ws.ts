@@ -139,6 +139,31 @@ export function makeOnMessage(store: SessionStore, registry: PeerRegistry): (pee
   };
 }
 
+function handleClose(store: SessionStore, registry: PeerRegistry, peer: Peer, graceful: bool): void {
+  let role = roleForPath(peer.path);
+  if (role == ROLE_TERMINAL) {
+    let sessionId = sessionIdFromPath(peer.path, "/sessions/", "/ws");
+    if (sessionId == "") { return; }
+    registry.terminals.delete(sessionId);
+    if (graceful) {
+      store.detachTerminal(sessionId);
+    }
+    return;
+  }
+  if (role == ROLE_BROWSER) {
+    let sessionId = sessionIdFromPath(peer.path, "/w/", "/ws");
+    if (sessionId == "") { return; }
+    registry.browsers.delete(sessionId);
+    return;
+  }
+}
+
+export function makeOnClose(store: SessionStore, registry: PeerRegistry): (peer: Peer, graceful: bool) => void {
+  return (peer: Peer, graceful: bool) => {
+    handleClose(store, registry, peer, graceful);
+  };
+}
+
 export function serveRelayWebSocket(port: int, store: SessionStore, registry: PeerRegistry): void {
-  serveWebSocket(port, makeOnMessage(store, registry));
+  serveWebSocket(port, makeOnMessage(store, registry), makeOnClose(store, registry));
 }
