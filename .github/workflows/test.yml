@@ -36,3 +36,18 @@ jobs:
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: node --version
       - run: make e2e
+
+  terminal-structural:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 5
+    env:
+      LUMEN_VERSION: v0.5.0
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: python3 --version
+      - run: make terminal-harness

@@ -9,3 +9,4 @@ src/relay/relay
 *.exe
 .lumen-*.zig
 src/vendor/tty/tty_shim.o
+scripts/__pycache__/
