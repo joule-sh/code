@@ -1,7 +1,9 @@
 import { PROTOCOL_VERSION, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, TURN_END, ERROR, REASON_DONE, REASON_CANCELLED, REASON_ERROR, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, TurnEndFrame, ErrorFrame, encodeTurnStart, encodeTextDelta, encodeToolCall, encodeToolResult, encodeTurnEnd, encodeError } from "../protocol/frames.ts";
-import { ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL, Message, Provider, ToolRegistry, ApprovalGate, Subscriber } from "./types.ts";
+import { ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL, ROLE_SYSTEM, Message, Provider, ToolRegistry, ApprovalGate, Subscriber } from "./types.ts";
 
 const MAX_STEPS: int = 8;
+
+export const SYSTEM_PROMPT: string = "You are joule, an agentic coding terminal. You operate directly on the user's own machine through the read, write, edit, list, grep, and run tools, and every tool call you make, along with its full result, renders live in the user's terminal before your reply appears. That means the user has already seen the raw file contents, command output, or write confirmation you just produced. Do not quote or restate that output verbatim in your response. Reference what you read or did, explain what it means, or act on it next, unless the user explicitly asks you to show them the content again. Keep replies focused on your conclusions and next steps, not on repeating what already scrolled past.";
 
 export class Session {
   workspaceRoot: string;
@@ -23,6 +25,7 @@ export class Session {
     this.approval = approval;
     this.subscribers = [];
     this.history = [];
+    this.history.push({ role: ROLE_SYSTEM, text: SYSTEM_PROMPT, toolCallId: "", toolCalls: [] });
     this.nextSeq = 1;
     this.nextTurn = 1;
     this.cancelledTurnId = "";

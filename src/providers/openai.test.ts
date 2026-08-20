@@ -171,3 +171,17 @@ test("a tool result message serializes its tool_call_id", () => {
   expect(body.indexOf("\"tool_call_id\":\"c1\"") >= 0);
   expect(body.indexOf("\"role\":\"tool\"") >= 0);
 });
+
+test("a system message serializes as a plain role/content pair, first in the array", () => {
+  let messages: Message[] = [
+    { role: "system", text: "you are joule", toolCallId: "", toolCalls: [] },
+    { role: "user", text: "hi", toolCallId: "", toolCalls: [] },
+  ];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("\"role\":\"system\"") >= 0);
+  expect(body.indexOf("\"content\":\"you are joule\"") >= 0);
+  let systemIdx = body.indexOf("\"role\":\"system\"");
+  let userIdx = body.indexOf("\"role\":\"user\"");
+  expect(systemIdx >= 0 && userIdx >= 0 && systemIdx < userIdx);
+});
