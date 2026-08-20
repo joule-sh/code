@@ -57,12 +57,19 @@ is already draining the model stream and may have a child process running, so
 the relay connection is owned by a `Worker`. That is what #14 has to prove
 before #10 is written. Full reasoning in [spec 003](../specs/003-transport/spec.md).
 
-**The terminal UI is line-oriented for v0.** There is no `setRawMode`, no
-`isatty`, no termios anywhere in the compiler, `readline.question` is the input
-primitive. So: prompt, streamed output, tool lines, approval prompt. No
-full-screen redraw, no alternate screen, no Ctrl-C interrupt of a running turn
-from the terminal (cancel from the web session works, because that is a POST).
-Raw mode is a Lumen ticket, filed, and deliberately outside v0.
+**The terminal is a full TUI, via a std-contrib shim, not a compiler feature.**
+Lumen has no `setRawMode`, no `isatty`, no termios, and its FFI only marshals
+scalars and strings across the C boundary (specs 009/023) -- a `struct termios*`
+cannot cross it directly. std-contrib's `tty` package hides that struct
+entirely inside a small C shim and exposes raw-mode enable/disable and a
+byte-at-a-time read as plain scalar functions; terminal size comes the same
+way, an ioctl behind two `Ref<int>` out-params. Cursor movement, the alternate
+screen, and redraw are ANSI escape sequences, plain strings, no FFI needed for
+those at all. zig-spoon was considered and dropped: GPLv3, and every other
+native terminal library here (SQLite, QuickJS) is permissively licensed. The
+terminal renders a persistent input region with scrollback above it, same
+shape as this session's own CLI, and a running turn can be interrupted from
+the keyboard, not just from the web session's POST.
 
 **Auth is the console's job, not the relay's.** The console already turns a
 cookie into a user (`readSession`) and mints the `x-user` document the engine
@@ -95,9 +102,9 @@ whole path, tested end to end in CI.
 
 ## What v0 is not
 
-No hosted sandbox, the agent runs on your machine only. No full-screen TUI. No
-multi-agent, no subagents, no MCP. No session persistence across restarts. No
-terminal-side interrupt. Each of these is a follow-up, not a gap we forgot.
+No hosted sandbox, the agent runs on your machine only. No multi-agent, no
+subagents, no MCP. No session persistence across restarts. Each of these is a
+follow-up, not a gap we forgot.
 
 ## Order
 
