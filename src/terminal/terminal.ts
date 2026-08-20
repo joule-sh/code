@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -6,17 +6,30 @@ import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPL
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
-import { frameType, decodeTurnStart, TURN_START } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
 import { styleFrame, stylePrompt, styleBanner } from "./style.ts";
+import { RelayClient } from "../relay/client.ts";
+import { loadRelayConfig } from "../relay/client_logic.ts";
+import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
 
 const STDIN: int = 0;
 const KEY_Y: int = 121;
 const KEY_N: int = 110;
 const KEY_A: int = 97;
 const KEY_CTRL_C_BYTE: int = 3;
+const RELAY_POLL_MS: int = 100;
+
+function hasFlag(argv: string[], name: string): bool {
+  for (const a of argv) {
+    if (a == name) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class GateBox {
   slot: Gate[];
@@ -25,6 +38,34 @@ class GateBox {
   }
   set(g: Gate): void {
     this.slot = [g];
+  }
+}
+
+class RelayBox {
+  relaySlot: RelayClient[];
+  sessionSlot: Session[];
+  bridgeSlot: RelayInputBridge[];
+  constructor() {
+    this.relaySlot = [];
+    this.sessionSlot = [];
+    this.bridgeSlot = [];
+  }
+  set(r: RelayClient, s: Session, b: RelayInputBridge): void {
+    this.relaySlot = [r];
+    this.sessionSlot = [s];
+    this.bridgeSlot = [b];
+  }
+}
+
+function runRelayTick(relay: RelayClient, session: Session, gate: Gate, bridge: RelayInputBridge, sb: Scrollback, input: InputLine): void {
+  let diags = pollRelay(relay, session, gate, bridge);
+  let i = 0;
+  while (i < diags.length) {
+    sb.append(styleFrame(frameType(diags[i]), renderFrame(diags[i])));
+    i = i + 1;
+  }
+  if (diags.length > 0) {
+    drawScreen(sb, input);
   }
 }
 
@@ -80,6 +121,7 @@ export function runTerminal(argv: string[]): void {
 
   let pendingApproval = new PendingApproval();
   let gateBox = new GateBox();
+  let relayBox = new RelayBox();
 
   let onApprovalRequest = (callId: string, tool: string, summary: string) => {
     pendingApproval.set(callId);
@@ -88,6 +130,9 @@ export function runTerminal(argv: string[]): void {
   };
 
   let onApprovalPoll = () => {
+    if (relayBox.relaySlot.length > 0 && gateBox.slot.length > 0) {
+      runRelayTick(relayBox.relaySlot[0], relayBox.sessionSlot[0], gateBox.slot[0], relayBox.bridgeSlot[0], sb, input);
+    }
     let b = readByteTimeout(STDIN, 0);
     if (b == KEY_Y && gateBox.slot.length > 0) {
       gateBox.slot[0].reply(pendingApproval.callId, REPLY_ALLOW);
@@ -116,7 +161,35 @@ export function runTerminal(argv: string[]): void {
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
   live.setSession(session);
 
+  let relayCfg = loadRelayConfig();
+  let relay = new RelayClient(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir);
+  let bridge = new RelayInputBridge();
+  relayBox.set(relay, session, bridge);
+
+  let attachToRelay = () => {
+    if (relay.isAttached()) {
+      sb.append("\nalready attached to the relay");
+      drawScreen(sb, input);
+      return;
+    }
+    let result = relay.connect(workspaceRoot, live.cfg.model);
+    if (!result.ok) {
+      sb.append("\ncould not attach to the relay: " + result.error);
+      drawScreen(sb, input);
+      return;
+    }
+    let hello: SessionHelloFrame = {
+      v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
+      sessionId: relay.sessionId, workspace: workspaceRoot, model: live.cfg.model,
+      mode: session.mode, protocol: PROTOCOL_VERSION,
+    };
+    relay.publish(encodeSessionHello(hello));
+    sb.append("\nattached - code " + result.code + " - " + result.url);
+    drawScreen(sb, input);
+  };
+
   session.subscribe((frameJson: string) => {
+    relay.publish(frameJson);
     if (frameType(frameJson) == TURN_START) {
       let f = decodeTurnStart(frameJson);
       if (f != null) {
@@ -125,6 +198,7 @@ export function runTerminal(argv: string[]): void {
     }
     sb.append(styleFrame(frameType(frameJson), renderFrame(frameJson)));
     drawScreen(sb, input);
+    runRelayTick(relay, session, gate, bridge, sb, input);
   });
 
   console.log(ENTER_ALT_SCREEN);
@@ -134,9 +208,18 @@ export function runTerminal(argv: string[]): void {
   sb.append(styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   drawScreen(sb, input);
 
+  if (hasFlag(argv, "--share")) {
+    attachToRelay();
+  }
+
   let running = true;
   while (running) {
-    let k = readKey(STDIN);
+    let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
+
+    if (k.kind == KEY_TIMEOUT) {
+      runRelayTick(relay, session, gate, bridge, sb, input);
+      continue;
+    }
 
     if (k.kind == KEY_CTRL_D || k.kind == KEY_EOF) {
       running = false;
@@ -181,7 +264,7 @@ export function runTerminal(argv: string[]): void {
     if (cmd.kind == CMD_NONE) {
       sb.append("\n" + stylePrompt("> ") + line);
       drawScreen(sb, input);
-      session.submit(line);
+      bridge.runNow(session, line);
       drawScreen(sb, input);
       continue;
     }
@@ -217,8 +300,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (cmd.kind == CMD_SHARE) {
-      sb.append("\npairing is not available yet - the relay ships in a later ticket");
-      drawScreen(sb, input);
+      attachToRelay();
       continue;
     }
 
@@ -236,6 +318,8 @@ export function runTerminal(argv: string[]): void {
     sb.append("\nunknown command: /" + cmd.arg);
     drawScreen(sb, input);
   }
+
+  relay.detach();
 
   console.log(SHOW_CURSOR);
   console.log(EXIT_ALT_SCREEN);

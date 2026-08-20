@@ -204,6 +204,13 @@ export class SessionStore {
     return forReplay.replaySince(since);
   }
 
+  detachTerminal(sessionId: string): bool {
+    let existed = this.sessions.get(sessionId) != null;
+    this.sessions.delete(sessionId);
+    this.rings.delete(sessionId);
+    return existed;
+  }
+
   sweepIdle(now: i64): int {
     let ids = this.sessions.keys();
     let stale: string[] = [];

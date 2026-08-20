@@ -1,0 +1,227 @@
+import { PROTOCOL_VERSION, ERROR, ErrorFrame, encodeError, frameType } from "../protocol/frames.ts";
+import { Connection, sendText, closeConnection } from "../vendor/websocket/client.ts";
+import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { configureWorker, currentSocket, receiveLoop } from "./client_worker.ts";
+
+export type ConnectResult = { ok: bool, code: string, url: string, error: string };
+
+type CreateSessionRequest = { workspace: string, model: string };
+type SessionCreated = { sessionId: string, secret: string, code: string, expiresAt: i64 };
+
+function noticeFrame(code: string, message: string): ErrorFrame {
+  let f: ErrorFrame = { v: PROTOCOL_VERSION, seq: 0, type: ERROR, code: code, message: message };
+  return f;
+}
+
+export class RelayClient {
+  host: string;
+  httpPort: int;
+  wsPort: int;
+  webBaseUrl: string;
+  tmpDir: string;
+
+  sessionId: string;
+  secret: string;
+  code: string;
+
+  attaching: bool;
+  socketReady: bool;
+  connecting: bool;
+  detachRequested: bool;
+
+  lastSeq: int;
+  outbound: string[];
+  overflowed: bool;
+
+  mailboxPath: string;
+  mailboxSeen: int;
+
+  backoffMs: i64;
+  nextRetryAt: i64;
+
+  inboundQueue: string[];
+  diagnostics: string[];
+
+  constructor(host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string) {
+    this.host = host;
+    this.httpPort = httpPort;
+    this.wsPort = wsPort;
+    this.webBaseUrl = webBaseUrl;
+    this.tmpDir = tmpDir;
+    this.sessionId = "";
+    this.secret = "";
+    this.code = "";
+    this.attaching = false;
+    this.socketReady = false;
+    this.connecting = false;
+    this.detachRequested = false;
+    this.lastSeq = 0;
+    this.outbound = [];
+    this.overflowed = false;
+    this.mailboxPath = "";
+    this.mailboxSeen = 0;
+    this.backoffMs = BACKOFF_START_MS;
+    this.nextRetryAt = 0;
+    this.inboundQueue = [];
+    this.diagnostics = [];
+  }
+
+  isAttached(): bool {
+    return this.attaching;
+  }
+
+  connect(workspace: string, model: string): ConnectResult {
+    if (this.attaching) {
+      let already: ConnectResult = { ok: false, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "already attached" };
+      return already;
+    }
+
+    let req: CreateSessionRequest = { workspace: workspace, model: model };
+    let headers = new Map<string, string>();
+    headers.set("Content-Type", "application/json");
+    let url = "http://" + this.host + ":" + `${this.httpPort}` + "/sessions";
+    let resp = http.request(url, "POST", JSON.stringify(req), headers);
+    if (!resp.ok) {
+      let failed: ConnectResult = { ok: false, code: "", url: "", error: "relay refused: " + `${resp.status}` + " " + resp.body };
+      return failed;
+    }
+
+    let parsed: SessionCreated | null = null;
+    try { parsed = JSON.parse<SessionCreated>(resp.body); } catch { parsed = null; }
+    if (parsed == null) {
+      let bad: ConnectResult = { ok: false, code: "", url: "", error: "malformed response from relay" };
+      return bad;
+    }
+
+    this.sessionId = parsed.sessionId;
+    this.secret = parsed.secret;
+    this.code = parsed.code;
+    this.attaching = true;
+    this.socketReady = false;
+    this.connecting = true;
+    this.detachRequested = false;
+    this.lastSeq = 0;
+    this.outbound = [];
+    this.overflowed = false;
+    this.mailboxPath = mailboxPathFor(this.tmpDir, this.sessionId);
+    this.mailboxSeen = 0;
+    this.backoffMs = BACKOFF_START_MS;
+    this.nextRetryAt = 0;
+    this.inboundQueue = [];
+
+    try { fs.writeFileSync(this.mailboxPath, ""); } catch { }
+    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, -1, this.mailboxPath);
+    Worker.run(receiveLoop);
+
+    let ok: ConnectResult = { ok: true, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "" };
+    return ok;
+  }
+
+  writeFrame(frameJson: string): void {
+    let sock = currentSocket();
+    if (sock.length == 0) { return; }
+    let conn: Connection = { socket: sock[0], ok: true, buffer: "", open: true, error: "" };
+    sendText(conn, frameJson);
+  }
+
+  publish(frameJson: string): void {
+    if (!this.attaching) { return; }
+    this.lastSeq = maxSeqSeen(this.lastSeq, frameJson);
+    if (this.socketReady) {
+      this.writeFrame(frameJson);
+      return;
+    }
+    let pushed = pushBounded(this.outbound, OUTBOUND_BUFFER_CAP, frameJson);
+    this.outbound = pushed.buffer;
+    if (pushed.overflowed && !this.overflowed) {
+      this.overflowed = true;
+      this.diagnostics.push(encodeError(noticeFrame("relay.buffer_overflow", "the local outbound buffer overflowed while disconnected, the oldest buffered frames were dropped - the web view will be behind once reconnected")));
+    }
+  }
+
+  flushOutbound(): void {
+    for (const f of this.outbound) {
+      this.writeFrame(f);
+    }
+    this.outbound = [];
+    this.overflowed = false;
+  }
+
+  onConnected(): void {
+    this.socketReady = true;
+    this.connecting = false;
+    this.backoffMs = BACKOFF_START_MS;
+    this.diagnostics.push(encodeError(noticeFrame("relay.attached", "connected to the relay")));
+    this.flushOutbound();
+  }
+
+  onDisconnected(detail: string): void {
+    this.socketReady = false;
+    this.connecting = false;
+    if (this.detachRequested) { return; }
+    this.diagnostics.push(encodeError(noticeFrame("relay.disconnected", "lost the relay connection (" + detail + "), retrying")));
+    this.nextRetryAt = Date.now() + this.backoffMs;
+    this.backoffMs = nextBackoffMs(this.backoffMs);
+  }
+
+  drainMailbox(): void {
+    let content = "";
+    try { content = fs.readFileSync(this.mailboxPath); } catch { return; }
+    let lines = nonEmptyLines(content);
+    let i = this.mailboxSeen;
+    while (i < lines.length) {
+      let parsed = parseMailboxLine(lines[i]);
+      if (parsed.tag == TAG_FRAME) {
+        this.lastSeq = maxSeqSeen(this.lastSeq, parsed.payload);
+        if (isDownstreamAllowed(frameType(parsed.payload))) {
+          this.inboundQueue.push(parsed.payload);
+        } else {
+          this.diagnostics.push(encodeError(noticeFrame("relay.rejected_frame", "dropped a frame of a type the terminal never accepts from the relay: " + frameType(parsed.payload))));
+        }
+      } else if (parsed.tag == TAG_CONNECTED) {
+        this.onConnected();
+      } else if (parsed.tag == TAG_DISCONNECTED || parsed.tag == TAG_CONNECT_FAILED) {
+        this.onDisconnected(parsed.payload);
+      }
+      i = i + 1;
+    }
+    this.mailboxSeen = lines.length;
+  }
+
+  maybeReconnect(): void {
+    if (!this.attaching || this.socketReady || this.connecting || this.detachRequested) { return; }
+    if (this.nextRetryAt == 0) { return; }
+    if (Date.now() < this.nextRetryAt) { return; }
+    this.connecting = true;
+    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, this.lastSeq, this.mailboxPath);
+    Worker.run(receiveLoop);
+  }
+
+  pollInbound(): string[] {
+    if (!this.attaching) { return []; }
+    this.drainMailbox();
+    this.maybeReconnect();
+    let out = this.inboundQueue;
+    this.inboundQueue = [];
+    return out;
+  }
+
+  drainDiagnostics(): string[] {
+    let out = this.diagnostics;
+    this.diagnostics = [];
+    return out;
+  }
+
+  detach(): void {
+    if (!this.attaching) { return; }
+    this.detachRequested = true;
+    let sock = currentSocket();
+    if (sock.length > 0) {
+      let conn: Connection = { socket: sock[0], ok: true, buffer: "", open: true, error: "" };
+      closeConnection(conn, CLOSE_NORMAL, "terminal detached");
+    }
+    this.attaching = false;
+    this.socketReady = false;
+  }
+}

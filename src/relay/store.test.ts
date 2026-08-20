@@ -95,6 +95,22 @@ test("the pairing rate limit trips after repeated attempts for one uuid", () => 
   expect(limited.status == PAIR_RATE_LIMITED);
 });
 
+test("detachTerminal removes the session and its ring, and reports whether it existed", () => {
+  let store = new SessionStore();
+  let sess = store.create("s10", "secret-10", "/repo", "gpt", "ABCDEF", BASE_TIME);
+  expect(store.authorizeTerminal(sess.sessionId, "secret-10"));
+
+  let removed = store.detachTerminal(sess.sessionId);
+  expect(removed);
+  expect(!store.authorizeTerminal(sess.sessionId, "secret-10"));
+
+  let replayAfter = store.replay(sess.sessionId, -1);
+  expect(!replayAfter.ok);
+
+  let removedAgain = store.detachTerminal(sess.sessionId);
+  expect(!removedAgain);
+});
+
 test("sweepIdle removes only sessions past the idle TTL", () => {
   let store = new SessionStore();
   let sess = store.create("s9", "secret-9", "/repo", "gpt", "ABCDEF", BASE_TIME);

@@ -33,13 +33,13 @@ export function closePeer(peer: Peer, code: int, reason: string): void {
   peer.socket.close();
 }
 
-export function serveWebSocket(port: int, onMessage: (peer: Peer, message: string) => void): void {
+export function serveWebSocket(port: int, onMessage: (peer: Peer, message: string) => void, onClose: (peer: Peer, graceful: bool) => void): void {
   net.createServer(port, (socket: Socket) => {
-    handleConnection(socket, onMessage);
+    handleConnection(socket, onMessage, onClose);
   });
 }
 
-export function handleConnection(socket: Socket, onMessage: (peer: Peer, message: string) => void): void {
+export function handleConnection(socket: Socket, onMessage: (peer: Peer, message: string) => void, onClose: (peer: Peer, graceful: bool) => void): void {
   let buffer = "";
   let upgraded: Upgrade = { ok: false, path: "", key: "", protocol: "", consumed: 0, error: "", headers: new Map<string, string>() };
   while (!upgraded.ok) {
@@ -78,10 +78,12 @@ export function handleConnection(socket: Socket, onMessage: (peer: Peer, message
       if (step.what == STEP_WAIT) { break; }
       if (step.what == STEP_FAIL) {
         closePeer(peer, CLOSE_PROTOCOL_ERROR, step.error);
+        onClose(peer, false);
         return;
       }
       if (step.what == STEP_CLOSE) {
         closePeer(peer, step.code, "");
+        onClose(peer, true);
         return;
       }
       if (step.what == STEP_PONG) {
@@ -94,11 +96,13 @@ export function handleConnection(socket: Socket, onMessage: (peer: Peer, message
     let chunk = socket.read();
     if (chunk == "") {
       socket.close();
+      onClose(peer, false);
       return;
     }
     buffer = buffer + chunk;
     if (buffer.length > MAX_MESSAGE + 65536) {
       closePeer(peer, CLOSE_TOO_LARGE, "message too large");
+      onClose(peer, false);
       return;
     }
   }
