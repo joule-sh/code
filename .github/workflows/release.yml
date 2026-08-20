@@ -25,11 +25,11 @@ jobs:
           echo "export const VERSION: string = \"$version\";" > src/version.ts
           cat src/version.ts
       - run: make release
-      - run: ./bin/code --version
+      - run: ./bin/joule --version
       - run: |
           dir="code-x86_64-linux"
           mkdir -p "$dir"
-          cp bin/code bin/relay README.md "$dir/"
+          cp bin/joule bin/relay README.md "$dir/"
           tar -czf "$dir.tar.gz" "$dir"
       - run: |
           gh release create "$GITHUB_REF_NAME" "code-x86_64-linux.tar.gz" \

@@ -14,9 +14,12 @@ machine**. The browser is a remote control, never an executor.
 
 v0 is in progress. Landed: the repo skeleton and CI
 ([#1](https://github.com/joule-sh/code/issues/1)), the shared frame protocol
-([#2](https://github.com/joule-sh/code/issues/2)). Not yet: the turn loop, a
-model provider, the file and run tools, approval, the terminal front end, the
-relay, and the web page. There is no working demo until those land.
+([#2](https://github.com/joule-sh/code/issues/2)), the release pipeline
+([#13](https://github.com/joule-sh/code/issues/13), install mechanics only).
+Not yet: the turn loop, a model provider, the file and run tools, approval,
+the terminal front end, the relay, and the web page. There is no working demo
+until those land, the install below gets you the v0 skeleton, not a usable
+tool.
 
 - [docs/00-plan.md](docs/00-plan.md): architecture, the decisions and what
   forced them, and the order the work goes in.
@@ -28,26 +31,29 @@ relay, and the web page. There is no working demo until those land.
 
 ## Install
 
-Once a release is tagged, the released binaries install with:
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
-x86_64 Linux only for now, matching the one self-hosted CI runner this project
-builds on. No release has been tagged yet: the command above has nothing to
-fetch until one is. Build from source until then.
+Installs as `joule`, not `code` - `code` is already taken by VS Code's CLI on
+most machines, and this project would silently shadow or lose to it depending
+on `PATH` order. x86_64 Linux only for now, matching the one self-hosted CI
+runner this project builds on; other platforms fail with a clear message and
+point at building from source below.
 
 ## Build from source
 
 Requires the [Lumen](https://lumen-lang.org) toolchain (`lumen`, and `zig`
-alongside it on `PATH`, as the release archive ships them).
+alongside it on `PATH`, as the release archive ships them). Lumen publishes
+macOS builds too (`lumen-aarch64-macos.tar.gz`, `lumen-x86_64-macos.tar.gz`),
+so this works natively on a Mac even though the release pipeline here does not
+package for it yet.
 
 ```sh
 git clone https://github.com/joule-sh/code.git
 cd code
 make build
-./bin/code --version
+./bin/joule --version
 ```
 
 `make test` runs the test suite, `make release` builds the `--release-fast`
