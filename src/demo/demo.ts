@@ -9,9 +9,10 @@ const SHOW: string = ESC + "[?25h";
 const CLEAR: string = ESC + "[2J";
 const VIOLET: string = ESC + "[38;2;139;92;246m";
 const VIOLET_BG: string = ESC + "[48;2;139;92;246m";
-const WHITE_BG: string = ESC + "[48;2;255;255;255m";
+const WHITE_FG: string = ESC + "[38;2;255;255;255m";
 const RESET: string = ESC + "[0m";
 const DIM: string = ESC + "[38;2;120;120;125m";
+const BOLD: string = ESC + "[1m";
 
 function at(row: int, col: int): string {
   return ESC + "[" + `${row}` + ";" + `${col}` + "H";
@@ -21,23 +22,33 @@ function clearLine(row: int): string {
   return at(row, 1) + ESC + "[2K";
 }
 
-const ROW1: string = VIOLET_BG + "         " + RESET;
-const VISOR_LEFT: string = VIOLET_BG + "  " + RESET + WHITE_BG + "   " + RESET + VIOLET_BG + "    " + RESET;
-const VISOR_MID: string = VIOLET_BG + "   " + RESET + WHITE_BG + "   " + RESET + VIOLET_BG + "   " + RESET;
-const VISOR_RIGHT: string = VIOLET_BG + "    " + RESET + WHITE_BG + "   " + RESET + VIOLET_BG + "  " + RESET;
-const VISOR_DIM: string = VIOLET_BG + "   " + RESET + VIOLET_BG + "   " + RESET + VIOLET_BG + "   " + RESET;
+const BODY_TOP: string = VIOLET_BG + "            " + RESET;
+const BODY_BOTTOM: string = VIOLET_BG + "            " + RESET;
+const EYE_OPEN: string = WHITE_FG + BOLD + "┃" + RESET;
+const EYE_SHUT: string = WHITE_FG + BOLD + "─" + RESET;
+const EYE_WIDE: string = WHITE_FG + BOLD + "┃┃" + RESET;
+
+function face(left: string, right: string): string {
+  return VIOLET_BG + "    " + RESET + left + VIOLET_BG + "  " + RESET + right + VIOLET_BG + "    " + RESET;
+}
+
+const FACE_OPEN: string = face(EYE_OPEN, EYE_OPEN);
+const FACE_SHUT: string = face(EYE_SHUT, EYE_SHUT);
+const FACE_LEFT: string = VIOLET_BG + "   " + RESET + EYE_WIDE + VIOLET_BG + "       " + RESET;
+const FACE_RIGHT: string = VIOLET_BG + "       " + RESET + EYE_WIDE + VIOLET_BG + "   " + RESET;
 
 const MASCOT_ROW: int = 1;
-const STATE_ROW: int = 4;
-const TRANSCRIPT_TOP: int = 6;
-const TRANSCRIPT_BOTTOM: int = 19;
-const INPUT_ROW: int = 21;
-const HINT_ROW: int = 23;
+const STATE_ROW: int = 5;
+const TRANSCRIPT_TOP: int = 7;
+const TRANSCRIPT_BOTTOM: int = 20;
+const INPUT_ROW: int = 22;
+const HINT_ROW: int = 24;
 
-function drawMascot(row2: string, label: string): void {
-  console.log(at(MASCOT_ROW, 1) + ROW1);
-  console.log(at(MASCOT_ROW + 1, 1) + row2);
-  console.log(clearLine(STATE_ROW) + VIOLET + label + RESET);
+function drawMascot(faceRow: string, label: string): void {
+  console.log(at(MASCOT_ROW, 1) + BODY_TOP);
+  console.log(at(MASCOT_ROW + 1, 1) + faceRow);
+  console.log(at(MASCOT_ROW + 2, 1) + BODY_BOTTOM);
+  console.log(clearLine(STATE_ROW) + VIOLET + BOLD + label + RESET);
 }
 
 let transcriptRow: int = TRANSCRIPT_TOP;
@@ -67,47 +78,57 @@ function sleepMs(ms: int): void {
   process.sleep(ms);
 }
 
+function blink(faceRow: string, label: string): void {
+  drawMascot(faceRow, label);
+  sleepMs(260);
+  drawMascot(FACE_SHUT, label);
+  sleepMs(90);
+  drawMascot(faceRow, label);
+}
+
 function runScript(userText: string): void {
   say("you", userText);
-  sleepMs(300);
+  sleepMs(400);
 
-  drawMascot(VISOR_DIM, "thinking");
+  blink(FACE_OPEN, "thinking");
   sleepMs(500);
 
-  drawMascot(VISOR_LEFT, "reading");
+  drawMascot(FACE_LEFT, "reading");
   say("tool.call", "read_file src/routes/index.ts");
-  sleepMs(400);
-  drawMascot(VISOR_RIGHT, "reading");
+  sleepMs(700);
+  drawMascot(FACE_RIGHT, "reading");
   say("tool.call", "read_file src/routes/health.test.ts (not found)");
-  sleepMs(400);
+  sleepMs(700);
 
-  drawMascot(VISOR_DIM, "thinking");
+  blink(FACE_OPEN, "thinking");
   say("joule", "No health route yet. I'll add GET /health and a test for it.");
-  sleepMs(400);
+  sleepMs(600);
 
-  drawMascot(VISOR_LEFT, "writing");
+  drawMascot(FACE_LEFT, "writing");
   say("tool.call", "write_file src/routes/health.ts");
-  sleepMs(400);
-  drawMascot(VISOR_RIGHT, "writing");
+  sleepMs(650);
+  drawMascot(FACE_RIGHT, "writing");
   say("tool.call", "write_file src/routes/health.test.ts");
-  sleepMs(400);
-
-  drawMascot(VISOR_DIM, "waiting");
-  say("approval", "run 'npm test' on your machine? (auto-approved in this demo)");
-  sleepMs(400);
-
-  drawMascot(VISOR_MID, "running");
-  say("run", "npm test");
   sleepMs(650);
 
-  drawMascot(VISOR_LEFT, "found it");
+  blink(FACE_OPEN, "waiting");
+  say("approval", "run 'npm test' on your machine? (auto-approved in this demo)");
+  sleepMs(600);
+
+  drawMascot(FACE_LEFT, "running");
+  sleepMs(220);
+  drawMascot(FACE_RIGHT, "running");
+  say("run", "npm test");
+  sleepMs(750);
+
+  blink(FACE_OPEN, "found it");
   say("result", "2 passed, 0 failed");
-  sleepMs(300);
+  sleepMs(400);
 
   say("joule", 'Done. Added GET /health (200, {"ok":true}) and a test for it. 2 files changed.');
-  drawMascot(VISOR_RIGHT, "found it");
-  sleepMs(400);
-  drawMascot(VISOR_DIM, "idle");
+  blink(FACE_OPEN, "found it");
+  sleepMs(500);
+  drawMascot(FACE_SHUT, "idle");
 }
 
 function teardown(): void {
@@ -127,7 +148,7 @@ export function runDemo(): void {
   console.log(HIDE);
   rawEnable(STDIN);
 
-  drawMascot(VISOR_DIM, "idle");
+  drawMascot(FACE_SHUT, "idle");
   console.log(at(HINT_ROW, 1) + DIM + "type a request, enter to send, ctrl-c to quit" + RESET);
   drawInput("");
 
