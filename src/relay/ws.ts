@@ -2,10 +2,11 @@ import { Peer, send, closePeer, serveWebSocket } from "../vendor/websocket/serve
 import { CLOSE_PROTOCOL_ERROR } from "../vendor/websocket/frame.ts";
 import { PROTOCOL_VERSION, RESUME, INPUT, CANCEL, APPROVAL_REPLY, ERROR, ErrorFrame, encodeError, decodeResume, frameType } from "../protocol/frames.ts";
 import { SessionStore } from "./store.ts";
+import { splitPathAndQuery, queryParam } from "./query.ts";
 
-const ROLE_TERMINAL: string = "terminal";
-const ROLE_BROWSER: string = "browser";
-const ROLE_UNKNOWN: string = "";
+export const ROLE_TERMINAL: string = "terminal";
+export const ROLE_BROWSER: string = "browser";
+export const ROLE_UNKNOWN: string = "";
 
 export class PeerRegistry {
   terminals: Map<string, Peer>;
@@ -17,15 +18,24 @@ export class PeerRegistry {
   }
 }
 
-function roleForPath(path: string): string {
-  if (path.startsWith("/sessions/") && path.endsWith("/ws")) { return ROLE_TERMINAL; }
-  if (path.startsWith("/w/") && path.endsWith("/ws")) { return ROLE_BROWSER; }
+export function roleForPath(pathname: string): string {
+  if (pathname.startsWith("/sessions/") && pathname.endsWith("/ws")) { return ROLE_TERMINAL; }
+  if (pathname.startsWith("/w/") && pathname.endsWith("/ws")) { return ROLE_BROWSER; }
   return ROLE_UNKNOWN;
 }
 
-function sessionIdFromPath(path: string, prefix: string, suffix: string): string {
-  if (path.length <= prefix.length + suffix.length) { return ""; }
-  return path.slice(prefix.length, path.length - suffix.length);
+export function sessionIdFromPath(pathname: string, prefix: string, suffix: string): string {
+  if (pathname.length <= prefix.length + suffix.length) { return ""; }
+  return pathname.slice(prefix.length, pathname.length - suffix.length);
+}
+
+export function browserUserIdFrom(headerValue: string, query: string): string {
+  if (headerValue != "") { return headerValue; }
+  return queryParam(query, "x-user");
+}
+
+function browserUserId(peer: Peer, query: string): string {
+  return browserUserIdFrom(peer.headers.get("x-user") ?? "", query);
 }
 
 function refusalMessage(code: string): string {
@@ -57,7 +67,8 @@ function replayTo(store: SessionStore, peer: Peer, sessionId: string, message: s
 }
 
 function handleTerminalMessage(store: SessionStore, registry: PeerRegistry, peer: Peer, message: string): void {
-  let sessionId = sessionIdFromPath(peer.path, "/sessions/", "/ws");
+  let pathname = splitPathAndQuery(peer.path).pathname;
+  let sessionId = sessionIdFromPath(pathname, "/sessions/", "/ws");
   if (sessionId == "") {
     closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path");
     return;
@@ -83,12 +94,13 @@ function handleTerminalMessage(store: SessionStore, registry: PeerRegistry, peer
 }
 
 function handleBrowserMessage(store: SessionStore, registry: PeerRegistry, peer: Peer, message: string): void {
-  let sessionId = sessionIdFromPath(peer.path, "/w/", "/ws");
+  let split = splitPathAndQuery(peer.path);
+  let sessionId = sessionIdFromPath(split.pathname, "/w/", "/ws");
   if (sessionId == "") {
     closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path");
     return;
   }
-  let userId = peer.headers.get("x-user") ?? "";
+  let userId = browserUserId(peer, split.query);
   let rec = store.find(sessionId);
   if (rec == null) {
     sendRefusal(peer, "session_not_found");
@@ -126,7 +138,8 @@ function handleBrowserMessage(store: SessionStore, registry: PeerRegistry, peer:
 
 export function makeOnMessage(store: SessionStore, registry: PeerRegistry): (peer: Peer, message: string) => void {
   return (peer: Peer, message: string) => {
-    let role = roleForPath(peer.path);
+    let pathname = splitPathAndQuery(peer.path).pathname;
+    let role = roleForPath(pathname);
     if (role == ROLE_TERMINAL) {
       handleTerminalMessage(store, registry, peer, message);
       return;
@@ -140,9 +153,10 @@ export function makeOnMessage(store: SessionStore, registry: PeerRegistry): (pee
 }
 
 function handleClose(store: SessionStore, registry: PeerRegistry, peer: Peer, graceful: bool): void {
-  let role = roleForPath(peer.path);
+  let pathname = splitPathAndQuery(peer.path).pathname;
+  let role = roleForPath(pathname);
   if (role == ROLE_TERMINAL) {
-    let sessionId = sessionIdFromPath(peer.path, "/sessions/", "/ws");
+    let sessionId = sessionIdFromPath(pathname, "/sessions/", "/ws");
     if (sessionId == "") { return; }
     registry.terminals.delete(sessionId);
     if (graceful) {
@@ -151,7 +165,7 @@ function handleClose(store: SessionStore, registry: PeerRegistry, peer: Peer, gr
     return;
   }
   if (role == ROLE_BROWSER) {
-    let sessionId = sessionIdFromPath(peer.path, "/w/", "/ws");
+    let sessionId = sessionIdFromPath(pathname, "/w/", "/ws");
     if (sessionId == "") { return; }
     registry.browsers.delete(sessionId);
     return;

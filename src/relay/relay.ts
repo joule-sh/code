@@ -35,7 +35,7 @@ let store = new SessionStore();
 let registry = new PeerRegistry();
 
 function runHttpListener(): int {
-  net.createServer(HTTP_PORT, socketHandler(store));
+  net.createServer(HTTP_PORT, socketHandler(store, WS_BROWSER_PORT));
   return 0;
 }
 

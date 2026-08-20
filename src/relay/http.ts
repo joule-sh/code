@@ -1,5 +1,6 @@
 import { SessionStore, PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
 import { generateCode, generateSecret, generateSessionId } from "./pairing.ts";
+import { renderWebPage, WEB_PAGE_PATH } from "./web/web_page.ts";
 
 export type RelayHttpRequest = { method: string, path: string, body: string, headers: Map<string, string> };
 export type RelayHttpResponse = { status: int, body: string, ok: bool, headers: Map<string, string> };
@@ -14,6 +15,13 @@ function jsonResponse(status: int, bodyJson: string): RelayHttpResponse {
   let h = new Map<string, string>();
   h.set("content-type", "application/json");
   let resp: RelayHttpResponse = { status: status, body: bodyJson, ok: status < 400, headers: h };
+  return resp;
+}
+
+function htmlResponse(status: int, body: string): RelayHttpResponse {
+  let h = new Map<string, string>();
+  h.set("content-type", "text/html; charset=utf-8");
+  let resp: RelayHttpResponse = { status: status, body: body, ok: status < 400, headers: h };
   return resp;
 }
 
@@ -82,10 +90,17 @@ function handlePair(store: SessionStore, req: RelayHttpRequest, now: i64): Relay
   return jsonResponse(200, JSON.stringify(resp));
 }
 
-export function makeHttpHandler(store: SessionStore): (req: RelayHttpRequest) => RelayHttpResponse {
+function handleWebPage(wsBrowserPort: int): RelayHttpResponse {
+  return htmlResponse(200, renderWebPage(wsBrowserPort));
+}
+
+export function makeHttpHandler(store: SessionStore, wsBrowserPort: int): (req: RelayHttpRequest) => RelayHttpResponse {
   return (req: RelayHttpRequest) => {
     let now: i64 = Date.now();
     store.sweepIdle(now);
+    if (req.method == "GET" && req.path == WEB_PAGE_PATH) {
+      return handleWebPage(wsBrowserPort);
+    }
     if (req.method == "POST" && req.path == "/sessions") {
       return handleCreateSession(store, req, now);
     }
