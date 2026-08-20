@@ -75,7 +75,7 @@ test("RelayInputBridge.offer submits immediately when idle", () => {
   let session = newSession(provider);
   let bridge = new RelayInputBridge();
   bridge.offer(session, "hello");
-  expect(session.history.length == 2);
+  expect(session.history.length == 3);
   expect(!bridge.busy);
 });
 
@@ -89,7 +89,7 @@ class NestedOfferProvider {
     this.seenSecondQueuedDuringFirst = false;
   }
   ask(history: Message[], onDelta: (text: string) => void): ProviderReply {
-    if (this.bridgeSlot.length > 0 && this.sessionSlot.length > 0 && history.length == 1) {
+    if (this.bridgeSlot.length > 0 && this.sessionSlot.length > 0 && history.length == 2) {
       this.bridgeSlot[0].offer(this.sessionSlot[0], "second");
       if (this.bridgeSlot[0].pending.length > 0) {
         this.seenSecondQueuedDuringFirst = true;
@@ -113,6 +113,6 @@ test("an input frame arriving mid-turn is queued, not submitted reentrantly", ()
   expect(np.seenSecondQueuedDuringFirst);
   expect(!bridge.busy);
   expect(bridge.pending.length == 0);
-  expect(session.history.length == 4);
-  expect(session.history[2].text == "second");
+  expect(session.history.length == 5);
+  expect(session.history[3].text == "second");
 });

@@ -1,6 +1,7 @@
 export const ROLE_USER: string = "user";
 export const ROLE_ASSISTANT: string = "assistant";
 export const ROLE_TOOL: string = "tool";
+export const ROLE_SYSTEM: string = "system";
 
 export type ToolCallReq = { callId: string, tool: string, args: string };
 
