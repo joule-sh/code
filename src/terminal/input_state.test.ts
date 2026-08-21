@@ -1,4 +1,4 @@
-import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
+import { Scrollback, InputLine, InputHistory, PendingApproval, clip } from "./input_state.ts";
 
 test("Scrollback starts with a single empty line", () => {
   let sb = new Scrollback();
@@ -182,6 +182,13 @@ test("InputLine takeAndClear returns the text and empties the buffer", () => {
   expect(line.buf == "");
 });
 
+test("InputLine setBuf replaces the buffer directly", () => {
+  let line = new InputLine();
+  line.push("abc");
+  line.setBuf("recalled");
+  expect(line.buf == "recalled");
+});
+
 test("PendingApproval tracks and clears a call id", () => {
   let p = new PendingApproval();
   expect(!p.isPending());
@@ -238,4 +245,87 @@ test("clip fits a whole row of box-drawing characters within its true visible wi
   let border = "┌────┐";
   let out = clip(border, 6);
   expect(out == border);
+});
+
+
+test("InputHistory records submitted entries in order", () => {
+  let h = new InputHistory();
+  h.record("first");
+  h.record("second");
+  h.record("third");
+  expect(h.entries.length == 3);
+  expect(h.entries[0] == "first");
+  expect(h.entries[1] == "second");
+  expect(h.entries[2] == "third");
+});
+
+test("InputHistory back steps from the most recent entry backward", () => {
+  let h = new InputHistory();
+  h.record("first");
+  h.record("second");
+  h.record("third");
+  expect(h.back("") == "third");
+  expect(h.back("") == "second");
+  expect(h.back("") == "first");
+});
+
+test("InputHistory forward steps back toward the most recent entry", () => {
+  let h = new InputHistory();
+  h.record("first");
+  h.record("second");
+  h.record("third");
+  h.back("");
+  h.back("");
+  h.back("");
+  expect(h.forward() == "second");
+  expect(h.forward() == "third");
+});
+
+test("InputHistory stashes an in-progress line and restores it after navigating back through history", () => {
+  let h = new InputHistory();
+  h.record("first");
+  h.record("second");
+  let inProgress = "not yet sent";
+  expect(h.back(inProgress) == "second");
+  expect(h.back("") == "first");
+  expect(h.forward() == "second");
+  expect(h.forward() == inProgress);
+});
+
+test("InputHistory back on empty history is a safe no-op that returns the current buffer", () => {
+  let h = new InputHistory();
+  expect(h.back("still typing") == "still typing");
+  expect(h.entries.length == 0);
+});
+
+test("InputHistory forward past the newest entry lands on an empty stash when nothing was in progress", () => {
+  let h = new InputHistory();
+  h.record("only");
+  h.back("");
+  expect(h.forward() == "");
+});
+
+test("InputHistory back does not walk past the oldest entry", () => {
+  let h = new InputHistory();
+  h.record("only");
+  h.record("newest");
+  h.back("");
+  h.back("");
+  expect(h.back("") == "only");
+  expect(h.back("") == "only");
+});
+
+test("InputHistory forward without any backward navigation returns the stash unchanged", () => {
+  let h = new InputHistory();
+  h.record("first");
+  expect(h.forward() == "");
+});
+
+test("InputHistory record clears any stashed navigation state", () => {
+  let h = new InputHistory();
+  h.record("first");
+  h.back("in progress");
+  h.record("second");
+  expect(h.back("") == "second");
+  expect(h.back("") == "first");
 });

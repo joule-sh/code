@@ -48,6 +48,7 @@ export function helpText(): string {
     "/share         print the pairing URL for this session",
     "/cat <path>    show a file's contents without asking the model",
     "/clear         clear the scrollback",
+    "PageUp/PageDown  scroll the transcript",
     "/exit          quit",
   ];
   let out = "";
