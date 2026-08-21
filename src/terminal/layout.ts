@@ -1,4 +1,5 @@
 import { VIOLET, DIM, wrap } from "./style.ts";
+import { VERSION } from "../version.ts";
 
 const BOX_WIDTH: int = 54;
 const CONTENT_WIDTH: int = BOX_WIDTH - 2;
@@ -40,7 +41,7 @@ function contentLine(text: string): string {
 
 export function buildWelcomeBox(model: string, workspace: string, mode: string): string {
   let out = wrap(VIOLET, borderLine("┌", "┐"));
-  out = out + "\n" + wrap(VIOLET, contentLine(" joule"));
+  out = out + "\n" + wrap(VIOLET, contentLine(" joule " + VERSION));
   out = out + "\n" + wrap(VIOLET, contentLine(""));
   out = out + "\n" + wrap(VIOLET, contentLine(field("model", model)));
   out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace)));
