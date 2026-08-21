@@ -76,7 +76,7 @@ function checkSubagentApproval(alwaysAllowed: string[], localCallId: string, too
   if (isAlwaysAllowed(alwaysAllowed, tool)) { return { approved: true, remember: false }; }
 
   let summary = tool + " " + args;
-  appendMailbox(g_agent_out, TAG_APPROVAL_REQUEST, encodeSubagentApprovalPayload({ callId: localCallId, tool: tool, summary: summary, detail: summary, args: args }));
+  appendMailbox(g_agent_out, TAG_APPROVAL_REQUEST, encodeSubagentApprovalPayload({ callId: localCallId, tool: tool, summary: summary, detail: args, args: args }));
 
   let decision = waitForApprovalReply(localCallId);
   if (decision == "always") { return { approved: true, remember: true }; }

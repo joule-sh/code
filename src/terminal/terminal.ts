@@ -118,7 +118,7 @@ export function runTerminal(argv: string[]): void {
       let s = live.sessionSlot[0];
       let frame: ApprovalRequestFrame = {
         v: PROTOCOL_VERSION, seq: s.takeSeq(), type: APPROVAL_REQUEST,
-        turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: summary, args: args,
+        turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: args, args: args,
       };
       s.emit(encodeApprovalRequest(frame));
     }
