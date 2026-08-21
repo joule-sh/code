@@ -10,8 +10,11 @@ os="$(uname -s)"
 arch="$(uname -m)"
 case "$os-$arch" in
   Linux-x86_64) platform="x86_64-linux" ;;
+  Darwin-arm64) platform="aarch64-macos" ;;
+  Darwin-x86_64) platform="x86_64-macos" ;;
   *)
-    echo "joule: no release built for $os-$arch yet (only x86_64-linux so far)." >&2
+    echo "joule: no release built for $os-$arch yet." >&2
+    echo "       built platforms: x86_64-linux, aarch64-macos, x86_64-macos." >&2
     echo "       build from source instead: https://github.com/$repo#build-from-source" >&2
     exit 1
     ;;
@@ -35,6 +38,15 @@ tar -xzf "$work/code.tar.gz" -C "$work"
 target="$install_root/$version"
 mkdir -p "$target"
 cp "$work/code-$platform/joule" "$work/code-$platform/relay" "$target/"
+
+# The macOS builds carry their own copy of the Boehm collector and load it from
+# @executable_path, so it has to land beside the binaries. Linux archives have
+# no such file and this loop does nothing there.
+for lib in "$work/code-$platform"/*.dylib; do
+  if [ -e "$lib" ]; then
+    cp "$lib" "$target/"
+  fi
+done
 
 mkdir -p "$bin_dir"
 ln -sf "$target/joule" "$bin_dir/joule"

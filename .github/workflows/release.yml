@@ -9,30 +9,86 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: [self-hosted, diff]
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux
+            runs_on: [self-hosted, diff]
+            lumen_dist: lumen-x86_64-linux
+          - target: aarch64-macos
+            runs_on: macos-14
+            lumen_dist: lumen-aarch64-macos
+          - target: x86_64-macos
+            runs_on: macos-13
+            lumen_dist: lumen-x86_64-macos
+    runs-on: ${{ matrix.runs_on }}
     env:
-      LUMEN_VERSION: v0.5.0
+      LUMEN_VERSION: v0.6.0
     steps:
       - uses: actions/checkout@v4
+      # The Boehm collector behind Lumen's allocator is a system library. The
+      # Linux runner already has it; macOS has no copy at all, so Homebrew
+      # provides one and LIBRARY_PATH points the native backend at it.
+      - if: runner.os == 'macOS'
+        run: brew install bdw-gc
       - run: |
-          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.tar.gz"
           tar -xzf lumen.tar.gz
-          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
-          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}/zig" >> "$GITHUB_PATH"
       - run: |
           version="${GITHUB_REF_NAME#v}"
           echo "export const VERSION: string = \"$version\";" > src/version.ts
           cat src/version.ts
+      - if: runner.os == 'macOS'
+        run: echo "LIBRARY_PATH=$(brew --prefix bdw-gc)/lib" >> "$GITHUB_ENV"
       - run: make release
       - run: ./bin/joule --version
+      # A released macOS binary cannot depend on the builder's Homebrew prefix,
+      # so the collector travels with it: copied next to the executables and
+      # loaded from @executable_path. Rewriting the load command invalidates
+      # the arm64 signature, so each binary is ad-hoc signed again afterwards.
+      - if: runner.os == 'macOS'
+        run: |
+          gc_dylib="$(otool -L bin/joule | awk '/libgc/ {print $1}')"
+          if [ -z "$gc_dylib" ]; then
+            echo "expected bin/joule to link the Boehm collector, found none" >&2
+            exit 1
+          fi
+          cp "$gc_dylib" bin/
+          gc_base="$(basename "$gc_dylib")"
+          for b in bin/joule bin/relay; do
+            install_name_tool -change "$gc_dylib" "@executable_path/$gc_base" "$b"
+            codesign --force --sign - "$b"
+          done
+          otool -L bin/joule
       - run: |
-          dir="code-x86_64-linux"
+          dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
           cp bin/joule bin/relay README.md "$dir/"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cp bin/*.dylib "$dir/"
+          fi
           tar -czf "$dir.tar.gz" "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-${{ matrix.target }}
+          path: code-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: [self-hosted, diff]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: code-*
+          merge-multiple: true
+      - run: ls -l code-*.tar.gz
       - run: |
-          gh release create "$GITHUB_REF_NAME" "code-x86_64-linux.tar.gz" \
+          gh release create "$GITHUB_REF_NAME" code-*.tar.gz \
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

@@ -37,17 +37,22 @@ curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 
 Installs as `joule`, not `code` - `code` is already taken by VS Code's CLI on
 most machines, and this project would silently shadow or lose to it depending
-on `PATH` order. x86_64 Linux only for now, matching the one self-hosted CI
-runner this project builds on; other platforms fail with a clear message and
-point at building from source below.
+on `PATH` order. Prebuilt for x86_64 Linux, Apple Silicon macOS
+(`aarch64-macos`) and Intel macOS (`x86_64-macos`); other platforms fail with a
+clear message and point at building from source below.
 
 ## Build from source
 
 Requires the [Lumen](https://lumen-lang.org) toolchain (`lumen`, and `zig`
 alongside it on `PATH`, as the release archive ships them). Lumen publishes
 macOS builds too (`lumen-aarch64-macos.tar.gz`, `lumen-x86_64-macos.tar.gz`),
-so this works natively on a Mac even though the release pipeline here does not
-package for it yet.
+so this works natively on a Mac.
+
+Lumen's allocator links the Boehm collector as a system library. Linux distros
+ship it as `libgc`; macOS has no copy, so a Mac build needs `brew install
+bdw-gc` and `LIBRARY_PATH=$(brew --prefix bdw-gc)/lib` set when compiling. The
+macOS release archives carry their own copy of that library beside the
+binaries, so an installed release needs no Homebrew.
 
 ```sh
 git clone https://github.com/joule-sh/code.git
