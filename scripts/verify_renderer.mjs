@@ -16,10 +16,10 @@ const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(embeddedJs, sandbox);
 vm.runInContext(
-  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame };",
+  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame, planToolOutputCollapseJs: planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES: TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES: TOOL_OUTPUT_COLLAPSE_MIN_LINES };",
   sandbox
 );
-const { fixtureScript, renderFrameText, decodeFrame } = sandbox.__exports;
+const { fixtureScript, renderFrameText, decodeFrame, planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES } = sandbox.__exports;
 
 let failures = 0;
 function expectContains(haystack, needle, label) {
@@ -172,6 +172,50 @@ expectTrue(
 expectTrue(
   runApprovalOut.split("\n").filter((line) => line.indexOf(ANSI_REVERSE) >= 0).length === 1,
   "exactly one option row is highlighted at a time (#88)"
+);
+
+const COLLAPSE_HEAD_LINES = 6;
+const COLLAPSE_MIN_LINES = 10;
+
+function outputOfLines(n) {
+  const rows = [];
+  for (let i = 0; i < n; i++) { rows.push("line " + i); }
+  return rows.join("\n");
+}
+
+expectTrue(
+  TOOL_OUTPUT_COLLAPSE_HEAD_LINES === COLLAPSE_HEAD_LINES && TOOL_OUTPUT_COLLAPSE_MIN_LINES === COLLAPSE_MIN_LINES,
+  "the web page uses the same collapse head and threshold as the terminal (#94 collapse policy)"
+);
+
+expectTrue(
+  planToolOutputCollapseJs(outputOfLines(COLLAPSE_MIN_LINES)).hidden === 0,
+  "output at the threshold is not collapsed on the web either (#94 collapse policy)"
+);
+
+const webPlan = planToolOutputCollapseJs(outputOfLines(50));
+expectTrue(
+  webPlan.hidden === 50 - COLLAPSE_HEAD_LINES,
+  "the web page hides the same number of lines the terminal marker counts (#94 collapse policy)"
+);
+expectTrue(
+  webPlan.head.split("\n").length === COLLAPSE_HEAD_LINES && webPlan.head.split("\n")[0] === "line 0",
+  "the web page keeps the same head as the terminal shows above its marker (#94 collapse policy)"
+);
+expectTrue(
+  webPlan.head + "\n" + webPlan.body === outputOfLines(50),
+  "the web disclosure holds the whole output, split rather than truncated (#94 collapse policy)"
+);
+
+const clientPath = new URL("../src/relay/web/page_js_client.ts", import.meta.url);
+const clientSource = fs.readFileSync(clientPath, "utf8");
+expectTrue(
+  clientSource.indexOf("createElement(\"details\")") >= 0 && clientSource.indexOf("createElement(\"summary\")") >= 0,
+  "the web page expands long tool output with a native disclosure element rather than a keybinding (#94 web parity)"
+);
+expectTrue(
+  renderFrameText('{"v":1,"seq":1,"type":"tool.result","turnId":"t1","callId":"c1","ok":true,"output":"' + outputOfLines(50).replace(/\n/g, "\\n") + '","truncated":false}', "").indexOf("line 49") >= 0,
+  "the shared text renderer still describes the whole output, collapsing is a presentation choice (#94 web parity)"
 );
 
 const mdPath = new URL("../src/relay/web/page_js_markdown.ts", import.meta.url);

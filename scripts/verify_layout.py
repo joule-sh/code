@@ -32,6 +32,13 @@ def u(s):
 CORNER_TL = u("┌")
 CORNER_BL = u("└")
 SCROLLED_UP_SHORT = "scrolled up"
+# #94: long tool output collapses to a head plus a marker, and ctrl-o expands
+# it in place. A large expansion is the hard case for row accounting on a short
+# terminal, so every size here drives it while the approval prompt is up, which
+# is also where the recorded option rows of #89/#96 are most exposed.
+CTRL_O = b"\x0f"
+COLLAPSE_MARKER_RE = harness.COLLAPSE_MARKER_RE
+LAST_README_LINE = "README_LINE_%03d" % harness.LONG_README_LINES
 
 def run_case(rows, cols, label_suffix, wait_full_banner):
     work_dir = tempfile.mkdtemp(prefix="joule-layout-verify-")
@@ -39,6 +46,7 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
     harness.seed_workspace(repo_dir)
+    harness.seed_long_readme(repo_dir)
 
     stub_port = harness.free_port()
     stub_env = dict(os.environ)
@@ -142,6 +150,38 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         ok(max_row_approval <= rows, "no row of the approval redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_approval, rows)))
         status_rows_approval = [c for (_, c) in rows_at_approval if "mode:" in harness.strip_sgr(c)]
         ok(len(status_rows_approval) == 1, "exactly one status-bar row is present while the approval prompt is up" + label_suffix)
+
+        screen_collapsed = harness.strip_sgr(harness.last_redraw_block(full_at_approval))
+        ok(COLLAPSE_MARKER_RE.search(screen_collapsed) is not None, "the long read tool.result is collapsed to a marker row" + label_suffix)
+        ok(LAST_README_LINE not in screen_collapsed, "the hidden tail of the collapsed output is off screen" + label_suffix)
+
+        session.write(CTRL_O)
+        session.settle(0.3, 2.0)
+        full_expanded = harness.text(bytes(session.raw))
+        screen_expanded = harness.strip_sgr(harness.last_redraw_block(full_expanded))
+        ok(LAST_README_LINE in screen_expanded, "ctrl-o expands the group and brings its hidden tail on screen" + label_suffix)
+        ok(COLLAPSE_MARKER_RE.search(screen_expanded) is None, "the collapsed marker is gone once the group is expanded" + label_suffix)
+        rows_expanded = harness.parse_redraw_rows(harness.last_redraw_block(full_expanded))
+        max_row_expanded = max((r for (r, _) in rows_expanded), default=0)
+        ok(max_row_expanded <= rows, "no row of the expanded redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_expanded, rows)))
+        status_rows_expanded = [c for (_, c) in rows_expanded if "mode:" in harness.strip_sgr(c)]
+        ok(len(status_rows_expanded) == 1, "exactly one status-bar row is present while a group is expanded" + label_suffix)
+        options_expanded = harness.approval_option_rows(full_expanded)
+        ok([r["number"] for r in options_expanded] == [1, 2, 3], "the approval option rows stay whole and in order while a group above them is expanded" + label_suffix)
+
+        session.write(CTRL_O)
+        session.settle(0.3, 2.0)
+        full_recollapsed = harness.text(bytes(session.raw))
+        screen_recollapsed = harness.strip_sgr(harness.last_redraw_block(full_recollapsed))
+        ok(COLLAPSE_MARKER_RE.search(screen_recollapsed) is not None, "ctrl-o collapses the group again" + label_suffix)
+        ok(LAST_README_LINE not in screen_recollapsed, "the hidden tail goes back off screen when the group is collapsed again" + label_suffix)
+        rows_recollapsed = harness.parse_redraw_rows(harness.last_redraw_block(full_recollapsed))
+        max_row_recollapsed = max((r for (r, _) in rows_recollapsed), default=0)
+        ok(max_row_recollapsed <= rows, "no row of the recollapsed redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_recollapsed, rows)))
+        status_rows_recollapsed = [c for (_, c) in rows_recollapsed if "mode:" in harness.strip_sgr(c)]
+        ok(len(status_rows_recollapsed) == 1, "exactly one status-bar row is present after collapsing again" + label_suffix)
+        options_recollapsed = harness.approval_option_rows(full_recollapsed)
+        ok([r["number"] for r in options_recollapsed] == [1, 2, 3], "the approval option rows are still whole and in order after collapsing again" + label_suffix)
 
         session.write("y")
         session.wait_for("Done.", timeout=15.0)

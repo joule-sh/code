@@ -64,6 +64,12 @@ test("helpText lists every command", () => {
   expect(h.indexOf("/exit") >= 0);
 });
 
+test("helpText documents the ctrl-o expand key", () => {
+  let h = helpText();
+  expect(h.indexOf("ctrl-o") >= 0);
+  expect(h.indexOf("expand or collapse") >= 0);
+});
+
 test("helpText documents the PageUp/PageDown scroll keys", () => {
   let h = helpText();
   expect(h.indexOf("PageUp") >= 0);

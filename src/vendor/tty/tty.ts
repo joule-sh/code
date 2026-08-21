@@ -45,6 +45,7 @@ export const KEY_TAB: string = "tab";
 export const KEY_ESCAPE: string = "escape";
 export const KEY_CTRL_C: string = "ctrl_c";
 export const KEY_CTRL_D: string = "ctrl_d";
+export const KEY_CTRL_O: string = "ctrl_o";
 export const KEY_ARROW_UP: string = "arrow_up";
 export const KEY_ARROW_DOWN: string = "arrow_down";
 export const KEY_ARROW_LEFT: string = "arrow_left";
@@ -142,6 +143,7 @@ function decodeFromByte(fd: int, b: int): Key {
   if (b == 9) { return simpleKey(KEY_TAB); }
   if (b == 3) { return simpleKey(KEY_CTRL_C); }
   if (b == 4) { return simpleKey(KEY_CTRL_D); }
+  if (b == 15) { return simpleKey(KEY_CTRL_O); }
   if (b == 27) { return readEscapeSequence(fd); }
   return charKey(readUtf8Char(fd, b));
 }
@@ -240,6 +242,14 @@ test("readKey decodes Enter, Backspace, Tab, Ctrl-C, Ctrl-D", () => {
   expect(readKey(fd).kind == KEY_CTRL_C);
   tty_write_byte_to_test_pipe(4);
   expect(readKey(fd).kind == KEY_CTRL_D);
+});
+
+test("readKey decodes Ctrl-O as its own key rather than a control character", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(15);
+  let k = readKey(fd);
+  expect(k.kind == KEY_CTRL_O);
+  expect(k.char == "");
 });
 
 test("readKey decodes a plain ASCII character", () => {

@@ -3,12 +3,14 @@ import { RelayClient } from "../relay/client.ts";
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
-import { frameType, decodeToolCall, TOOL_CALL, TEXT_DELTA } from "../protocol/frames.ts";
+import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { styleFrame, stylePrompt, styleScrollIndicator } from "./style.ts";
 import { buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
-import { Scrollback, InputLine, clip } from "./input_state.ts";
+import { InputLine, clip } from "./input_state.ts";
+import { Scrollback } from "./scrollback.ts";
+import { planToolOutputCollapse } from "./collapse.ts";
 import { completionRows, panelBudget } from "./completion.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 
@@ -41,6 +43,19 @@ export class TurnStatusTracker {
   }
 }
 
+function appendStyled(sb: Scrollback, kind: string, styled: string): void {
+  if (kind != TOOL_RESULT) {
+    sb.append(styled);
+    return;
+  }
+  let plan = planToolOutputCollapse(styled);
+  if (plan.hidden <= 0) {
+    sb.append(styled);
+    return;
+  }
+  sb.appendCollapsible(plan.head, plan.body, plan.hidden);
+}
+
 export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: string): void {
   let kind = frameType(frameJson);
   let rendered = renderFrame(frameJson, rk.prevKind);
@@ -51,7 +66,7 @@ export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: st
     if (flushed != "") {
       sb.appendBlock(flushed);
     }
-    sb.append(styleFrame(kind, rendered));
+    appendStyled(sb, kind, styleFrame(kind, rendered));
   }
   rk.recordFrame(frameJson);
 }

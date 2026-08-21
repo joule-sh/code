@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, TEXT_DELTA, TOOL_RESULT, TURN_END, APPROVAL_REQUEST, REASON_DONE, TextDeltaFrame, ToolResultFrame, TurnEndFrame, ApprovalRequestFrame, encodeTextDelta, encodeToolResult, encodeTurnEnd, encodeApprovalRequest } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
-import { Scrollback, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { Scrollback } from "./scrollback.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, repaintTaggedApprovalOptions, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 
 function lastLine(sb: Scrollback): string {
