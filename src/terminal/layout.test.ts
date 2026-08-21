@@ -1,5 +1,6 @@
 import { buildWelcomeBox, buildStatusLine } from "./layout.ts";
 import { VIOLET, DIM, RESET } from "./style.ts";
+import { VERSION } from "../version.ts";
 
 function stripColor(line: string, color: string): string {
   let out = line;
@@ -136,4 +137,9 @@ test("the status line names the current mode and the key hints, dim and reset", 
 test("the status line reflects a different mode when given one", () => {
   let line = buildStatusLine("full-auto");
   expect(line.indexOf("full-auto") >= 0);
+});
+
+test("the welcome box shows the running version, so a released build is distinguishable from a source build", () => {
+  let box = buildWelcomeBox("m", "/w", "auto-edit");
+  expect(box.indexOf(" joule " + VERSION) >= 0);
 });
