@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -10,7 +10,8 @@ import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
-import { Scrollback, InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox } from "./layout.ts";
@@ -105,6 +106,10 @@ export function runTerminal(argv: string[]): void {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, pendingApproval.selected);
     } else if (k.kind == KEY_CHAR && approvalOptionForChar(k.char) >= 0 && gateBox.slot.length > 0) {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, approvalOptionForChar(k.char));
+    } else if (k.kind == KEY_CTRL_O && gateBox.slot.length > 0) {
+      if (sb.toggleLastGroup()) {
+        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+      }
     } else if (k.kind == KEY_CTRL_C) {
       if (gateBox.slot.length > 0) {
         gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);
@@ -278,6 +283,13 @@ export function runTerminal(argv: string[]): void {
       }
       input.setBuf(history.forward());
       drawScreen(sb, input, gate.mode, rk.quantaText());
+      continue;
+    }
+
+    if (k.kind == KEY_CTRL_O) {
+      if (sb.toggleLastGroup()) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+      }
       continue;
     }
 

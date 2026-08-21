@@ -1,5 +1,6 @@
 import { Gate } from "../approval/gate.ts";
-import { Scrollback, InputLine, PendingApproval, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, PendingApproval, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { Scrollback } from "./scrollback.ts";
 import { approvalOptionRow } from "./renderer.ts";
 import { TurnStatusTracker, drawScreen } from "./screen.ts";
 

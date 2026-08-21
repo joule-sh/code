@@ -162,6 +162,21 @@ function diffBlockForCallJs(tool, args) {
   return "\\n" + body;
 }
 
+var TOOL_OUTPUT_COLLAPSE_HEAD_LINES = 6;
+var TOOL_OUTPUT_COLLAPSE_MIN_LINES = 10;
+
+function planToolOutputCollapseJs(output) {
+  var rows = output.split("\\n");
+  if (rows.length <= TOOL_OUTPUT_COLLAPSE_MIN_LINES) {
+    return { head: output, body: "", hidden: 0 };
+  }
+  return {
+    head: rows.slice(0, TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\\n"),
+    body: rows.slice(TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\\n"),
+    hidden: rows.length - TOOL_OUTPUT_COLLAPSE_HEAD_LINES
+  };
+}
+
 var APPROVAL_OPTION_ALLOW = 0;
 var APPROVAL_OPTION_ALWAYS = 1;
 var APPROVAL_OPTION_DENY = 2;

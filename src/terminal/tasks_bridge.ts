@@ -1,6 +1,7 @@
 import { frameTurnId, frameType, TEXT_DELTA, TURN_END } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
-import { Scrollback, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { Scrollback } from "./scrollback.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 import { renderFrame, approvalOptionRow } from "./renderer.ts";
 

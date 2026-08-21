@@ -139,6 +139,37 @@ function approvalButton(label, cls, callId, decision, card) {
   return btn;
 }
 
+function buildResultElement(status, out, ok) {
+  var cls = ok ? "line-result-ok" : "line-result-fail";
+  var plan = planToolOutputCollapseJs(out);
+  if (plan.hidden <= 0) {
+    var plain = document.createElement("div");
+    plain.className = "line " + cls;
+    plain.textContent = status + ": " + out;
+    return plain;
+  }
+  var box = document.createElement("details");
+  box.className = "line " + cls + " result-collapse";
+  var summary = document.createElement("summary");
+  var preview = document.createElement("span");
+  preview.className = "result-preview";
+  preview.textContent = status + ": " + plan.head;
+  var more = document.createElement("span");
+  more.className = "result-more";
+  more.textContent = "... +" + plan.hidden + " lines";
+  summary.appendChild(preview);
+  summary.appendChild(more);
+  var rest = document.createElement("div");
+  rest.className = "result-rest";
+  rest.textContent = plan.body;
+  box.appendChild(summary);
+  box.appendChild(rest);
+  box.addEventListener("toggle", function () {
+    more.textContent = box.open ? "... " + plan.hidden + " more lines" : "... +" + plan.hidden + " lines";
+  });
+  return box;
+}
+
 function applyFrameToTranscript(frameJson) {
   var f = decodeFrame(frameJson);
   if (f === null) { return; }
@@ -178,9 +209,7 @@ function applyFrameToTranscript(frameJson) {
     var status = f.ok ? "ok" : "failed";
     var out = f.output;
     if (f.truncated) { out = out + " (truncated)"; }
-    var line = document.createElement("div");
-    line.className = f.ok ? "line-result-ok" : "line-result-fail";
-    line.textContent = status + ": " + out;
+    var line = buildResultElement(status, out, f.ok);
     var existingCard = state.toolCards[f.callId];
     if (existingCard) {
       existingCard.appendChild(line);

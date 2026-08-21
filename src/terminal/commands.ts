@@ -83,5 +83,6 @@ export function helpText(): string {
     i = i + 1;
   }
   out = out + "\n" + padColumn("PageUp/PageDown", HELP_COLUMN) + "scroll the transcript";
+  out = out + "\n" + padColumn("ctrl-o", HELP_COLUMN) + "expand or collapse the last long tool output";
   return out;
 }

@@ -113,6 +113,23 @@ button:disabled {
 .line-result-ok { color: var(--ok); }
 .line-result-fail { color: var(--fail); }
 .line-turn-end { color: var(--muted); font-style: italic; }
+.result-collapse > summary {
+  cursor: pointer;
+  list-style: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.result-collapse > summary::-webkit-details-marker { display: none; }
+.result-preview { display: block; }
+.result-more {
+  display: block;
+  color: var(--muted);
+  font-style: italic;
+}
+.result-rest {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .line-error { color: var(--fail); font-weight: 600; }
 .md-header { font-weight: 700; color: var(--accent); }
 .md-fence { display: none; }

@@ -66,6 +66,13 @@ REVERSE_SEQ = "\x1b[7m"
 APPROVAL_OPTION_RE = re.compile(r"^\s*(>|\s)\s*([123])\. (.*?)\s*$")
 APPROVAL_ALWAYS_LABEL_PREFIX = "Yes, and don't ask again for "
 APPROVAL_OPTION_COUNT = 3
+CTRL_O = b"\x0f"
+# #94: long tool output is collapsed to a head plus a marker naming how many
+# rows are hidden, and ctrl-o toggles it. Matched with the SGR stripped, since
+# the marker is dim.
+COLLAPSE_MARKER_RE = re.compile(r"\.\.\. \+(\d+) lines")
+EXPANDED_MARKER_RE = re.compile(r"\.\.\. (\d+) more lines")
+LONG_README_LINES = 60
 
 failures = []
 
@@ -475,6 +482,14 @@ def seed_workspace(repo_dir):
         f.write("\n".join(file_b_lines) + "\n")
 
 
+def seed_long_readme(repo_dir):
+    """A README long enough that reading it trips the #94 collapse threshold."""
+    lines = ["# demo", "", "No health route yet."]
+    lines += ["README_LINE_%03d of padding" % i for i in range(1, LONG_README_LINES + 1)]
+    with open(os.path.join(repo_dir, "README.md"), "w") as f:
+        f.write("\n".join(lines))
+
+
 def start_stub_session(prefix, rows=24, cols=80):
     """A fresh workspace, stub model, and joule pty session.
 
@@ -773,6 +788,76 @@ def run_completion_panel_scenario():
             stop_stub_session(work_dir, stub_proc, session)
 
 
+def run_collapse_scenario():
+    """#94: long tool output collapses, ctrl-o expands it, and doing that while a
+    real approval prompt is up must leave the #89/#96 option rows repaintable."""
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-collapse-harness-")
+        seed_long_readme(os.path.join(work_dir, "repo"))
+        session.wait_for(BANNER, timeout=10.0)
+        session.write("add a health note\r")
+        session.wait_for(APPROVAL_MARKER, timeout=10.0)
+        session.settle(0.3, 2.0)
+
+        collapsed_screen = strip_sgr(last_redraw_block(text(bytes(session.raw))))
+        marker = COLLAPSE_MARKER_RE.search(collapsed_screen)
+        ok(marker is not None, "a long read tool.result collapses to a row naming the hidden line count")
+        hidden = int(marker.group(1)) if marker else 0
+        ok(hidden >= 40, "the collapsed marker counts every hidden row of a %d line file, got +%d" % (LONG_README_LINES, hidden))
+        ok("ctrl-o" in collapsed_screen, "the collapsed marker names the key that expands it")
+        ok("README_LINE_001" in collapsed_screen, "the head of the collapsed output stays on screen")
+        last_line = "README_LINE_%03d" % LONG_README_LINES
+        ok(last_line not in collapsed_screen, "the tail of the collapsed output is off screen while it is collapsed")
+
+        options_collapsed = approval_option_rows(text(bytes(session.raw)))
+        ok(len(options_collapsed) == APPROVAL_OPTION_COUNT, "the approval option list is intact next to a collapsed group, got %d rows" % len(options_collapsed))
+
+        session.write(CTRL_O)
+        session.settle(0.3, 2.0)
+        expanded_full = text(bytes(session.raw))
+        expanded_screen = strip_sgr(last_redraw_block(expanded_full))
+        ok(EXPANDED_MARKER_RE.search(expanded_screen) is not None or last_line in expanded_screen, "ctrl-o expands the collapsed group")
+        ok(last_line in expanded_screen, "expanding brings the previously hidden tail of the output on screen")
+        ok(COLLAPSE_MARKER_RE.search(expanded_screen) is None, "the collapsed marker is gone once the group is expanded")
+
+        rows_expanded = parse_redraw_rows(last_redraw_block(expanded_full))
+        max_row_expanded = max((r for (r, _) in rows_expanded), default=0)
+        ok(max_row_expanded <= session.rows, "no row of the expanded redraw addresses past the terminal height, got max row %d of %d" % (max_row_expanded, session.rows))
+
+        options_expanded = approval_option_rows(expanded_full)
+        ok(len(options_expanded) == APPROVAL_OPTION_COUNT, "the approval option list survives the expansion, got %d rows" % len(options_expanded))
+        ok([r["number"] for r in options_expanded] == [1, 2, 3], "the expanded view still reads the option rows 1, 2, 3 down the list")
+
+        session.write(ARROW_DOWN)
+        session.settle(0.3, 2.0)
+        moved = approval_option_rows(text(bytes(session.raw)))
+        ok(highlighted_option(moved) == 2, "the arrow keys still repaint the right approval rows while a group above them is expanded (#96 offsets)")
+        ok(len(moved) == APPROVAL_OPTION_COUNT, "repainting while expanded does not duplicate or drop an option row")
+
+        session.write(CTRL_O)
+        session.settle(0.3, 2.0)
+        recollapsed_full = text(bytes(session.raw))
+        recollapsed_screen = strip_sgr(last_redraw_block(recollapsed_full))
+        ok(COLLAPSE_MARKER_RE.search(recollapsed_screen) is not None, "ctrl-o collapses the group again")
+        ok(last_line not in recollapsed_screen, "the tail of the output goes back off screen when the group is collapsed again")
+        recollapsed_options = approval_option_rows(recollapsed_full)
+        ok(highlighted_option(recollapsed_options) == 2, "the approval highlight survives collapsing the group above it")
+
+        session.write("\r")
+        session.wait_for("Done.", timeout=15.0)
+        session.settle(0.3, 2.0)
+        after_turn = text(bytes(session.raw))
+        ok("Done." in strip_sgr(last_redraw_block(after_turn)), "the turn finishes normally after the collapse and expand round trip")
+
+        check_clean_exit_invariants(session, "collapsed tool output")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
 def run_scenario():
     self_test_color_bleed_detector()
 
@@ -976,6 +1061,11 @@ def main():
         failures.append(str(e))
     try:
         run_resume_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_collapse_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))
