@@ -66,6 +66,7 @@ export class MailboxReader {
     let content = "";
     try { content = fs.readFileSync(this.path); } catch { return []; }
     let lines = nonEmptyLines(content);
+    if (lines.length <= this.seen) { return []; }
     let out: MailboxEntry[] = [];
     let i = this.seen;
     while (i < lines.length) {
