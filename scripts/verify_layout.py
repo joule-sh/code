@@ -53,7 +53,7 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         joule_env["HOME"] = home_dir
         joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
         joule_env["JOULE_CODE_MODEL"] = "stub-model-xyz"
-        joule_env["JOULE_CODE_API_KEY"] = ""
+        joule_env["JOULE_CODE_API_KEY"] = "stub-key"  # non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
         joule_env["TERM"] = "xterm-256color"
 
         session = harness.PtySession([harness.JOULE_BIN], joule_env, repo_dir, rows=rows, cols=cols)

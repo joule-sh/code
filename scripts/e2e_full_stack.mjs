@@ -148,6 +148,7 @@ async function runScenario(name, approve) {
         ...process.env,
         JOULE_CODE_BASE_URL: `http://127.0.0.1:${ports.stub}`,
         JOULE_CODE_MODEL: "stub",
+        JOULE_CODE_API_KEY: "stub-key", // non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
         JOULE_RELAY_HOST: "127.0.0.1",
         JOULE_RELAY_HTTP_PORT: String(ports.http),
         JOULE_RELAY_WS_PORT: String(ports.ws),

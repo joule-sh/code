@@ -1,4 +1,13 @@
-import { resolveConfig, parseConfigFile } from "./config.ts";
+import { resolveConfig, parseConfigFile, saveConfigFile, loadConfigFile, ConfigFile } from "./config.ts";
+
+function freshRoot(name: string): string {
+  let root = "/tmp/config-test-" + name;
+  if (fs.existsSync(root)) {
+    fs.rmSync(root, true);
+  }
+  fs.mkdirSync(root, true);
+  return root;
+}
 
 test("a flag wins over env and file", () => {
   let cfg = resolveConfig("flag-model", "flag-url", "env-url", "env-model", "env-key", "file-url", "file-model", "file-key");
@@ -45,4 +54,32 @@ test("parseConfigFile on empty or malformed text returns empty, not a crash", ()
 
   let f2 = parseConfigFile("not json at all");
   expect(f2.baseUrl == "");
+});
+
+test("saveConfigFile writes a config that loadConfigFile reads back exactly", () => {
+  let root = freshRoot("roundtrip");
+  let target = root + "/nested/config.json";
+  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123" };
+
+  saveConfigFile(target, file);
+  let loaded = loadConfigFile(target);
+
+  expect(loaded.baseUrl == "https://api.example.com");
+  expect(loaded.model == "some-model");
+  expect(loaded.apiKey == "sk-abc123");
+});
+
+test("saveConfigFile overwrites a previously written config", () => {
+  let root = freshRoot("overwrite");
+  let target = root + "/config.json";
+  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key" };
+  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key" };
+
+  saveConfigFile(target, first);
+  saveConfigFile(target, second);
+  let loaded = loadConfigFile(target);
+
+  expect(loaded.baseUrl == "https://second.example.com");
+  expect(loaded.model == "second-model");
+  expect(loaded.apiKey == "second-key");
 });
