@@ -1,6 +1,7 @@
-import { frameTurnId } from "../protocol/frames.ts";
+import { frameTurnId, frameType, TEXT_DELTA, TURN_END } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
 import { Scrollback, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 import { renderFrame, approvalOptionRow } from "./renderer.ts";
 
 const BG_PREFIX: string = "bg:";
@@ -30,11 +31,77 @@ export function isTaskTurnId(turnId: string): bool {
   return false;
 }
 
-export function appendTaggedFrame(sb: Scrollback, frameJson: string): void {
+export class TaggedTurnText {
+  turnId: string;
+  md: MarkdownState;
+
+  constructor(turnId: string) {
+    this.turnId = turnId;
+    this.md = new MarkdownState();
+  }
+}
+
+export class TaggedTurns {
+  turns: TaggedTurnText[];
+
+  constructor() {
+    this.turns = [];
+  }
+
+  stateFor(turnId: string): TaggedTurnText {
+    for (const t of this.turns) {
+      if (t.turnId == turnId) { return t; }
+    }
+    let fresh = new TaggedTurnText(turnId);
+    this.turns.push(fresh);
+    return fresh;
+  }
+
+  forget(turnId: string): void {
+    let kept: TaggedTurnText[] = [];
+    for (const t of this.turns) {
+      if (t.turnId != turnId) { kept.push(t); }
+    }
+    this.turns = kept;
+  }
+
+  streaming(): int {
+    return this.turns.length;
+  }
+}
+
+function appendTaggedLines(sb: Scrollback, text: string, tag: string): void {
+  if (text == "") { return; }
+  let parts = text.split("\n");
+  let n = parts.length;
+  if (parts[n - 1] == "") { n = n - 1; }
+  let out = "";
+  let i = 0;
+  while (i < n) {
+    out = out + "\n" + tag + parts[i];
+    i = i + 1;
+  }
+  if (out == "") { return; }
+  sb.append(out);
+}
+
+export function appendTaggedFrame(sb: Scrollback, turns: TaggedTurns, frameJson: string): void {
   let turnId = frameTurnId(frameJson);
+  let tag = tagFor(turnId);
+  let kind = frameType(frameJson);
+  let state = turns.stateFor(turnId);
+  if (kind == TEXT_DELTA) {
+    appendTaggedLines(sb, appendMarkdownDelta(state.md, renderFrame(frameJson, TEXT_DELTA)), tag);
+    return;
+  }
+  appendTaggedLines(sb, flushMarkdown(state.md), tag);
   let rendered = renderFrame(frameJson, "");
-  if (rendered == "") { return; }
-  sb.append(insertTag(rendered, tagFor(turnId)));
+  if (rendered != "") {
+    sb.append(insertTag(rendered, tag));
+  }
+  if (kind == TURN_END) {
+    turns.forget(turnId);
+  }
 }
 
 export function tryHandleAgentApprovalChar(tasks: ApprovalResponder, inputEmpty: bool, ch: string): bool {

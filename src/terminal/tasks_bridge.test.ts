@@ -1,11 +1,51 @@
-import { PROTOCOL_VERSION, TEXT_DELTA, TOOL_RESULT, TextDeltaFrame, ToolResultFrame, encodeTextDelta, encodeToolResult } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, TEXT_DELTA, TOOL_RESULT, TURN_END, APPROVAL_REQUEST, REASON_DONE, TextDeltaFrame, ToolResultFrame, TurnEndFrame, ApprovalRequestFrame, encodeTextDelta, encodeToolResult, encodeTurnEnd, encodeApprovalRequest } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
-import { Scrollback } from "./input_state.ts";
-import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, repaintTaggedApprovalOptions, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
+import { Scrollback, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, repaintTaggedApprovalOptions, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 
 function lastLine(sb: Scrollback): string {
   let t = sb.tail(5);
   return t[t.length - 1];
+}
+
+function delta(turnId: string, text: string): string {
+  let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: 1, type: TEXT_DELTA, turnId: turnId, text: text };
+  return encodeTextDelta(f);
+}
+
+function turnEnd(turnId: string): string {
+  let f: TurnEndFrame = { v: PROTOCOL_VERSION, seq: 1, type: TURN_END, turnId: turnId, reason: REASON_DONE };
+  return encodeTurnEnd(f);
+}
+
+function approvalRequest(turnId: string, tool: string): string {
+  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REQUEST, turnId: turnId, callId: "c1", tool: tool, summary: "run " + tool, detail: "workspace", args: "npm test" };
+  return encodeApprovalRequest(f);
+}
+
+function occurrences(haystack: string, needle: string): int {
+  let count = 0;
+  let at = haystack.indexOf(needle, 0);
+  while (at >= 0) {
+    count = count + 1;
+    at = haystack.indexOf(needle, at + needle.length);
+  }
+  return count;
+}
+
+function lineWith(sb: Scrollback, needle: string): string {
+  for (const line of sb.lines) {
+    if (line.indexOf(needle) >= 0) { return line; }
+  }
+  return "";
+}
+
+function joinedLines(sb: Scrollback): string {
+  let out = "";
+  for (const line of sb.lines) {
+    out = out + line + "\n";
+  }
+  return out;
 }
 
 test("isTaskTurnId recognizes bg: and agent: prefixes only", () => {
@@ -16,10 +56,10 @@ test("isTaskTurnId recognizes bg: and agent: prefixes only", () => {
   expect(!isTaskTurnId("bgrun-1"));
 });
 
-test("appendTaggedFrame prefixes a background text.delta with [task <id>]", () => {
+test("appendTaggedFrame prefixes a completed background text line with [task <id>]", () => {
   let sb = new Scrollback();
-  let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: 1, type: TEXT_DELTA, turnId: "bg:bgrun-1", text: "building..." };
-  appendTaggedFrame(sb, encodeTextDelta(f));
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("bg:bgrun-1", "building...\n"));
   let joined = lastLine(sb);
   expect(joined.indexOf("[task bgrun-1]") >= 0);
   expect(joined.indexOf("building...") >= 0);
@@ -27,20 +67,114 @@ test("appendTaggedFrame prefixes a background text.delta with [task <id>]", () =
 
 test("appendTaggedFrame prefixes a subagent tool.result with [agent <id>]", () => {
   let sb = new Scrollback();
+  let turns = new TaggedTurns();
   let f: ToolResultFrame = { v: PROTOCOL_VERSION, seq: 1, type: TOOL_RESULT, turnId: "agent:agent-1", callId: "agent-1:1", ok: true, output: "done", truncated: false };
-  appendTaggedFrame(sb, encodeToolResult(f));
+  appendTaggedFrame(sb, turns, encodeToolResult(f));
   let joined = lastLine(sb);
   expect(joined.indexOf("[agent agent-1]") >= 0);
 });
 
 test("appendTaggedFrame on a foreground frame (no bg:/agent: turnId) still renders, untagged", () => {
   let sb = new Scrollback();
-  let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: 1, type: TEXT_DELTA, turnId: "t1", text: "hello" };
-  appendTaggedFrame(sb, encodeTextDelta(f));
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("t1", "hello\n"));
   let joined = lastLine(sb);
   expect(joined.indexOf("hello") >= 0);
   expect(joined.indexOf("[task") < 0);
   expect(joined.indexOf("[agent") < 0);
+});
+
+test("streamed subagent tokens accumulate into one prose line carrying the tag once", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "I"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "'ll"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " run"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " the"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " command"));
+  expect(lineWith(sb, "I'll run") == "");
+  appendTaggedFrame(sb, turns, turnEnd("agent:agent-1"));
+  let line = lineWith(sb, "I'll run the command");
+  expect(line != "");
+  expect(occurrences(line, "[agent agent-1]") == 1);
+  expect(occurrences(joinedLines(sb), "I'll run the command") == 1);
+});
+
+test("a newline inside the stream flushes that line and tags the next one on its own row", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "first line\nsecond "));
+  expect(lineWith(sb, "first line") != "");
+  expect(lineWith(sb, "second") == "");
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "line\n"));
+  let second = lineWith(sb, "second line");
+  expect(second != "");
+  expect(occurrences(second, "[agent agent-1]") == 1);
+  expect(lineWith(sb, "first line").indexOf("second") < 0);
+});
+
+test("two turnIds streaming interleaved never merge into each other's line", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "reading"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-2", "writing"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " the"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-2", " the"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " config"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-2", " report"));
+  appendTaggedFrame(sb, turns, turnEnd("agent:agent-1"));
+  appendTaggedFrame(sb, turns, turnEnd("agent:agent-2"));
+
+  let one = lineWith(sb, "reading the config");
+  let two = lineWith(sb, "writing the report");
+  expect(one != "");
+  expect(two != "");
+  expect(one.indexOf("[agent agent-1]") >= 0);
+  expect(one.indexOf("agent-2") < 0);
+  expect(one.indexOf("writing") < 0);
+  expect(two.indexOf("[agent agent-2]") >= 0);
+  expect(two.indexOf("agent-1") < 0);
+  expect(two.indexOf("reading") < 0);
+});
+
+test("a background task and a subagent streaming at once keep their own tags", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("bg:bgrun-1", "npm"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "looking"));
+  appendTaggedFrame(sb, turns, delta("bg:bgrun-1", " test passed\n"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " into it\n"));
+  expect(lineWith(sb, "npm test passed").indexOf("[task bgrun-1]") >= 0);
+  expect(lineWith(sb, "looking into it").indexOf("[agent agent-1]") >= 0);
+});
+
+test("a turn ending frees its buffer so a later turn with the same id starts clean", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "half a sentence"));
+  expect(turns.streaming() == 1);
+  appendTaggedFrame(sb, turns, turnEnd("agent:agent-1"));
+  expect(turns.streaming() == 0);
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "a new thought\n"));
+  expect(lineWith(sb, "a new thought").indexOf("half a sentence") < 0);
+});
+
+test("pending streamed text is flushed above a tool.result rather than after it", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "checking the tests"));
+  let f: ToolResultFrame = { v: PROTOCOL_VERSION, seq: 2, type: TOOL_RESULT, turnId: "agent:agent-1", callId: "agent-1:1", ok: true, output: "12 passed", truncated: false };
+  appendTaggedFrame(sb, turns, encodeToolResult(f));
+  let textRow = -1;
+  let resultRow = -1;
+  let i = 0;
+  while (i < sb.lines.length) {
+    if (sb.lines[i].indexOf("checking the tests") >= 0) { textRow = i; }
+    if (sb.lines[i].indexOf("12 passed") >= 0) { resultRow = i; }
+    i = i + 1;
+  }
+  expect(textRow >= 0);
+  expect(resultRow > textRow);
 });
 
 class FakeApprovals {
@@ -244,4 +378,30 @@ test("cancelCommandArg returns empty for anything else", () => {
   expect(cancelCommandArg("") == "");
   expect(cancelCommandArg("cancel") == "");
   expect(cancelCommandArg("list") == "");
+});
+
+test("an approval arriving mid-stream lands on rows that stay valid while the turn keeps streaming", () => {
+  let sb = new Scrollback();
+  let turns = new TaggedTurns();
+  let fake = new FakeApprovals(true);
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "I need to run the tests"));
+  appendTaggedFrame(sb, turns, approvalRequest("agent:agent-1", "run"));
+  fake.firstOptionRow = sb.lineCount() - APPROVAL_OPTION_COUNT;
+
+  expect(sb.lines[fake.firstOptionRow].indexOf("1. Yes") >= 0);
+  expect(sb.lines[fake.firstOptionRow + 1].indexOf("2. Yes, and") >= 0);
+  expect(sb.lines[fake.firstOptionRow + 2].indexOf("3. No") >= 0);
+  expect(lineWith(sb, "I need to run the tests") != "");
+
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", "meanwhile"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-2", "another agent talks\n"));
+  appendTaggedFrame(sb, turns, delta("agent:agent-1", " I wait\n"));
+
+  fake.selected = 2;
+  repaintTaggedApprovalOptions(sb, responderFor(fake));
+  expect(sb.lines[fake.firstOptionRow].indexOf("1. Yes") >= 0);
+  expect(sb.lines[fake.firstOptionRow + 2].indexOf("3. No") >= 0);
+  expect(occurrences(joinedLines(sb), "3. No") == 1);
+  expect(lineWith(sb, "meanwhile I wait") != "");
+  expect(lineWith(sb, "another agent talks") != "");
 });

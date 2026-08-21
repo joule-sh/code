@@ -20,7 +20,7 @@ import { RelayInputBridge } from "./relay_bridge.ts";
 import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
-import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
+import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
 import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode } from "./slots.ts";
 
@@ -50,6 +50,7 @@ export function runTerminal(argv: string[]): void {
   let input = new InputLine();
   let history = new InputHistory();
   let rk = new TurnStatusTracker();
+  let tagged = new TaggedTurns();
 
   let tracker = new TurnTracker();
   let watch = new CancelWatch();
@@ -176,7 +177,7 @@ export function runTerminal(argv: string[]): void {
       }
     }
     if (isTaskTurnId(frameTurnId(frameJson))) {
-      appendTaggedFrame(sb, frameJson);
+      appendTaggedFrame(sb, tagged, frameJson);
       if (frameType(frameJson) == APPROVAL_REQUEST) {
         tasks.setLatestApprovalOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
       }
