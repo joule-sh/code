@@ -1,11 +1,14 @@
 import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
 
-export function renderFrame(frameJson: string): string {
+export function renderFrame(frameJson: string, prevKind: string): string {
   let kind = frameType(frameJson);
 
   if (kind == TEXT_DELTA) {
     let f = decodeTextDelta(frameJson);
     if (f == null) { return ""; }
+    if (prevKind != TEXT_DELTA) {
+      return "\n" + f.text;
+    }
     return f.text;
   }
 
