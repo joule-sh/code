@@ -4,15 +4,8 @@ import { VIOLET, wrap } from "./style.ts";
 const GLYPH: string = "◆";
 
 export function quantaVerb(kind: string, tool: string): string {
-  if (kind == TURN_START || kind == TOOL_RESULT) {
+  if (kind == TURN_START || kind == TOOL_RESULT || kind == TOOL_CALL) {
     return "thinking";
-  }
-  if (kind == TOOL_CALL) {
-    if (tool == "read") { return "reading"; }
-    if (tool == "write" || tool == "edit") { return "writing"; }
-    if (tool == "list" || tool == "grep") { return "searching"; }
-    if (tool == "run") { return "running"; }
-    return "working";
   }
   return "";
 }
@@ -22,5 +15,5 @@ export function buildQuantaIndicator(kind: string, tool: string): string {
   if (verb == "") {
     return "";
   }
-  return wrap(VIOLET, GLYPH + " quanta is " + verb);
+  return wrap(VIOLET, GLYPH + " " + verb);
 }
