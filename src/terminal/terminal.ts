@@ -4,13 +4,14 @@ import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { readFile } from "../tools/files.ts";
-import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
+import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_DENY } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
-import { Scrollback, InputLine, InputHistory, PendingApproval } from "./input_state.ts";
+import { Scrollback, InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
@@ -114,6 +115,7 @@ export function runTerminal(argv: string[]): void {
 
   let onApprovalRequest = (callId: string, tool: string, summary: string, args: string) => {
     pendingApproval.set(callId);
+    pendingApproval.setTool(tool);
     if (live.sessionSlot.length > 0) {
       let s = live.sessionSlot[0];
       let frame: ApprovalRequestFrame = {
@@ -121,6 +123,7 @@ export function runTerminal(argv: string[]): void {
         turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: args, args: args,
       };
       s.emit(encodeApprovalRequest(frame));
+      pendingApproval.setOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
     }
   };
 
@@ -142,15 +145,17 @@ export function runTerminal(argv: string[]): void {
       if (gateBox.slot.length > 0) {
         drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
       }
-    } else if (k.kind == KEY_CHAR && k.char == "y" && gateBox.slot.length > 0) {
-      gateBox.slot[0].reply(pendingApproval.callId, REPLY_ALLOW);
-      pendingApproval.clearIfMatches(pendingApproval.callId);
-    } else if (k.kind == KEY_CHAR && k.char == "n" && gateBox.slot.length > 0) {
-      gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);
-      pendingApproval.clearIfMatches(pendingApproval.callId);
-    } else if (k.kind == KEY_CHAR && k.char == "a" && gateBox.slot.length > 0) {
-      gateBox.slot[0].reply(pendingApproval.callId, REPLY_ALWAYS);
-      pendingApproval.clearIfMatches(pendingApproval.callId);
+    } else if ((k.kind == KEY_ARROW_UP || k.kind == KEY_ARROW_DOWN) && gateBox.slot.length > 0) {
+      let delta = 1;
+      if (k.kind == KEY_ARROW_UP) { delta = -1; }
+      if (pendingApproval.moveSelection(delta, APPROVAL_OPTION_COUNT)) {
+        repaintApprovalOptions(sb, pendingApproval);
+        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+      }
+    } else if (k.kind == KEY_ENTER && gateBox.slot.length > 0) {
+      answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, pendingApproval.selected);
+    } else if (k.kind == KEY_CHAR && approvalOptionForChar(k.char) >= 0 && gateBox.slot.length > 0) {
+      answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, approvalOptionForChar(k.char));
     } else if (k.kind == KEY_CTRL_C) {
       if (gateBox.slot.length > 0) {
         gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);

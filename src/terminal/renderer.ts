@@ -1,5 +1,7 @@
 import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
 import { diffLines, diffCounts, renderDiffRows, DIFF_DISPLAY_MAX_ROWS } from "./diff.ts";
+import { DIM, REVERSE, RESET } from "./style.ts";
+import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 
 const TOOL_EDIT: string = "edit";
@@ -41,9 +43,41 @@ function diffBlockFor(tool: string, args: string): string {
   return "\n" + body;
 }
 
+const APPROVAL_OPTION_INDENT: string = "    ";
+const APPROVAL_MARKER_ON: string = "> ";
+const APPROVAL_MARKER_OFF: string = "  ";
+
+export function approvalOptionLabel(index: int, tool: string): string {
+  if (index == APPROVAL_OPTION_ALWAYS) {
+    return "2. Yes, and don't ask again for " + tool + " this session";
+  }
+  if (index == APPROVAL_OPTION_DENY) {
+    return "3. No";
+  }
+  return "1. Yes";
+}
+
+export function approvalOptionRow(index: int, selected: int, tool: string): string {
+  let label = approvalOptionLabel(index, tool);
+  if (index == selected) {
+    return APPROVAL_OPTION_INDENT + REVERSE + APPROVAL_MARKER_ON + label + RESET;
+  }
+  return APPROVAL_OPTION_INDENT + DIM + APPROVAL_MARKER_OFF + label + RESET;
+}
+
+export function approvalOptionsBlock(tool: string, selected: int): string {
+  let out = "";
+  let i = 0;
+  while (i < APPROVAL_OPTION_COUNT) {
+    out = out + "\n" + approvalOptionRow(i, selected, tool);
+    i = i + 1;
+  }
+  return out;
+}
+
 function approvalPrompt(summary: string, detail: string, tool: string, args: string): string {
   let diff = diffBlockFor(tool, args);
-  return "\n  ? " + summary + " [" + detail + "] " + diff + "\n    (y/n/a)";
+  return "\n  ? " + summary + " [" + detail + "] " + diff + approvalOptionsBlock(tool, APPROVAL_OPTION_ALLOW);
 }
 
 export function renderFrame(frameJson: string, prevKind: string): string {

@@ -47,6 +47,17 @@ TOOL_RESULT_OK_MARKER = "     ok:"
 TOOL_RESULT_FAIL_MARKER = "     failed:"
 APPROVAL_MARKER = "  ? "
 ERROR_MARKER = "! "
+RUN_TOOL_CALL_MARKER = '-> run {"command":'
+
+ARROW_UP = b"\x1b[A"
+ARROW_DOWN = b"\x1b[B"
+REVERSE_SEQ = "\x1b[7m"
+# One row of the approval option list (#88): an optional marker cursor, the
+# list position, then the label. Matched against the row with its SGR stripped,
+# so it holds at narrow widths where the label itself is clipped.
+APPROVAL_OPTION_RE = re.compile(r"^\s*(>|\s)\s*([123])\. (.*?)\s*$")
+APPROVAL_ALWAYS_LABEL_PREFIX = "Yes, and don't ask again for "
+APPROVAL_OPTION_COUNT = 3
 
 failures = []
 
@@ -241,6 +252,50 @@ def strip_sgr(s):
     return SGR_RE.sub("", s)
 
 
+def approval_option_rows(full_text):
+    """The approval prompt's option rows in the latest redraw, in list order.
+
+    Ticket #88 renders the decisions as a vertical numbered list instead of a
+    bare (y/n/a) line. Each entry carries its list position, whether it holds
+    the marker cursor, whether it is drawn in reverse video, and its label.
+    """
+    out = []
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        m = APPROVAL_OPTION_RE.match(strip_sgr(cell))
+        if m is None:
+            continue
+        out.append({
+            "number": int(m.group(2)),
+            "marked": m.group(1) == ">",
+            "highlighted": REVERSE_SEQ in cell,
+            "label": m.group(3),
+        })
+    return out
+
+
+def highlighted_option(option_rows):
+    """The list position of the single highlighted row, or 0 if not exactly one."""
+    lit = [r for r in option_rows if r["highlighted"] and r["marked"]]
+    return lit[0]["number"] if len(lit) == 1 else 0
+
+
+def check_approval_option_list(session, tool, label):
+    """Assert the shape of a freshly rendered, not yet answered, option list."""
+    session.settle(0.3, 2.0)
+    rows = approval_option_rows(text(bytes(session.raw)))
+    ok(len(rows) == APPROVAL_OPTION_COUNT, label + ": the approval prompt renders one row per decision, got %d" % len(rows))
+    if len(rows) != APPROVAL_OPTION_COUNT:
+        return rows
+    ok([r["number"] for r in rows] == [1, 2, 3], label + ": the option rows read 1, 2, 3 down the list")
+    ok(rows[0]["label"] == "Yes", label + ": option 1 is Yes, got %r" % rows[0]["label"])
+    ok(rows[1]["label"] == APPROVAL_ALWAYS_LABEL_PREFIX + tool + " this session", label + ": option 2 is the always option and names the tool, got %r" % rows[1]["label"])
+    ok(rows[2]["label"] == "No", label + ": option 3 is No, got %r" % rows[2]["label"])
+    ok(len([r for r in rows if r["highlighted"]]) == 1, label + ": exactly one option row is drawn in reverse video")
+    ok(len([r for r in rows if r["marked"]]) == 1, label + ": exactly one option row carries the marker cursor")
+    ok(highlighted_option(rows) == 1, label + ": option 1 is the highlighted one before any key is pressed")
+    return rows
+
+
 def check_zero_newlines(full_text):
     count = full_text.count("\n")
     ok(count == 0, "the captured stdout stream contains zero raw newline (0x0A) bytes, got %d" % count)
@@ -374,6 +429,135 @@ def seed_workspace(repo_dir):
         f.write("\n".join(file_b_lines) + "\n")
 
 
+def start_stub_session(prefix, rows=24, cols=80):
+    """A fresh workspace, stub model, and joule pty session.
+
+    The stub's scripted step counter lives in the stub process, so a scenario
+    that needs its own approval prompt needs its own stub alongside it.
+    """
+    import subprocess
+    work_dir = tempfile.mkdtemp(prefix=prefix)
+    repo_dir = os.path.join(work_dir, "repo")
+    home_dir = os.path.join(work_dir, "home")
+    os.makedirs(home_dir, exist_ok=True)
+    seed_workspace(repo_dir)
+
+    stub_port = free_port()
+    stub_env = dict(os.environ)
+    stub_env["E2E_STUB_PORT"] = str(stub_port)
+    stub_env["E2E_STUB_LOG"] = os.path.join(work_dir, "stub_requests.log")
+    stub_proc = subprocess.Popen([STUB_BIN], env=stub_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not wait_for_port(stub_port, 5.0):
+        stop_stub_session(work_dir, stub_proc, None)
+        raise Failure("stub model server did not start")
+
+    joule_env = dict(os.environ)
+    joule_env["HOME"] = home_dir
+    joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
+    joule_env["JOULE_CODE_MODEL"] = "stub"
+    joule_env["JOULE_CODE_API_KEY"] = "stub-key"  # non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
+    joule_env["TERM"] = "xterm-256color"
+    return work_dir, stub_proc, PtySession([JOULE_BIN], joule_env, repo_dir, rows=rows, cols=cols)
+
+
+def stop_stub_session(work_dir, stub_proc, session):
+    if session is not None:
+        session.close()
+    try:
+        stub_proc.terminate()
+        stub_proc.wait(timeout=3)
+    except Exception:
+        try:
+            stub_proc.kill()
+        except Exception:
+            pass
+    shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def drive_to_approval(session):
+    session.wait_for(BANNER, timeout=10.0)
+    session.write("add a health note\r")
+    session.wait_for(APPROVAL_MARKER, timeout=10.0)
+
+
+def check_clean_exit_invariants(session, label):
+    suffix = " (%s scenario)" % label
+    session.write("\x04")
+    ok(session.wait_exit(5.0), "joule exits cleanly on ctrl-d at the end of the %s scenario" % label)
+    session._pump(0.5)
+    full_text = text(bytes(session.raw))
+    ok(full_text.count("\n") == 0, "the %s scenario's stream contains zero raw newline (0x0A) bytes, got %d" % (label, full_text.count("\n")))
+    check_cursor_monotonic(full_text)
+    check_color_bleed(full_text, suffix)
+
+
+def run_approval_arrow_key_scenario():
+    """#88: the arrow keys move the highlight and Enter confirms the highlighted row."""
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-arrows-")
+        drive_to_approval(session)
+        check_approval_option_list(session, "run", "a fresh approval prompt")
+
+        def press(key):
+            session.write(key)
+            session.settle(0.2, 1.5)
+            return highlighted_option(approval_option_rows(text(bytes(session.raw))))
+
+        ok(press(ARROW_DOWN) == 2, "arrow down moves the highlight to option 2")
+        ok(press(ARROW_DOWN) == 3, "a second arrow down moves the highlight to option 3")
+        ok(press(ARROW_DOWN) == 3, "arrow down at the bottom of the list stays on option 3 rather than wrapping")
+        ok(press(ARROW_UP) == 2, "arrow up moves the highlight back to option 2")
+        ok(press(ARROW_UP) == 1, "arrow up returns the highlight to option 1")
+        ok(press(ARROW_UP) == 1, "arrow up at the top of the list stays on option 1 rather than wrapping")
+
+        session.write(ARROW_DOWN)
+        session.write(ARROW_DOWN)
+        session.settle(0.2, 1.5)
+        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 3, "the highlight is parked on option 3 before Enter is pressed")
+
+        pre_enter = len(session.raw)
+        session.write("\r")
+        session.wait_for("Done.", timeout=15.0)
+        session.settle(0.3, 2.0)
+        after_enter = text(bytes(session.raw[pre_enter:]))
+        ok(RUN_TOOL_CALL_MARKER not in after_enter, "Enter confirms the highlighted option rather than the default one: option 3 denies the call and the run tool never fires")
+        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 3, "the answered prompt keeps the confirmed option highlighted in the transcript")
+
+        check_clean_exit_invariants(session, "arrow-driven approval")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
+def run_approval_number_key_scenario():
+    """#88: a number key jumps straight to that option and confirms it."""
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-numbers-")
+        drive_to_approval(session)
+        check_approval_option_list(session, "run", "a fresh approval prompt before a number key")
+
+        session.write("2")
+        session.wait_for(RUN_TOOL_CALL_MARKER, timeout=10.0)
+        session.wait_for("Done.", timeout=15.0)
+        session.settle(0.3, 2.0)
+        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 2, "the number key 2 jumps the highlight onto the always option and confirms it")
+
+        rows_after = parse_redraw_rows(last_redraw_block(text(bytes(session.raw))))
+        input_rows = [strip_sgr(c).rstrip() for (_, c) in rows_after if strip_sgr(c).rstrip() == ">" or strip_sgr(c).rstrip().endswith("> 2")]
+        ok(all(r == ">" for r in input_rows), "the number key is consumed by the prompt rather than typed into the input line")
+
+        check_clean_exit_invariants(session, "number-key approval")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
 def run_scenario():
     self_test_color_bleed_detector()
 
@@ -424,12 +608,14 @@ def run_scenario():
         session.write("add a health note\r")
         session.wait_for('-> read {"path":"README.md"}', timeout=10.0)
         session.wait_for(APPROVAL_MARKER, timeout=10.0)
+        check_approval_option_list(session, "run", "the approval prompt of a real model turn")
         session.write("y")
-        session.wait_for('-> run {"command":', timeout=10.0)
+        session.wait_for(RUN_TOOL_CALL_MARKER, timeout=10.0)
         session.wait_for("Done.", timeout=15.0)
         session.settle(0.3, 2.0)
         turn_segment = text(bytes(session.raw[pre_turn_idx:]))
         ok(APPROVAL_MARKER in turn_segment, "a real model turn through the stub model produced an approval prompt (proves the marker check below is not vacuous)")
+        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 1, "answering with the y shortcut leaves option 1 as the highlighted, confirmed row (#88 keeps y/n/a working)")
         ok(TOOL_CALL_MARKER in turn_segment, "the same turn produced a tool.call marker (proves the marker check below is not vacuous)")
 
         rows_after_turn = visible_rows(last_redraw_block(text(bytes(session.raw))))
@@ -555,6 +741,16 @@ def main():
         failures.append(str(e))
     try:
         run_ctrl_c_exit_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_approval_arrow_key_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_approval_number_key_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))

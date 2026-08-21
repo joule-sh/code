@@ -1,3 +1,5 @@
+import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
+
 export class Scrollback {
   lines: string[];
   offset: int;
@@ -32,6 +34,17 @@ export class Scrollback {
   clear(): void {
     this.lines = [""];
     this.offset = 0;
+  }
+
+  setLine(index: int, text: string): void {
+    if (index < 0 || index >= this.lines.length) {
+      return;
+    }
+    this.lines = [...this.lines.slice(0, index), text, ...this.lines.slice(index + 1, this.lines.length)];
+  }
+
+  lineCount(): int {
+    return this.lines.length;
   }
 
   tail(n: int): string[] {
@@ -183,20 +196,82 @@ export class InputHistory {
   }
 }
 
+export const APPROVAL_OPTION_ALLOW: int = 0;
+export const APPROVAL_OPTION_ALWAYS: int = 1;
+export const APPROVAL_OPTION_DENY: int = 2;
+export const APPROVAL_OPTION_COUNT: int = 3;
+
+export function approvalOptionForChar(ch: string): int {
+  if (ch == "y" || ch == "1") { return APPROVAL_OPTION_ALLOW; }
+  if (ch == "a" || ch == "2") { return APPROVAL_OPTION_ALWAYS; }
+  if (ch == "n" || ch == "3") { return APPROVAL_OPTION_DENY; }
+  return -1;
+}
+
+export function decisionForApprovalOption(index: int): string {
+  if (index == APPROVAL_OPTION_ALWAYS) { return REPLY_ALWAYS; }
+  if (index == APPROVAL_OPTION_DENY) { return REPLY_DENY; }
+  return REPLY_ALLOW;
+}
+
 export class PendingApproval {
   callId: string;
+  tool: string;
+  selected: int;
+  firstOptionRow: int;
 
   constructor() {
     this.callId = "";
+    this.tool = "";
+    this.selected = 0;
+    this.firstOptionRow = -1;
   }
 
   set(id: string): void {
     this.callId = id;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setTool(tool: string): void {
+    this.tool = tool;
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int, count: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) {
+      next = 0;
+    }
+    if (next > count - 1) {
+      next = count - 1;
+    }
+    if (next == this.selected) {
+      return false;
+    }
+    this.selected = next;
+    return true;
+  }
+
+  select(index: int, count: int): void {
+    if (index < 0 || index >= count) {
+      return;
+    }
+    this.selected = index;
   }
 
   clearIfMatches(id: string): void {
     if (this.callId == id) {
       this.callId = "";
+      this.tool = "";
+      this.firstOptionRow = -1;
     }
   }
 

@@ -94,6 +94,23 @@ test("tryHandleAgentApprovalChar maps n to deny and a to always", () => {
   expect(fakeA.lastDecision == "always");
 });
 
+test("tryHandleAgentApprovalChar also takes the option list's number keys", () => {
+  let fake1 = new FakeApprovals(true);
+  let responder1: ApprovalResponder = { hasPendingApproval: () => fake1.hasPendingApproval(), answerActiveApproval: (d: string) => fake1.answerActiveApproval(d) };
+  expect(tryHandleAgentApprovalChar(responder1, true, "1"));
+  expect(fake1.lastDecision == "allow");
+
+  let fake2 = new FakeApprovals(true);
+  let responder2: ApprovalResponder = { hasPendingApproval: () => fake2.hasPendingApproval(), answerActiveApproval: (d: string) => fake2.answerActiveApproval(d) };
+  expect(tryHandleAgentApprovalChar(responder2, true, "2"));
+  expect(fake2.lastDecision == "always");
+
+  let fake3 = new FakeApprovals(true);
+  let responder3: ApprovalResponder = { hasPendingApproval: () => fake3.hasPendingApproval(), answerActiveApproval: (d: string) => fake3.answerActiveApproval(d) };
+  expect(tryHandleAgentApprovalChar(responder3, true, "3"));
+  expect(fake3.lastDecision == "deny");
+});
+
 test("cancelCommandArg extracts the id after 'cancel '", () => {
   expect(cancelCommandArg("cancel agent-1") == "agent-1");
   expect(cancelCommandArg("cancel  bgrun-2  ") == "bgrun-2");
