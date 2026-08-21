@@ -9,6 +9,7 @@ import { styleFrame, stylePrompt, styleScrollIndicator } from "./style.ts";
 import { buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
 import { Scrollback, InputLine, clip } from "./input_state.ts";
+import { completionRows, panelBudget } from "./completion.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 
 const STDIN: int = 0;
@@ -66,7 +67,9 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, quant
   if (!atBottom) { indicatorRows = indicatorRows + 1; }
   if (quantaText != "") { indicatorRows = indicatorRows + 1; }
 
-  let visible = r - 2 - indicatorRows;
+  let panel = completionRows(input.completion, c, panelBudget(r, indicatorRows));
+
+  let visible = r - 2 - indicatorRows - panel.length;
   if (visible < 0) { visible = 0; }
   let tail = sb.tailFrom(visible, sb.offset);
   let blanks = visible - tail.length;
@@ -91,6 +94,12 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, quant
   if (quantaText != "") {
     out = out + cursorTo(row, 1) + CLEAR_LINE + clip(quantaText, c);
     row = row + 1;
+  }
+  let pr = 0;
+  while (pr < panel.length) {
+    out = out + cursorTo(row, 1) + CLEAR_LINE + clip(panel[pr], c);
+    row = row + 1;
+    pr = pr + 1;
   }
   out = out + cursorTo(r - 1, 1) + CLEAR_LINE + clip(buildStatusLine(mode), c);
   out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;

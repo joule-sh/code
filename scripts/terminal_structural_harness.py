@@ -51,6 +51,14 @@ RUN_TOOL_CALL_MARKER = '-> run {"command":'
 
 ARROW_UP = b"\x1b[A"
 ARROW_DOWN = b"\x1b[B"
+TAB = b"\t"
+BACKSPACE = b"\x7f"
+# #83: a completion panel row is an optional marker cursor, the command name
+# padded into its own column, then the description. Matched with the SGR
+# stripped, and required to carry the two-space column gap so the input row
+# ("> /model") can never be mistaken for one.
+COMPLETION_ROW_RE = re.compile(r"^(>|\s)\s(/[a-z]+)\s\s")
+RULE_CHAR = "\u2500".encode("utf-8").decode("latin1")
 REVERSE_SEQ = "\x1b[7m"
 # One row of the approval option list (#88): an optional marker cursor, the
 # list position, then the label. Matched against the row with its SGR stripped,
@@ -271,6 +279,44 @@ def approval_option_rows(full_text):
             "label": m.group(3),
         })
     return out
+
+
+def completion_rows(full_text):
+    """The slash-command completion panel's entry rows in the latest redraw (#83)."""
+    out = []
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        m = COMPLETION_ROW_RE.match(strip_sgr(cell))
+        if m is None:
+            continue
+        out.append({"marked": m.group(1) == ">", "name": m.group(2)})
+    return out
+
+
+def completion_names(full_text):
+    return [r["name"] for r in completion_rows(full_text)]
+
+
+def marked_completion(full_text):
+    """The single marked command name in the panel, or "" if not exactly one."""
+    marked = [r["name"] for r in completion_rows(full_text) if r["marked"]]
+    return marked[0] if len(marked) == 1 else ""
+
+
+def rule_rows(full_text):
+    """Rows made up only of the horizontal-rule glyph, so box borders do not count."""
+    out = []
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        bare = strip_sgr(cell).rstrip()
+        if len(bare) > 0 and bare.replace(RULE_CHAR, "") == "":
+            out.append(bare)
+    return out
+
+
+def input_row(full_text, height):
+    for (row, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        if row == height:
+            return strip_sgr(cell).rstrip()
+    return ""
 
 
 def highlighted_option(option_rows):
@@ -638,6 +684,95 @@ def run_resume_scenario():
             pass
 
 
+def run_completion_panel_scenario():
+    """#83: typing a slash opens the completion panel, and the arrow keys drive it."""
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-completion-")
+        session.wait_for(BANNER, timeout=10.0)
+        session.settle(0.2, 1.5)
+
+        before = text(bytes(session.raw))
+        ok(len(completion_rows(before)) == 0, "no completion panel is drawn before anything is typed")
+
+        session.write("/")
+        session.settle(0.2, 1.5)
+        opened = text(bytes(session.raw))
+        names = completion_names(opened)
+        ok(len(names) >= 8, "a bare slash opens the panel listing every command, got %d rows" % len(names))
+        for expected in ("/help", "/model", "/mode", "/share", "/cat", "/tasks", "/clear", "/exit"):
+            ok(expected in names, "the panel lists %s when the buffer is a bare slash" % expected)
+        ok(len(rule_rows(opened)) == 1, "a single horizontal rule separates the panel from the rows below it")
+        ok(marked_completion(opened) == "/help", "the first match carries the marker cursor when the panel opens")
+        ok(input_row(opened, session.rows).endswith("> /"), "the typed slash is still on the input row under the panel")
+
+        session.write("m")
+        session.settle(0.2, 1.5)
+        narrowed = text(bytes(session.raw))
+        ok(completion_names(narrowed) == ["/model", "/mode"], "typing m narrows the panel to the commands starting with /m, got %r" % completion_names(narrowed))
+        ok(marked_completion(narrowed) == "/model", "the marker resets to the first match as the list narrows")
+
+        session.write(ARROW_DOWN)
+        session.settle(0.2, 1.5)
+        ok(marked_completion(text(bytes(session.raw))) == "/mode", "arrow down moves the panel marker to the next match")
+
+        session.write(ARROW_DOWN)
+        session.settle(0.2, 1.5)
+        ok(marked_completion(text(bytes(session.raw))) == "/mode", "arrow down at the end of the list stays put rather than wrapping")
+
+        session.write(ARROW_UP)
+        session.settle(0.2, 1.5)
+        ok(marked_completion(text(bytes(session.raw))) == "/model", "arrow up moves the panel marker back up the list")
+
+        session.write(TAB)
+        session.settle(0.2, 1.5)
+        completed = text(bytes(session.raw))
+        ok(input_row(completed, session.rows).endswith("> /model"), "Tab completes the marked entry into the input buffer, got %r" % input_row(completed, session.rows))
+        ok(completion_names(completed) == ["/model"], "the panel narrows to the completed command and stays open")
+
+        session.write(BACKSPACE * 6)
+        session.settle(0.2, 1.5)
+        closed = text(bytes(session.raw))
+        ok(len(completion_rows(closed)) == 0, "backspacing the slash away closes the panel")
+        ok(len(rule_rows(closed)) == 0, "the horizontal rule goes away with the panel")
+
+        session.write("/mode\r")
+        session.wait_for("mode: auto-edit", timeout=10.0)
+        session.settle(0.2, 1.5)
+        ran = text(bytes(session.raw))
+        ok(len(completion_rows(ran)) == 0, "submitting the completed command closes the panel")
+        ok("mode: auto-edit" in strip_sgr(last_redraw_block(ran)), "Enter with the panel open runs the command as usual")
+
+        session.write("add a health note\r")
+        session.wait_for(APPROVAL_MARKER, timeout=10.0)
+        check_approval_option_list(session, "run", "an approval prompt raised after the panel has been used")
+        session.write(ARROW_DOWN)
+        session.settle(0.2, 1.5)
+        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 2, "the approval prompt still takes the arrow keys after the completion panel has been open (#89/#96 regression check)")
+        session.write("\r")
+        session.wait_for("Done.", timeout=15.0)
+        session.settle(0.3, 2.0)
+
+        session.write(ARROW_UP)
+        session.settle(0.2, 1.5)
+        recalled = text(bytes(session.raw))
+        ok(input_row(recalled, session.rows).endswith("> add a health note"), "with the panel closed the arrow keys still recall input history, got %r" % input_row(recalled, session.rows))
+        ok(len(completion_rows(recalled)) == 0, "a recalled history entry that is not a slash command leaves the panel closed")
+
+        session.write(ARROW_UP)
+        session.settle(0.2, 1.5)
+        ok(input_row(text(bytes(session.raw)), session.rows).endswith("> add a health note"), "a second arrow up stays in history recall rather than jumping into a panel")
+
+        session.write("\x03")
+        session.settle(0.2, 1.5)
+        check_clean_exit_invariants(session, "completion panel")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
 def run_scenario():
     self_test_color_bleed_detector()
 
@@ -831,6 +966,11 @@ def main():
         failures.append(str(e))
     try:
         run_approval_number_key_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_completion_panel_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))

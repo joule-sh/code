@@ -11,6 +11,10 @@ export const CMD_NONE: string = "none";
 
 export type ParsedCommand = { kind: string, arg: string };
 
+export type CommandInfo = { name: string, args: string, description: string };
+
+const HELP_COLUMN: int = 15;
+
 function withKind(kind: string, arg: string): ParsedCommand {
   let p: ParsedCommand = { kind: kind, arg: arg };
   return p;
@@ -42,25 +46,42 @@ export function parseCommand(line: string): ParsedCommand {
   return withKind(CMD_UNKNOWN, name);
 }
 
-export function helpText(): string {
-  let lines: string[] = [
-    "/help          show this help",
-    "/model [name]  show or set the model",
-    "/mode [mode]   show or set the approval mode (read-only, auto-edit, full-auto)",
-    "/share         print the pairing URL for this session",
-    "/cat <path>    show a file's contents without asking the model",
-    "/tasks         list running and finished background tasks and subagents",
-    "/tasks cancel <id>  ask a subagent to stop, or detach from a background task",
-    "/clear         clear the scrollback",
-    "PageUp/PageDown  scroll the transcript",
-    "/exit          quit",
+export function commandList(): CommandInfo[] {
+  let out: CommandInfo[] = [
+    { name: "/help", args: "", description: "show this help" },
+    { name: "/model", args: "[name]", description: "show or set the model" },
+    { name: "/mode", args: "[mode]", description: "show or set the approval mode (read-only, auto-edit, full-auto)" },
+    { name: "/share", args: "", description: "print the pairing URL for this session" },
+    { name: "/cat", args: "<path>", description: "show a file's contents without asking the model" },
+    { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
+    { name: "/clear", args: "", description: "clear the scrollback" },
+    { name: "/exit", args: "", description: "quit" },
   ];
+  return out;
+}
+
+function padColumn(text: string, width: int): string {
+  let out = text + " ";
+  while (out.length < width) {
+    out = out + " ";
+  }
+  return out;
+}
+
+function helpLabel(cmd: CommandInfo): string {
+  if (cmd.args == "") { return cmd.name; }
+  return cmd.name + " " + cmd.args;
+}
+
+export function helpText(): string {
+  let cmds = commandList();
   let out = "";
   let i = 0;
-  while (i < lines.length) {
+  while (i < cmds.length) {
     if (i > 0) { out = out + "\n"; }
-    out = out + lines[i];
+    out = out + padColumn(helpLabel(cmds[i]), HELP_COLUMN) + cmds[i].description;
     i = i + 1;
   }
+  out = out + "\n" + padColumn("PageUp/PageDown", HELP_COLUMN) + "scroll the transcript";
   return out;
 }
