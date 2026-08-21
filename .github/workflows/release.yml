@@ -21,7 +21,7 @@ jobs:
             runs_on: macos-14
             lumen_dist: lumen-aarch64-macos
           - target: x86_64-macos
-            runs_on: macos-13
+            runs_on: macos-15-intel
             lumen_dist: lumen-x86_64-macos
     runs-on: ${{ matrix.runs_on }}
     env:
