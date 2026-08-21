@@ -85,6 +85,35 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         max_row_1 = max((r for (r, _) in rows1), default=0)
         ok(max_row_1 <= rows, "no row of the startup redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_1, rows)))
 
+        # #83: the completion panel eats rows above the status bar. It must fit
+        # the terminal at every size, and where it cannot fit at all it has to
+        # step aside rather than push a row off the bottom.
+        session.write("/")
+        session.settle(0.2, 1.5)
+        full_panel = harness.text(bytes(session.raw))
+        panel_names = harness.completion_names(full_panel)
+        rows_panel = harness.parse_redraw_rows(harness.last_redraw_block(full_panel))
+        max_row_panel = max((r for (r, _) in rows_panel), default=0)
+        ok(max_row_panel <= rows, "no row of the completion-panel redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_panel, rows)))
+        ok(len(panel_names) > 0, "the completion panel opens on a bare slash" + label_suffix + (" (got %d rows)" % len(panel_names)))
+        ok(len(harness.rule_rows(full_panel)) == 1, "the completion panel draws exactly one horizontal rule" + label_suffix)
+        status_rows_panel = [c for (_, c) in rows_panel if "mode:" in harness.strip_sgr(c)]
+        ok(len(status_rows_panel) == 1, "exactly one status-bar row is present while the completion panel is open" + label_suffix)
+        ok(len(panel_names) + 1 <= rows - 2, "the panel leaves the status bar, the input row and at least one transcript row alone" + label_suffix + (" (%d panel rows, height %d)" % (len(panel_names) + 1, rows)))
+
+        session.resize(4, cols)
+        session.write("x")
+        session.write("\x7f")
+        session.settle(0.2, 1.5)
+        full_squeezed = harness.text(bytes(session.raw))
+        rows_squeezed = harness.parse_redraw_rows(harness.last_redraw_block(full_squeezed))
+        max_row_squeezed = max((r for (r, _) in rows_squeezed), default=0)
+        ok(max_row_squeezed <= 4, "a terminal with no room for the panel drops it instead of addressing a row past the height" + label_suffix + (" (max row %d)" % max_row_squeezed))
+        ok(len(harness.completion_rows(full_squeezed)) == 0, "the panel is not drawn at all when the terminal is too short to hold it" + label_suffix)
+        session.resize(rows, cols)
+        session.write("\x7f")
+        session.settle(0.2, 1.5)
+
         session.write("hello there")
         session.settle(0.2, 1.0)
         full_after_typing = harness.text(bytes(session.raw))

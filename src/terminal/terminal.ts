@@ -1,10 +1,10 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, rows, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { readFile } from "../tools/files.ts";
-import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_DENY } from "../approval/gate.ts";
+import { Gate, MODE_AUTO_EDIT, REPLY_DENY } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
@@ -22,65 +22,11 @@ import { TaskManager } from "../tasks/manager.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
+import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode } from "./slots.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
 const WHEEL_SCROLL_LINES: int = 3;
-
-function screenRows(): int {
-  let r = rows(STDIN);
-  if (r <= 1) { r = 24; }
-  return r;
-}
-
-function hasFlag(argv: string[], name: string): bool {
-  for (const a of argv) {
-    if (a == name) {
-      return true;
-    }
-  }
-  return false;
-}
-
-class GateBox {
-  slot: Gate[];
-  constructor() {
-    this.slot = [];
-  }
-  set(g: Gate): void {
-    this.slot = [g];
-  }
-}
-
-class RelayBox {
-  relaySlot: RelayClient[];
-  sessionSlot: Session[];
-  bridgeSlot: RelayInputBridge[];
-  constructor() {
-    this.relaySlot = [];
-    this.sessionSlot = [];
-    this.bridgeSlot = [];
-  }
-  set(r: RelayClient, s: Session, b: RelayInputBridge): void {
-    this.relaySlot = [r];
-    this.sessionSlot = [s];
-    this.bridgeSlot = [b];
-  }
-}
-
-class TasksBox {
-  slot: TaskManager[];
-  constructor() {
-    this.slot = [];
-  }
-  set(t: TaskManager): void {
-    this.slot = [t];
-  }
-}
-
-function isValidMode(mode: string): bool {
-  return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_FULL_AUTO;
-}
 
 export function runTerminal(argv: string[]): void {
   if (!isatty(STDIN)) {
@@ -297,8 +243,20 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
+    if (k.kind == KEY_TAB || k.kind == KEY_ARROW_RIGHT) {
+      if (input.acceptCompletion()) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+      }
+      continue;
+    }
+
     if (k.kind == KEY_ARROW_UP) {
       if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", -1)) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+        continue;
+      }
+      if (input.completion.isOpen() && !history.navigating) {
+        input.completion.move(-1);
         drawScreen(sb, input, gate.mode, rk.quantaText());
         continue;
       }
@@ -309,6 +267,11 @@ export function runTerminal(argv: string[]): void {
 
     if (k.kind == KEY_ARROW_DOWN) {
       if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", 1)) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+        continue;
+      }
+      if (input.completion.isOpen() && !history.navigating) {
+        input.completion.move(1);
         drawScreen(sb, input, gate.mode, rk.quantaText());
         continue;
       }

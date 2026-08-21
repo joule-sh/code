@@ -1,4 +1,5 @@
 import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
+import { Completion } from "./completion.ts";
 
 export class Scrollback {
   lines: string[];
@@ -111,33 +112,44 @@ export class Scrollback {
 
 export class InputLine {
   buf: string;
+  completion: Completion;
 
   constructor() {
     this.buf = "";
+    this.completion = new Completion();
   }
 
   push(ch: string): void {
-    this.buf = this.buf + ch;
+    this.setBuf(this.buf + ch);
   }
 
   backspace(): void {
     if (this.buf.length > 0) {
-      this.buf = this.buf.slice(0, this.buf.length - 1);
+      this.setBuf(this.buf.slice(0, this.buf.length - 1));
     }
   }
 
   takeAndClear(): string {
     let out = this.buf;
-    this.buf = "";
+    this.setBuf("");
     return out;
   }
 
   clear(): void {
-    this.buf = "";
+    this.setBuf("");
   }
 
   setBuf(text: string): void {
     this.buf = text;
+    this.completion.refresh(text);
+  }
+
+  acceptCompletion(): bool {
+    if (!this.completion.isOpen()) {
+      return false;
+    }
+    this.setBuf(this.completion.selectedName());
+    return true;
   }
 }
 
