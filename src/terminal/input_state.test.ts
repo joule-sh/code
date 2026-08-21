@@ -1,4 +1,4 @@
-import { Scrollback, InputLine, InputHistory, PendingApproval, clip } from "./input_state.ts";
+import { Scrollback, InputLine, InputHistory, PendingApproval, clip, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 
 test("Scrollback starts with a single empty line", () => {
   let sb = new Scrollback();
@@ -199,6 +199,117 @@ test("PendingApproval tracks and clears a call id", () => {
   expect(p.isPending());
   p.clearIfMatches("c1");
   expect(!p.isPending());
+});
+
+test("a fresh PendingApproval starts on the first option with no option rows on screen", () => {
+  let p = new PendingApproval();
+  expect(p.selected == APPROVAL_OPTION_ALLOW);
+  expect(!p.hasOptionRows());
+  p.set("c1");
+  p.setOptionRows(7);
+  expect(p.hasOptionRows());
+  expect(p.firstOptionRow == 7);
+});
+
+test("moveSelection walks the option list and reports whether the highlight actually moved", () => {
+  let p = new PendingApproval();
+  expect(p.moveSelection(1, APPROVAL_OPTION_COUNT));
+  expect(p.selected == APPROVAL_OPTION_ALWAYS);
+  expect(p.moveSelection(1, APPROVAL_OPTION_COUNT));
+  expect(p.selected == APPROVAL_OPTION_DENY);
+  expect(p.moveSelection(-1, APPROVAL_OPTION_COUNT));
+  expect(p.selected == APPROVAL_OPTION_ALWAYS);
+});
+
+test("moveSelection clamps at both ends rather than wrapping, and reports no move there", () => {
+  let p = new PendingApproval();
+  expect(!p.moveSelection(-1, APPROVAL_OPTION_COUNT));
+  expect(p.selected == APPROVAL_OPTION_ALLOW);
+  p.select(APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT);
+  expect(!p.moveSelection(1, APPROVAL_OPTION_COUNT));
+  expect(p.selected == APPROVAL_OPTION_DENY);
+});
+
+test("select ignores an index outside the option list", () => {
+  let p = new PendingApproval();
+  p.select(APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT);
+  p.select(APPROVAL_OPTION_COUNT, APPROVAL_OPTION_COUNT);
+  p.select(-1, APPROVAL_OPTION_COUNT);
+  expect(p.selected == APPROVAL_OPTION_DENY);
+});
+
+test("a new approval resets the highlight back to the first option", () => {
+  let p = new PendingApproval();
+  p.set("c1");
+  p.moveSelection(2, APPROVAL_OPTION_COUNT);
+  expect(p.selected == APPROVAL_OPTION_DENY);
+  p.set("c2");
+  expect(p.selected == APPROVAL_OPTION_ALLOW);
+  expect(!p.hasOptionRows());
+});
+
+test("clearing an answered approval forgets its option rows so later keys cannot repaint them", () => {
+  let p = new PendingApproval();
+  p.set("c1");
+  p.setTool("run");
+  p.setOptionRows(3);
+  p.clearIfMatches("c1");
+  expect(!p.hasOptionRows());
+  expect(p.tool == "");
+});
+
+test("approvalOptionForChar keeps y/n/a working and adds the list positions", () => {
+  expect(approvalOptionForChar("y") == APPROVAL_OPTION_ALLOW);
+  expect(approvalOptionForChar("1") == APPROVAL_OPTION_ALLOW);
+  expect(approvalOptionForChar("a") == APPROVAL_OPTION_ALWAYS);
+  expect(approvalOptionForChar("2") == APPROVAL_OPTION_ALWAYS);
+  expect(approvalOptionForChar("n") == APPROVAL_OPTION_DENY);
+  expect(approvalOptionForChar("3") == APPROVAL_OPTION_DENY);
+});
+
+test("approvalOptionForChar returns -1 for anything that is not a shortcut", () => {
+  expect(approvalOptionForChar("x") == -1);
+  expect(approvalOptionForChar("0") == -1);
+  expect(approvalOptionForChar("4") == -1);
+  expect(approvalOptionForChar("") == -1);
+  expect(approvalOptionForChar("Y") == -1);
+});
+
+test("each option maps onto the existing allow/always/deny reply vocabulary", () => {
+  expect(decisionForApprovalOption(APPROVAL_OPTION_ALLOW) == "allow");
+  expect(decisionForApprovalOption(APPROVAL_OPTION_ALWAYS) == "always");
+  expect(decisionForApprovalOption(APPROVAL_OPTION_DENY) == "deny");
+});
+
+test("setLine repaints one line without changing the line count or the lines around it", () => {
+  let sb = new Scrollback();
+  sb.append("one\ntwo\nthree");
+  let before = sb.lineCount();
+  sb.setLine(1, "TWO");
+  expect(sb.lineCount() == before);
+  expect(sb.lines[0] == "one");
+  expect(sb.lines[1] == "TWO");
+  expect(sb.lines[2] == "three");
+});
+
+test("setLine outside the buffer is a no-op rather than a crash", () => {
+  let sb = new Scrollback();
+  sb.append("one\ntwo");
+  let before = sb.lineCount();
+  sb.setLine(-1, "nope");
+  sb.setLine(before, "nope");
+  expect(sb.lineCount() == before);
+  expect(sb.lines[before - 1] == "two");
+});
+
+test("setLine does not move a scrolled up view", () => {
+  let sb = new Scrollback();
+  sb.append("a\nb\nc\nd\ne\nf");
+  sb.scrollUp(3, 2);
+  let offsetBefore = sb.offset;
+  sb.setLine(sb.lineCount() - 1, "F");
+  expect(sb.offset == offsetBefore);
+  expect(sb.lines[sb.lineCount() - 1] == "F");
 });
 
 test("clip truncates a line to the given width", () => {

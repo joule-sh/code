@@ -96,6 +96,24 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         session.write("\r")
         session.wait_for('-> read', timeout=10.0)
         session.wait_for(harness.APPROVAL_MARKER, timeout=10.0)
+        session.settle(0.2, 1.5)
+
+        # #88: the option list adds rows to the prompt. They have to all land
+        # on screen, and inside the terminal, at every size we support. The
+        # labels themselves are clipped at narrow widths, so only the row
+        # structure is asserted here, not the label text.
+        full_at_approval = harness.text(bytes(session.raw))
+        option_rows = harness.approval_option_rows(full_at_approval)
+        ok(len(option_rows) == harness.APPROVAL_OPTION_COUNT, "all %d approval option rows are on screen at once" % harness.APPROVAL_OPTION_COUNT + label_suffix + (" (got %d)" % len(option_rows)))
+        ok([r["number"] for r in option_rows] == [1, 2, 3], "the approval option rows read 1, 2, 3 down the list" + label_suffix)
+        ok(harness.highlighted_option(option_rows) == 1, "the first approval option is the highlighted one" + label_suffix)
+
+        rows_at_approval = harness.parse_redraw_rows(harness.last_redraw_block(full_at_approval))
+        max_row_approval = max((r for (r, _) in rows_at_approval), default=0)
+        ok(max_row_approval <= rows, "no row of the approval redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_approval, rows)))
+        status_rows_approval = [c for (_, c) in rows_at_approval if "mode:" in harness.strip_sgr(c)]
+        ok(len(status_rows_approval) == 1, "exactly one status-bar row is present while the approval prompt is up" + label_suffix)
+
         session.write("y")
         session.wait_for("Done.", timeout=15.0)
         session.settle(0.3, 2.0)

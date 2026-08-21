@@ -73,7 +73,9 @@ expectContains(
 
 const approvalText = renderFrameText('{"v":1,"seq":1,"type":"approval.request","turnId":"t1","callId":"c1","tool":"run","summary":"run npm test","detail":"npm test","args":"{\\"command\\":\\"npm test\\"}"}', "");
 expectContains(approvalText, "run npm test", "approval.request renders the summary");
-expectContains(approvalText, "(y/n/a)", "approval.request renders the y/n/a marker (text-parity form; the live UI shows buttons instead)");
+expectContains(approvalText, "1. Yes", "approval.request renders option 1 of the decision list (#88)");
+expectContains(approvalText, "2. Yes, and don't ask again for run this session", "approval.request names the tool in option 2 of the decision list (#88)");
+expectContains(approvalText, "3. No", "approval.request renders option 3 of the decision list (#88)");
 
 expectContains(
   renderFrameText('{"v":1,"seq":1,"type":"turn.end","turnId":"t1","reason":"cancelled"}', ""),
@@ -105,6 +107,8 @@ const ESC = String.fromCharCode(27);
 const ANSI_RESET = ESC + "[0m";
 const ANSI_RED = ESC + "[38;2;229;72;77m";
 const ANSI_GREEN = ESC + "[38;2;110;190;115m";
+const ANSI_DIM = ESC + "[38;2;120;120;125m";
+const ANSI_REVERSE = ESC + "[7m";
 
 function toolCallFrame(tool, args) {
   return JSON.stringify({ v: 1, seq: 1, type: "tool.call", turnId: "t1", callId: "c1", tool: tool, args: JSON.stringify(args) });
@@ -140,20 +144,35 @@ const editApprovalOut = renderFrameText(approvalRequestFrame("edit", "edit src/a
 expectContains(editApprovalOut, ANSI_RED + "- const x = 1;", "an edit approval.request renders a red removed line before the decision (#69 approval diff)");
 expectContains(editApprovalOut, ANSI_GREEN + "+ const x = 2;", "an edit approval.request renders a green added line before the decision (#69 approval diff)");
 expectTrue(
-  editApprovalOut.indexOf(ANSI_RED + "- const x = 1;") < editApprovalOut.indexOf("(y/n/a)"),
-  "an edit approval.request shows the diff above the y/n/a decision line (#69 approval diff)"
+  editApprovalOut.indexOf(ANSI_RED + "- const x = 1;") < editApprovalOut.indexOf("1. Yes"),
+  "an edit approval.request shows the diff above the decision option list (#69 approval diff, #88 option list)"
 );
 
 const writeApprovalOut = renderFrameText(approvalRequestFrame("write", "write src/new.ts", { path: "src/new.ts", content: "line one\nline two" }), "");
 expectContains(writeApprovalOut, ANSI_GREEN + "+ line one", "a write approval.request renders a green added line before the decision (#69 approval diff)");
 expectTrue(
-  writeApprovalOut.indexOf(ANSI_GREEN + "+ line one") < writeApprovalOut.indexOf("(y/n/a)"),
-  "a write approval.request shows the diff above the y/n/a decision line (#69 approval diff)"
+  writeApprovalOut.indexOf(ANSI_GREEN + "+ line one") < writeApprovalOut.indexOf("1. Yes"),
+  "a write approval.request shows the diff above the decision option list (#69 approval diff, #88 option list)"
 );
 
 const runApprovalOut = renderFrameText(approvalRequestFrame("run", "run npm test", { command: "npm test" }), "");
 expectTrue(runApprovalOut.indexOf(ANSI_GREEN) < 0 && runApprovalOut.indexOf(ANSI_RED) < 0, "a run approval.request renders no diff, scope stays write/edit only (#69 approval diff)");
-expectContains(runApprovalOut, "(y/n/a)", "a run approval.request still renders the plain decision line (#69 approval diff)");
+expectContains(runApprovalOut, "1. Yes", "a run approval.request still renders the plain decision option list (#69 approval diff)");
+
+// #88: the option list is one row per decision, the first highlighted by
+// default, the rest dim. The web UI answers with buttons rather than arrow
+// keys, so only the rendered shape is mirrored here.
+expectContains(runApprovalOut, "\n    " + ANSI_REVERSE + "> 1. Yes" + ANSI_RESET, "the first option is highlighted by default, on its own row (#88)");
+expectContains(runApprovalOut, "\n    " + ANSI_DIM + "  2. Yes, and don't ask again for run this session" + ANSI_RESET, "the always option is dim and names the tool, on its own row (#88)");
+expectContains(runApprovalOut, "\n    " + ANSI_DIM + "  3. No" + ANSI_RESET, "the deny option is dim, on its own row (#88)");
+expectTrue(
+  runApprovalOut.indexOf("1. Yes") < runApprovalOut.indexOf("2. Yes, and") && runApprovalOut.indexOf("2. Yes, and") < runApprovalOut.indexOf("3. No"),
+  "the options render in list order, allow then always then deny (#88)"
+);
+expectTrue(
+  runApprovalOut.split("\n").filter((line) => line.indexOf(ANSI_REVERSE) >= 0).length === 1,
+  "exactly one option row is highlighted at a time (#88)"
+);
 
 console.log("");
 if (failures > 0) {

@@ -1,7 +1,6 @@
 import { frameTurnId } from "../protocol/frames.ts";
-import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
-import { Scrollback } from "./input_state.ts";
+import { Scrollback, approvalOptionForChar, decisionForApprovalOption } from "./input_state.ts";
 import { renderFrame } from "./renderer.ts";
 
 const BG_PREFIX: string = "bg:";
@@ -41,10 +40,10 @@ export function appendTaggedFrame(sb: Scrollback, frameJson: string): void {
 export function tryHandleAgentApprovalChar(tasks: ApprovalResponder, inputEmpty: bool, ch: string): bool {
   if (!inputEmpty) { return false; }
   if (!tasks.hasPendingApproval()) { return false; }
-  if (ch == "y") { tasks.answerActiveApproval(REPLY_ALLOW); return true; }
-  if (ch == "n") { tasks.answerActiveApproval(REPLY_DENY); return true; }
-  if (ch == "a") { tasks.answerActiveApproval(REPLY_ALWAYS); return true; }
-  return false;
+  let option = approvalOptionForChar(ch);
+  if (option < 0) { return false; }
+  tasks.answerActiveApproval(decisionForApprovalOption(option));
+  return true;
 }
 
 export function cancelCommandArg(arg: string): string {

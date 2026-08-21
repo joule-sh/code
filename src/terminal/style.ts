@@ -9,6 +9,7 @@ export const DIM: string = ESC + "[38;2;120;120;125m";
 export const RED: string = ESC + "[38;2;229;72;77m";
 export const GREEN: string = ESC + "[38;2;110;190;115m";
 export const YELLOW: string = ESC + "[38;2;214;168;73m";
+export const REVERSE: string = ESC + "[7m";
 
 export function wrap(color: string, text: string): string {
   let start = 0;

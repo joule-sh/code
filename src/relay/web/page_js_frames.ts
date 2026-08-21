@@ -90,6 +90,7 @@ var ANSI_RESET = ESC + "[0m";
 var ANSI_DIM = ESC + "[38;2;120;120;125m";
 var ANSI_RED = ESC + "[38;2;229;72;77m";
 var ANSI_GREEN = ESC + "[38;2;110;190;115m";
+var ANSI_REVERSE = ESC + "[7m";
 
 function diffGutterJs(row) {
   return row.kind === "add" ? row.b : row.a;
@@ -161,6 +162,36 @@ function diffBlockForCallJs(tool, args) {
   return "\\n" + body;
 }
 
+var APPROVAL_OPTION_ALLOW = 0;
+var APPROVAL_OPTION_ALWAYS = 1;
+var APPROVAL_OPTION_DENY = 2;
+var APPROVAL_OPTION_COUNT = 3;
+var APPROVAL_OPTION_INDENT = "    ";
+var APPROVAL_MARKER_ON = "> ";
+var APPROVAL_MARKER_OFF = "  ";
+
+function approvalOptionLabelJs(index, tool) {
+  if (index === APPROVAL_OPTION_ALWAYS) { return "2. Yes, and don't ask again for " + tool + " this session"; }
+  if (index === APPROVAL_OPTION_DENY) { return "3. No"; }
+  return "1. Yes";
+}
+
+function approvalOptionRowJs(index, selected, tool) {
+  var label = approvalOptionLabelJs(index, tool);
+  if (index === selected) {
+    return APPROVAL_OPTION_INDENT + ANSI_REVERSE + APPROVAL_MARKER_ON + label + ANSI_RESET;
+  }
+  return APPROVAL_OPTION_INDENT + ANSI_DIM + APPROVAL_MARKER_OFF + label + ANSI_RESET;
+}
+
+function approvalOptionsBlockJs(tool, selected) {
+  var out = "";
+  for (var i = 0; i < APPROVAL_OPTION_COUNT; i++) {
+    out += "\\n" + approvalOptionRowJs(i, selected, tool);
+  }
+  return out;
+}
+
 function frameOfType(type, fields) {
   var out = { v: PROTOCOL_VERSION, seq: 0, type: type };
   for (var key in fields) {
@@ -224,7 +255,7 @@ function renderFrameText(frameJson, prevKind) {
   }
   if (kind === APPROVAL_REQUEST) {
     var approvalDiff = diffBlockForCallJs(f.tool, f.args);
-    return "\\n  ? " + f.summary + " [" + f.detail + "] " + approvalDiff + "\\n    (y/n/a)";
+    return "\\n  ? " + f.summary + " [" + f.detail + "] " + approvalDiff + approvalOptionsBlockJs(f.tool, APPROVAL_OPTION_ALLOW);
   }
   if (kind === TURN_END) {
     if (f.reason === REASON_CANCELLED) { return "\\n(cancelled)\\n"; }
