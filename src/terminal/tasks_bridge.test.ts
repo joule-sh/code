@@ -1,7 +1,7 @@
 import { PROTOCOL_VERSION, TEXT_DELTA, TOOL_RESULT, TextDeltaFrame, ToolResultFrame, encodeTextDelta, encodeToolResult } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
 import { Scrollback } from "./input_state.ts";
-import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, cancelCommandArg } from "./tasks_bridge.ts";
+import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, repaintTaggedApprovalOptions, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 
 function lastLine(sb: Scrollback): string {
   let t = sb.tail(5);
@@ -46,72 +46,196 @@ test("appendTaggedFrame on a foreground frame (no bg:/agent: turnId) still rende
 class FakeApprovals {
   pending: bool;
   lastDecision: string;
-  constructor(pending: bool) { this.pending = pending; this.lastDecision = ""; }
+  tool: string;
+  selected: int;
+  firstOptionRow: int;
+
+  constructor(pending: bool) {
+    this.pending = pending;
+    this.lastDecision = "";
+    this.tool = "run";
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
   hasPendingApproval(): bool { return this.pending; }
   answerActiveApproval(decision: string): void { this.lastDecision = decision; this.pending = false; }
+  activeApprovalTool(): string { return this.tool; }
+  activeApprovalSelected(): int { return this.selected; }
+  activeApprovalHasOptionRows(): bool { return this.firstOptionRow >= 0; }
+  activeApprovalOptionRows(): int { return this.firstOptionRow; }
+
+  moveActiveApprovalSelection(delta: int, count: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) { next = 0; }
+    if (next > count - 1) { next = count - 1; }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+}
+
+function responderFor(fake: FakeApprovals): ApprovalResponder {
+  return {
+    hasPendingApproval: () => fake.hasPendingApproval(),
+    answerActiveApproval: (d: string) => fake.answerActiveApproval(d),
+    activeApprovalTool: () => fake.activeApprovalTool(),
+    activeApprovalSelected: () => fake.activeApprovalSelected(),
+    activeApprovalHasOptionRows: () => fake.activeApprovalHasOptionRows(),
+    activeApprovalOptionRows: () => fake.activeApprovalOptionRows(),
+    moveActiveApprovalSelection: (delta: int, count: int) => fake.moveActiveApprovalSelection(delta, count),
+  };
 }
 
 test("tryHandleAgentApprovalChar consumes y/n/a only when input is empty and an approval is pending", () => {
   let fake = new FakeApprovals(true);
-  let responder: ApprovalResponder = { hasPendingApproval: () => fake.hasPendingApproval(), answerActiveApproval: (d: string) => fake.answerActiveApproval(d) };
-  let consumed = tryHandleAgentApprovalChar(responder, true, "y");
+  let consumed = tryHandleAgentApprovalChar(responderFor(fake), true, "y");
   expect(consumed);
   expect(fake.lastDecision == "allow");
 });
 
 test("tryHandleAgentApprovalChar does not consume when input is not empty", () => {
   let fake = new FakeApprovals(true);
-  let responder: ApprovalResponder = { hasPendingApproval: () => fake.hasPendingApproval(), answerActiveApproval: (d: string) => fake.answerActiveApproval(d) };
-  let consumed = tryHandleAgentApprovalChar(responder, false, "y");
+  let consumed = tryHandleAgentApprovalChar(responderFor(fake), false, "y");
   expect(!consumed);
   expect(fake.lastDecision == "");
 });
 
 test("tryHandleAgentApprovalChar does not consume when nothing is pending", () => {
   let fake = new FakeApprovals(false);
-  let responder: ApprovalResponder = { hasPendingApproval: () => fake.hasPendingApproval(), answerActiveApproval: (d: string) => fake.answerActiveApproval(d) };
-  let consumed = tryHandleAgentApprovalChar(responder, true, "n");
+  let consumed = tryHandleAgentApprovalChar(responderFor(fake), true, "n");
   expect(!consumed);
 });
 
 test("tryHandleAgentApprovalChar ignores an unrelated character even while pending and idle", () => {
   let fake = new FakeApprovals(true);
-  let responder: ApprovalResponder = { hasPendingApproval: () => fake.hasPendingApproval(), answerActiveApproval: (d: string) => fake.answerActiveApproval(d) };
-  let consumed = tryHandleAgentApprovalChar(responder, true, "x");
+  let consumed = tryHandleAgentApprovalChar(responderFor(fake), true, "x");
   expect(!consumed);
   expect(fake.lastDecision == "");
 });
 
 test("tryHandleAgentApprovalChar maps n to deny and a to always", () => {
   let fakeN = new FakeApprovals(true);
-  let responderN: ApprovalResponder = { hasPendingApproval: () => fakeN.hasPendingApproval(), answerActiveApproval: (d: string) => fakeN.answerActiveApproval(d) };
-  tryHandleAgentApprovalChar(responderN, true, "n");
+  tryHandleAgentApprovalChar(responderFor(fakeN), true, "n");
   expect(fakeN.lastDecision == "deny");
 
   let fakeA = new FakeApprovals(true);
-  let responderA: ApprovalResponder = { hasPendingApproval: () => fakeA.hasPendingApproval(), answerActiveApproval: (d: string) => fakeA.answerActiveApproval(d) };
-  tryHandleAgentApprovalChar(responderA, true, "a");
+  tryHandleAgentApprovalChar(responderFor(fakeA), true, "a");
   expect(fakeA.lastDecision == "always");
 });
 
-test("tryHandleAgentApprovalChar also takes the option list's number keys", () => {
+test("tryHandleAgentApprovalChar also takes the option lists number keys", () => {
   let fake1 = new FakeApprovals(true);
-  let responder1: ApprovalResponder = { hasPendingApproval: () => fake1.hasPendingApproval(), answerActiveApproval: (d: string) => fake1.answerActiveApproval(d) };
-  expect(tryHandleAgentApprovalChar(responder1, true, "1"));
+  expect(tryHandleAgentApprovalChar(responderFor(fake1), true, "1"));
   expect(fake1.lastDecision == "allow");
 
   let fake2 = new FakeApprovals(true);
-  let responder2: ApprovalResponder = { hasPendingApproval: () => fake2.hasPendingApproval(), answerActiveApproval: (d: string) => fake2.answerActiveApproval(d) };
-  expect(tryHandleAgentApprovalChar(responder2, true, "2"));
+  expect(tryHandleAgentApprovalChar(responderFor(fake2), true, "2"));
   expect(fake2.lastDecision == "always");
 
   let fake3 = new FakeApprovals(true);
-  let responder3: ApprovalResponder = { hasPendingApproval: () => fake3.hasPendingApproval(), answerActiveApproval: (d: string) => fake3.answerActiveApproval(d) };
-  expect(tryHandleAgentApprovalChar(responder3, true, "3"));
+  expect(tryHandleAgentApprovalChar(responderFor(fake3), true, "3"));
   expect(fake3.lastDecision == "deny");
 });
 
-test("cancelCommandArg extracts the id after 'cancel '", () => {
+test("tryHandleAgentApprovalChar does not touch the arrow-selected highlight", () => {
+  let fake = new FakeApprovals(true);
+  fake.selected = 2;
+  tryHandleAgentApprovalChar(responderFor(fake), true, "y");
+  expect(fake.lastDecision == "allow");
+});
+
+test("repaintTaggedApprovalOptions is a no-op when the active approval has no tracked option rows", () => {
+  let fake = new FakeApprovals(true);
+  let sb = new Scrollback();
+  sb.append("a\nb\nc");
+  let before = sb.lines.length;
+  repaintTaggedApprovalOptions(sb, responderFor(fake));
+  expect(sb.lines.length == before);
+});
+
+test("repaintTaggedApprovalOptions redraws exactly the three option rows at the tracked offset", () => {
+  let fake = new FakeApprovals(true);
+  fake.firstOptionRow = 1;
+  fake.selected = 1;
+  let sb = new Scrollback();
+  sb.append("header\n1\n2\n3\ntrailer");
+  repaintTaggedApprovalOptions(sb, responderFor(fake));
+  expect(sb.lines[0] == "header");
+  expect(sb.lines[1].indexOf("1. Yes") >= 0);
+  expect(sb.lines[2].indexOf("2. Yes, and") >= 0);
+  expect(sb.lines[3].indexOf("3. No") >= 0);
+  expect(sb.lines[4] == "trailer");
+});
+
+test("tryHandleAgentApprovalArrow moves the highlight and repaints when input is empty and an approval is pending", () => {
+  let fake = new FakeApprovals(true);
+  fake.firstOptionRow = 0;
+  let sb = new Scrollback();
+  sb.append("1\n2\n3");
+  let consumed = tryHandleAgentApprovalArrow(responderFor(fake), sb, true, 1);
+  expect(consumed);
+  expect(fake.selected == 1);
+  expect(sb.lines[1].indexOf("2. Yes") >= 0);
+});
+
+test("tryHandleAgentApprovalArrow still reports consumed at the clamped end, without a further repaint change", () => {
+  let fake = new FakeApprovals(true);
+  fake.selected = 2;
+  fake.firstOptionRow = 0;
+  let sb = new Scrollback();
+  sb.append("1\n2\n3");
+  let consumed = tryHandleAgentApprovalArrow(responderFor(fake), sb, true, 1);
+  expect(consumed);
+  expect(fake.selected == 2);
+});
+
+test("tryHandleAgentApprovalArrow does not consume when input is not empty, leaving history navigation to happen", () => {
+  let fake = new FakeApprovals(true);
+  let sb = new Scrollback();
+  let consumed = tryHandleAgentApprovalArrow(responderFor(fake), sb, false, 1);
+  expect(!consumed);
+  expect(fake.selected == 0);
+});
+
+test("tryHandleAgentApprovalArrow does not consume when nothing is pending", () => {
+  let fake = new FakeApprovals(false);
+  let sb = new Scrollback();
+  let consumed = tryHandleAgentApprovalArrow(responderFor(fake), sb, true, 1);
+  expect(!consumed);
+});
+
+test("tryHandleAgentApprovalEnter answers with the currently highlighted option", () => {
+  let fake = new FakeApprovals(true);
+  fake.firstOptionRow = 0;
+  fake.selected = 2;
+  let sb = new Scrollback();
+  sb.append("1\n2\n3");
+  let consumed = tryHandleAgentApprovalEnter(responderFor(fake), sb, true);
+  expect(consumed);
+  expect(fake.lastDecision == "deny");
+  expect(sb.lines[2].indexOf("3. No") >= 0);
+});
+
+test("tryHandleAgentApprovalEnter defaults to the allow option when the highlight was never moved", () => {
+  let fake = new FakeApprovals(true);
+  let sb = new Scrollback();
+  let consumed = tryHandleAgentApprovalEnter(responderFor(fake), sb, true);
+  expect(consumed);
+  expect(fake.lastDecision == "allow");
+});
+
+test("tryHandleAgentApprovalEnter does not consume when input is not empty or nothing is pending", () => {
+  let fakeTyping = new FakeApprovals(true);
+  let sb = new Scrollback();
+  expect(!tryHandleAgentApprovalEnter(responderFor(fakeTyping), sb, false));
+  expect(fakeTyping.lastDecision == "");
+
+  let fakeIdle = new FakeApprovals(false);
+  expect(!tryHandleAgentApprovalEnter(responderFor(fakeIdle), sb, true));
+});
+
+test("cancelCommandArg extracts the id after cancel ", () => {
   expect(cancelCommandArg("cancel agent-1") == "agent-1");
   expect(cancelCommandArg("cancel  bgrun-2  ") == "bgrun-2");
 });

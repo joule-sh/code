@@ -66,6 +66,30 @@ export class TaskManager {
     this.board.answerActiveApproval(decision);
   }
 
+  activeApprovalTool(): string {
+    return this.board.activeApprovalTool();
+  }
+
+  activeApprovalSelected(): int {
+    return this.board.activeApprovalSelected();
+  }
+
+  activeApprovalHasOptionRows(): bool {
+    return this.board.activeApprovalHasOptionRows();
+  }
+
+  activeApprovalOptionRows(): int {
+    return this.board.activeApprovalOptionRows();
+  }
+
+  moveActiveApprovalSelection(delta: int, count: int): bool {
+    return this.board.moveActiveApprovalSelection(delta, count);
+  }
+
+  setLatestApprovalOptionRows(first: int): void {
+    this.board.setLatestApprovalOptionRows(first);
+  }
+
   poll(session: Session): void {
     this.board.poll(session);
   }

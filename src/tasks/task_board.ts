@@ -3,7 +3,7 @@ import { Session } from "../session/session.ts";
 import { ROLE_USER } from "../session/types.ts";
 import { appendMailbox } from "./mailbox.ts";
 import { BackgroundRunTask, SubagentTask, PendingAgentApproval } from "./state.ts";
-import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, decodeSubagentErrorPayload } from "./subagent_protocol.ts";
+import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, decodeSubagentApprovalPayload, decodeSubagentErrorPayload } from "./subagent_protocol.ts";
 import { emitAgentToolCall, emitAgentToolResult, emitAgentApprovalRequest } from "./agent_frames.ts";
 
 const BG_TURN_PREFIX: string = "bg:";
@@ -112,6 +112,46 @@ export class TaskBoard {
     return "agent " + a.agentId + ": " + a.tool + " " + a.summary;
   }
 
+  activeApproval(): PendingAgentApproval[] {
+    if (this.pendingApprovals.length == 0) { return []; }
+    return [this.pendingApprovals[0]];
+  }
+
+  activeApprovalTool(): string {
+    let a = this.activeApproval();
+    if (a.length == 0) { return ""; }
+    return a[0].tool;
+  }
+
+  activeApprovalSelected(): int {
+    let a = this.activeApproval();
+    if (a.length == 0) { return 0; }
+    return a[0].selected;
+  }
+
+  activeApprovalHasOptionRows(): bool {
+    let a = this.activeApproval();
+    if (a.length == 0) { return false; }
+    return a[0].hasOptionRows();
+  }
+
+  activeApprovalOptionRows(): int {
+    let a = this.activeApproval();
+    if (a.length == 0) { return -1; }
+    return a[0].firstOptionRow;
+  }
+
+  moveActiveApprovalSelection(delta: int, count: int): bool {
+    let a = this.activeApproval();
+    if (a.length == 0) { return false; }
+    return a[0].moveSelection(delta, count);
+  }
+
+  setLatestApprovalOptionRows(first: int): void {
+    if (this.pendingApprovals.length == 0) { return; }
+    this.pendingApprovals[this.pendingApprovals.length - 1].setOptionRows(first);
+  }
+
   answerActiveApproval(decision: string): void {
     if (this.pendingApprovals.length == 0) { return; }
     let a = this.pendingApprovals[0];
@@ -171,10 +211,10 @@ export class TaskBoard {
       return;
     }
     if (tag == TAG_APPROVAL_REQUEST) {
-      let d = emitAgentApprovalRequest(session, t, turnId, payload);
-      if (d.found) {
-        this.pendingApprovals.push(new PendingAgentApproval(t.id, d.value.callId, d.value.tool, d.value.summary));
-      }
+      let probe = decodeSubagentApprovalPayload(payload);
+      if (!probe.found) { return; }
+      this.pendingApprovals.push(new PendingAgentApproval(t.id, probe.value.callId, probe.value.tool, probe.value.summary));
+      emitAgentApprovalRequest(session, t, turnId, payload);
       return;
     }
     if (tag == TAG_ERROR) {

@@ -42,6 +42,13 @@ class FrameCapture {
   add(frameJson: string): void { this.frames.push(frameJson); }
 }
 
+class PendingDuringEmitCapture {
+  board: TaskBoard;
+  seen: bool[];
+  constructor(board: TaskBoard) { this.board = board; this.seen = []; }
+  record(): void { this.seen.push(this.board.hasPendingApproval()); }
+}
+
 function freshSession(): Session {
   return new Session("/repo", "agent", noopProvider(), noopTools(), allowAll());
 }
@@ -259,6 +266,89 @@ test("applyAgentEntry APPROVAL_REQUEST emits a card and queues a pending approva
   expect(frameType(cap.frames[0]) == APPROVAL_REQUEST);
   expect(cap.frames[0].indexOf("agent-1:1") >= 0);
   expect(b.hasPendingApproval());
+});
+
+test("applyAgentEntry APPROVAL_REQUEST queues the pending approval before emitting the frame, so a subscriber sees it as already pending", () => {
+  let b = new TaskBoard();
+  let session = freshSession();
+  let pendingCap = new PendingDuringEmitCapture(b);
+  session.subscribe((f: string) => { pendingCap.record(); });
+  let at = new SubagentTask("agent-1", "task", freshPath("apply-ar-order-out"), freshPath("apply-ar-order-in"), freshPath("apply-ar-order-cancel"), "auto-edit");
+
+  b.applyAgentEntry(session, at, "APPROVAL_REQUEST", encodeSubagentApprovalPayload({ callId: "1", tool: "run", summary: "run rm -rf x", detail: "run rm -rf x", args: "{}" }));
+
+  expect(pendingCap.seen.length == 1);
+  expect(pendingCap.seen[0]);
+});
+
+test("a fresh TaskBoard reports no active approval tool, selection 0, and no option rows", () => {
+  let b = new TaskBoard();
+  expect(b.activeApprovalTool() == "");
+  expect(b.activeApprovalSelected() == 0);
+  expect(!b.activeApprovalHasOptionRows());
+  expect(b.activeApprovalOptionRows() == -1);
+  expect(!b.moveActiveApprovalSelection(1, 3));
+});
+
+test("setLatestApprovalOptionRows and moveActiveApprovalSelection act on the active (front of queue) approval", () => {
+  let b = new TaskBoard();
+  let session = freshSession();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => { cap.add(f); });
+  let at = new SubagentTask("agent-1", "task", freshPath("active-sel-out"), freshPath("active-sel-in"), freshPath("active-sel-cancel"), "auto-edit");
+
+  b.applyAgentEntry(session, at, "APPROVAL_REQUEST", encodeSubagentApprovalPayload({ callId: "1", tool: "run", summary: "run rm -rf x", detail: "run rm -rf x", args: "{}" }));
+  b.setLatestApprovalOptionRows(12);
+
+  expect(b.activeApprovalTool() == "run");
+  expect(b.activeApprovalHasOptionRows());
+  expect(b.activeApprovalOptionRows() == 12);
+  expect(b.activeApprovalSelected() == 0);
+
+  expect(b.moveActiveApprovalSelection(1, 3));
+  expect(b.activeApprovalSelected() == 1);
+  expect(b.moveActiveApprovalSelection(-5, 3));
+  expect(b.activeApprovalSelected() == 0);
+});
+
+test("setLatestApprovalOptionRows tags the most recently queued approval, leaving an earlier one's rows untouched", () => {
+  let b = new TaskBoard();
+  let session = freshSession();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => { cap.add(f); });
+  let a1 = new SubagentTask("agent-1", "task one", freshPath("latest-a1-out"), freshPath("latest-a1-in"), freshPath("latest-a1-cancel"), "auto-edit");
+  let a2 = new SubagentTask("agent-2", "task two", freshPath("latest-a2-out"), freshPath("latest-a2-in"), freshPath("latest-a2-cancel"), "auto-edit");
+  b.registerAgentTask(a1);
+  b.registerAgentTask(a2);
+
+  b.applyAgentEntry(session, a1, "APPROVAL_REQUEST", encodeSubagentApprovalPayload({ callId: "1", tool: "run", summary: "run npm test", detail: "run npm test", args: "{}" }));
+  b.setLatestApprovalOptionRows(5);
+  b.applyAgentEntry(session, a2, "APPROVAL_REQUEST", encodeSubagentApprovalPayload({ callId: "1", tool: "write", summary: "write a.ts", detail: "write a.ts", args: "{}" }));
+  b.setLatestApprovalOptionRows(20);
+
+  expect(b.activeApprovalTool() == "run");
+  expect(b.activeApprovalOptionRows() == 5);
+
+  b.answerActiveApproval("allow");
+  expect(b.activeApprovalTool() == "write");
+  expect(b.activeApprovalOptionRows() == 20);
+});
+
+test("answerActiveApproval clears the option rows and selection of the approval it just answered", () => {
+  let b = new TaskBoard();
+  let session = freshSession();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => { cap.add(f); });
+  let at = new SubagentTask("agent-1", "task", freshPath("answer-clears-out"), freshPath("answer-clears-in"), freshPath("answer-clears-cancel"), "auto-edit");
+
+  b.applyAgentEntry(session, at, "APPROVAL_REQUEST", encodeSubagentApprovalPayload({ callId: "1", tool: "run", summary: "run npm test", detail: "run npm test", args: "{}" }));
+  b.setLatestApprovalOptionRows(9);
+  b.moveActiveApprovalSelection(1, 3);
+  b.answerActiveApproval("deny");
+
+  expect(!b.hasPendingApproval());
+  expect(b.activeApprovalTool() == "");
+  expect(!b.activeApprovalHasOptionRows());
 });
 
 test("applyAgentEntry ERROR marks the task done, emits error then turn.end, and reports into session history", () => {

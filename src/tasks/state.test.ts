@@ -28,3 +28,42 @@ test("PendingAgentApproval carries the fields it was constructed with", () => {
   expect(p.tool == "run");
   expect(p.summary == "run npm test");
 });
+
+test("a fresh PendingAgentApproval starts on the first option with no option rows on screen", () => {
+  let p = new PendingAgentApproval("agent-1", "3", "run", "run npm test");
+  expect(p.selected == 0);
+  expect(!p.hasOptionRows());
+  p.setOptionRows(7);
+  expect(p.hasOptionRows());
+  expect(p.firstOptionRow == 7);
+});
+
+test("PendingAgentApproval moveSelection walks the option list and reports whether the highlight moved", () => {
+  let p = new PendingAgentApproval("agent-1", "3", "run", "run npm test");
+  expect(p.moveSelection(1, 3));
+  expect(p.selected == 1);
+  expect(p.moveSelection(1, 3));
+  expect(p.selected == 2);
+  expect(p.moveSelection(-1, 3));
+  expect(p.selected == 1);
+});
+
+test("PendingAgentApproval moveSelection clamps at both ends rather than wrapping", () => {
+  let p = new PendingAgentApproval("agent-1", "3", "run", "run npm test");
+  expect(!p.moveSelection(-1, 3));
+  expect(p.selected == 0);
+  p.moveSelection(2, 3);
+  expect(p.selected == 2);
+  expect(!p.moveSelection(1, 3));
+  expect(p.selected == 2);
+});
+
+test("PendingAgentApproval select jumps straight to an index and ignores an out-of-range one", () => {
+  let p = new PendingAgentApproval("agent-1", "3", "run", "run npm test");
+  p.select(2, 3);
+  expect(p.selected == 2);
+  p.select(5, 3);
+  expect(p.selected == 2);
+  p.select(-1, 3);
+  expect(p.selected == 2);
+});
