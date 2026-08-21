@@ -220,3 +220,22 @@ test("clip appends a reset when it truncates a colored line mid-content", () => 
 test("clip leaves a plain uncolored line under width untouched", () => {
   expect(clip("plain text", 40) == "plain text");
 });
+
+test("clip counts a multi-byte UTF-8 character as a single visible column", () => {
+  let line = "┌─┐";
+  let out = clip(line, 2);
+  expect(out == "┌─");
+});
+
+test("clip never cuts a multi-byte UTF-8 character in half", () => {
+  let line = "a┌b";
+  let out = clip(line, 2);
+  expect(out == "a┌");
+  expect(out.length == 4);
+});
+
+test("clip fits a whole row of box-drawing characters within its true visible width", () => {
+  let border = "┌────┐";
+  let out = clip(border, 6);
+  expect(out == border);
+});
