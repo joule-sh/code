@@ -2,6 +2,7 @@ export const PAGE_JS_MARKDOWN: string = `
 var MD_BACKTICK = String.fromCharCode(96);
 var MD_CODE_FENCE = MD_BACKTICK + MD_BACKTICK + MD_BACKTICK;
 var MD_MAX_HEADER_LEVEL = 6;
+var MD_BOLD_MARKER = "**";
 
 function mdIsWordByte(ch) {
   if (!ch) { return false; }
@@ -10,6 +11,11 @@ function mdIsWordByte(ch) {
   if (c >= 65 && c <= 90) { return true; }
   if (c >= 97 && c <= 122) { return true; }
   return c === 95;
+}
+
+function mdCharAtOr(text, index) {
+  if (index < 0 || index >= text.length) { return ""; }
+  return text.charAt(index);
 }
 
 function mdHeaderLevel(line) {
@@ -26,42 +32,87 @@ function mdIsFenceLine(line) {
   return t.length >= 3 && t.slice(0, 3) === MD_CODE_FENCE;
 }
 
-function mdSplitCodeSpans(line) {
+function mdFindCodeSpans(line) {
   var out = [];
   var i = 0;
   var n = line.length;
-  var plainStart = 0;
   while (i < n) {
     if (line.charAt(i) === MD_BACKTICK) {
       var close = line.indexOf(MD_BACKTICK, i + 1);
       if (close >= 0) {
-        if (i > plainStart) { out.push({ text: line.slice(plainStart, i), isCode: false }); }
-        out.push({ text: line.slice(i + 1, close), isCode: true });
+        out.push({ open: i, close: close });
         i = close + 1;
-        plainStart = i;
         continue;
       }
     }
     i++;
   }
-  if (plainStart < n) { out.push({ text: line.slice(plainStart, n), isCode: false }); }
   return out;
 }
 
-function mdTokenizeBold(text) {
+function mdCodeSpanCloseAt(spans, index) {
+  for (var i = 0; i < spans.length; i++) {
+    if (spans[i].open === index) { return spans[i].close; }
+  }
+  return -1;
+}
+
+function mdInsideCodeSpan(spans, index) {
+  for (var i = 0; i < spans.length; i++) {
+    if (index >= spans[i].open && index <= spans[i].close) { return true; }
+  }
+  return false;
+}
+
+function mdTokenizeBold(text, spans, start) {
+  var n = text.length;
+  var m = MD_BOLD_MARKER.length;
+  if (start + m > n || text.slice(start, start + m) !== MD_BOLD_MARKER) { return null; }
+  var i = start + m;
+  while (i + m <= n) {
+    if (!mdInsideCodeSpan(spans, i) && text.slice(i, i + m) === MD_BOLD_MARKER) {
+      return { type: "bold", text: text.slice(start + m, i), next: i + m };
+    }
+    i++;
+  }
+  return null;
+}
+
+function mdTokenizeItalic(text, spans, start) {
+  if (text.charAt(start) !== "_" || mdIsWordByte(mdCharAtOr(text, start - 1))) { return null; }
+  var n = text.length;
+  var i = start + 1;
+  while (i < n) {
+    if (!mdInsideCodeSpan(spans, i) && text.charAt(i) === "_" && !mdIsWordByte(mdCharAtOr(text, i + 1))) {
+      if (i > start + 1) { return { type: "italic", text: text.slice(start + 1, i), next: i + 1 }; }
+      return null;
+    }
+    i++;
+  }
+  return null;
+}
+
+function mdTokenizeInline(text) {
+  var spans = mdFindCodeSpans(text);
   var out = [];
+  var plain = "";
   var i = 0;
   var n = text.length;
-  var plain = "";
   while (i < n) {
-    if (i + 2 <= n && text.slice(i, i + 2) === "**") {
-      var close = text.indexOf("**", i + 2);
-      if (close >= 0) {
-        if (plain) { out.push({ type: "text", text: plain }); plain = ""; }
-        out.push({ type: "bold", text: text.slice(i + 2, close) });
-        i = close + 2;
-        continue;
-      }
+    var codeClose = mdCodeSpanCloseAt(spans, i);
+    if (codeClose >= 0) {
+      if (plain) { out.push({ type: "text", text: plain }); plain = ""; }
+      out.push({ type: "code", text: text.slice(i + 1, codeClose) });
+      i = codeClose + 1;
+      continue;
+    }
+    var emphasis = mdTokenizeBold(text, spans, i);
+    if (!emphasis) { emphasis = mdTokenizeItalic(text, spans, i); }
+    if (emphasis) {
+      if (plain) { out.push({ type: "text", text: plain }); plain = ""; }
+      out.push({ type: emphasis.type, children: mdTokenizeInline(emphasis.text) });
+      i = emphasis.next;
+      continue;
     }
     plain += text.charAt(i);
     i++;
@@ -70,70 +121,34 @@ function mdTokenizeBold(text) {
   return out;
 }
 
-function mdTokenizeItalic(text) {
-  var out = [];
-  var i = 0;
-  var n = text.length;
-  var plain = "";
-  while (i < n) {
-    if (text.charAt(i) === "_" && !mdIsWordByte(i > 0 ? text.charAt(i - 1) : "")) {
-      var close = -1;
-      var j = i + 1;
-      while (j < n) {
-        if (text.charAt(j) === "_" && !mdIsWordByte(j + 1 < n ? text.charAt(j + 1) : "")) { close = j; break; }
-        j++;
-      }
-      if (close > i + 1) {
-        if (plain) { out.push({ type: "text", text: plain }); plain = ""; }
-        out.push({ type: "italic", text: text.slice(i + 1, close) });
-        i = close + 1;
-        continue;
-      }
-    }
-    plain += text.charAt(i);
-    i++;
-  }
-  if (plain) { out.push({ type: "text", text: plain }); }
-  return out;
-}
-
-function mdAppendItalicInto(container, text) {
-  var tokens = mdTokenizeItalic(text);
+function mdAppendTokens(container, tokens) {
   for (var i = 0; i < tokens.length; i++) {
     var tok = tokens[i];
+    if (tok.type === "code") {
+      var codeEl = document.createElement("code");
+      codeEl.className = "md-inline-code";
+      codeEl.textContent = tok.text;
+      container.appendChild(codeEl);
+      continue;
+    }
+    if (tok.type === "bold") {
+      var boldEl = document.createElement("b");
+      mdAppendTokens(boldEl, tok.children);
+      container.appendChild(boldEl);
+      continue;
+    }
     if (tok.type === "italic") {
       var em = document.createElement("em");
-      em.textContent = tok.text;
+      mdAppendTokens(em, tok.children);
       container.appendChild(em);
-    } else {
-      container.appendChild(document.createTextNode(tok.text));
+      continue;
     }
+    container.appendChild(document.createTextNode(tok.text));
   }
 }
 
 function mdAppendInline(container, line) {
-  var segments = mdSplitCodeSpans(line);
-  for (var s = 0; s < segments.length; s++) {
-    var seg = segments[s];
-    if (seg.isCode) {
-      var codeEl = document.createElement("code");
-      codeEl.className = "md-inline-code";
-      codeEl.textContent = seg.text;
-      container.appendChild(codeEl);
-      continue;
-    }
-    var boldTokens = mdTokenizeBold(seg.text);
-    for (var b = 0; b < boldTokens.length; b++) {
-      var btok = boldTokens[b];
-      if (btok.type === "bold") {
-        var boldEl = document.createElement("b");
-        mdAppendItalicInto(boldEl, btok.text);
-        container.appendChild(boldEl);
-      } else {
-        mdAppendItalicInto(container, btok.text);
-      }
-    }
-  }
+  mdAppendTokens(container, mdTokenizeInline(line));
 }
 
 function mdRenderLineInto(container, line, st) {

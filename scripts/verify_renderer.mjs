@@ -188,33 +188,145 @@ const mdSandbox = {};
 vm.createContext(mdSandbox);
 vm.runInContext(embeddedMdJs, mdSandbox);
 vm.runInContext(
-  "var __mdExports = { mdTokenizeBold: mdTokenizeBold, mdTokenizeItalic: mdTokenizeItalic, mdSplitCodeSpans: mdSplitCodeSpans, mdHeaderLevel: mdHeaderLevel, mdIsFenceLine: mdIsFenceLine };",
+  "var __mdExports = { mdTokenizeInline: mdTokenizeInline, mdFindCodeSpans: mdFindCodeSpans, mdHeaderLevel: mdHeaderLevel, mdIsFenceLine: mdIsFenceLine };",
   mdSandbox
 );
-const { mdTokenizeBold, mdTokenizeItalic, mdSplitCodeSpans, mdHeaderLevel, mdIsFenceLine } = mdSandbox.__mdExports;
+const { mdTokenizeInline, mdFindCodeSpans, mdHeaderLevel, mdIsFenceLine } = mdSandbox.__mdExports;
 
-const boldTokens = mdTokenizeBold("this is **bold** text");
+function mdTokenText(tok) {
+  if (typeof tok.text === "string") { return tok.text; }
+  return mdPlainText(tok.children);
+}
+
+function mdPlainText(tokens) {
+  let out = "";
+  for (const tok of tokens) { out += mdTokenText(tok); }
+  return out;
+}
+
+function mdCollect(tokens, kind) {
+  let found = [];
+  for (const tok of tokens) {
+    if (tok.type === kind) { found.push(mdTokenText(tok)); }
+    if (tok.children) { found = found.concat(mdCollect(tok.children, kind)); }
+  }
+  return found;
+}
+
+const boldTokens = mdTokenizeInline("this is **bold** text");
 expectTrue(
-  boldTokens.some((t) => t.type === "bold" && t.text === "bold"),
+  mdCollect(boldTokens, "bold").indexOf("bold") >= 0,
   "the web markdown tokenizer finds a bold span (#81 markdown rendering)"
 );
 
-const italicTokens = mdTokenizeItalic("look at _this word_ closely");
+const italicTokens = mdTokenizeInline("look at _this word_ closely");
 expectTrue(
-  italicTokens.some((t) => t.type === "italic" && t.text === "this word"),
+  mdCollect(italicTokens, "italic").indexOf("this word") >= 0,
   "the web markdown tokenizer finds an italic span (#81 markdown rendering)"
 );
 
-const snakeCaseTokens = mdTokenizeItalic("call my_function_name here");
+const snakeCaseTokens = mdTokenizeInline("call my_function_name here");
 expectTrue(
-  !snakeCaseTokens.some((t) => t.type === "italic"),
+  mdCollect(snakeCaseTokens, "italic").length === 0 && mdPlainText(snakeCaseTokens) === "call my_function_name here",
   "the web markdown tokenizer leaves snake_case identifiers alone, same as the terminal (#81 markdown rendering)"
 );
 
-const codeSpans = mdSplitCodeSpans("run `a**b**c` now");
+const codeSpans = mdTokenizeInline("run `a**b**c` now");
 expectTrue(
-  codeSpans.some((s) => s.isCode && s.text === "a**b**c"),
+  mdCollect(codeSpans, "code").indexOf("a**b**c") >= 0 && mdCollect(codeSpans, "bold").length === 0,
   "the web markdown tokenizer protects inline code spans from emphasis markers, same as the terminal (#81 markdown rendering)"
+);
+
+const reportedLine = "- **`.githooks`, `.github`** — CI / git hook tooling";
+const reportedTokens = mdTokenizeInline(reportedLine);
+expectTrue(
+  mdCollect(reportedTokens, "bold").length === 1,
+  "the web markdown tokenizer matches a bold span across the inline code it wraps (#100 bold around code)"
+);
+expectTrue(
+  mdCollect(reportedTokens, "code").join("|") === ".githooks|.github",
+  "the bold span keeps both inline code spans inside it as code, same as the terminal (#100 bold around code)"
+);
+expectTrue(
+  mdPlainText(reportedTokens) === "- .githooks, .github — CI / git hook tooling",
+  "the reported line renders with no literal bold markers left in the text, em dash intact (#100 bold around code)"
+);
+
+const boldAroundOneSpan = mdTokenizeInline("the **`--force`** flag");
+expectTrue(
+  mdCollect(boldAroundOneSpan, "bold").indexOf("--force") >= 0 && mdCollect(boldAroundOneSpan, "code").indexOf("--force") >= 0,
+  "bold enclosing a single inline code span keeps both the bold and the code, same as the terminal (#100 bold around code)"
+);
+
+const italicAroundSpan = mdTokenizeInline("see _the `flag` here_ please");
+expectTrue(
+  mdCollect(italicAroundSpan, "italic").indexOf("the flag here") >= 0 && mdCollect(italicAroundSpan, "code").indexOf("flag") >= 0,
+  "italic enclosing an inline code span keeps both the italic and the code, same as the terminal (#100 bold around code)"
+);
+
+const literalMarkers = mdTokenizeInline("write `**x**` verbatim");
+expectTrue(
+  mdCollect(literalMarkers, "code").indexOf("**x**") >= 0 && mdCollect(literalMarkers, "bold").length === 0,
+  "asterisks inside a code span stay literal rather than opening a bold span (#100 bold around code)"
+);
+
+const partnerInsideCode = mdTokenizeInline("**start `**` end");
+expectTrue(
+  mdCollect(partnerInsideCode, "bold").length === 0 && mdCollect(partnerInsideCode, "code").indexOf("**") >= 0,
+  "a bold marker whose only partner sits inside a code span stays literal (#100 bold around code)"
+);
+
+const boldOuter = mdTokenizeInline("**bold with _italic_ inside**");
+expectTrue(
+  mdCollect(boldOuter, "bold").length === 1 && mdCollect(boldOuter, "italic").indexOf("italic") >= 0,
+  "italic nested inside bold renders as both, same as the terminal (#100 bold around code)"
+);
+
+const italicOuter = mdTokenizeInline("_italic with **bold** inside_");
+expectTrue(
+  mdCollect(italicOuter, "italic").length === 1 && mdCollect(italicOuter, "bold").indexOf("bold") >= 0,
+  "bold nested inside italic renders as both, same as the terminal (#100 bold around code)"
+);
+
+const adjacent = mdTokenizeInline("**one**`mid`**two**");
+expectTrue(
+  mdCollect(adjacent, "bold").join("|") === "one|two" && mdCollect(adjacent, "code").indexOf("mid") >= 0,
+  "adjacent bold spans with a code span between them each tokenize independently (#100 bold around code)"
+);
+
+const unmatchedBold = mdTokenizeInline("2 ** 3 is not bold");
+expectTrue(
+  mdCollect(unmatchedBold, "bold").length === 0 && mdPlainText(unmatchedBold) === "2 ** 3 is not bold",
+  "an unmatched bold marker passes through as literal text, same as the terminal (#100 bold around code)"
+);
+
+const unmatchedAroundCode = mdTokenizeInline("**unclosed `code` here");
+expectTrue(
+  mdCollect(unmatchedAroundCode, "bold").length === 0 && mdCollect(unmatchedAroundCode, "code").indexOf("code") >= 0,
+  "an unmatched bold marker still lets the code span inside it render as code (#100 bold around code)"
+);
+
+const unmatchedBacktick = mdTokenizeInline("a lone " + String.fromCharCode(96) + " backtick");
+expectTrue(
+  mdCollect(unmatchedBacktick, "code").length === 0 && mdPlainText(unmatchedBacktick) === "a lone " + String.fromCharCode(96) + " backtick",
+  "an unmatched backtick passes through as literal text, same as the terminal (#100 bold around code)"
+);
+
+const snakeInsideEmphasis = mdTokenizeInline("**call my_function_name now**");
+expectTrue(
+  mdCollect(snakeInsideEmphasis, "italic").length === 0 && mdCollect(snakeInsideEmphasis, "bold").indexOf("call my_function_name now") >= 0,
+  "snake_case inside a bold span is still not italic, same as the terminal (#100 bold around code)"
+);
+
+const snakeInsideCode = mdTokenizeInline("**`my_function_name`**");
+expectTrue(
+  mdCollect(snakeInsideCode, "italic").length === 0 && mdCollect(snakeInsideCode, "code").indexOf("my_function_name") >= 0,
+  "snake_case inside code wrapped in bold stays code, same as the terminal (#100 bold around code)"
+);
+
+expectTrue(
+  mdFindCodeSpans("a `b` c `d` e").length === 2,
+  "the web markdown tokenizer locates every code span range before matching emphasis (#100 bold around code)"
 );
 
 expectTrue(mdHeaderLevel("# Section Title") === 1, "the web markdown tokenizer recognizes an h1 header (#81 markdown rendering)");
