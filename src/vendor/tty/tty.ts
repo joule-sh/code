@@ -42,6 +42,7 @@ export const KEY_CHAR: string = "char";
 export const KEY_ENTER: string = "enter";
 export const KEY_BACKSPACE: string = "backspace";
 export const KEY_TAB: string = "tab";
+export const KEY_BACKTAB: string = "backtab";
 export const KEY_ESCAPE: string = "escape";
 export const KEY_CTRL_C: string = "ctrl_c";
 export const KEY_CTRL_D: string = "ctrl_d";
@@ -120,6 +121,7 @@ function readEscapeSequence(fd: int): Key {
   }
   let b3 = readByteTimeout(fd, 50);
   if (b3 == 60) { return readSgrMouse(fd); }
+  if (b3 == 90) { return simpleKey(KEY_BACKTAB); }
   if (b3 == 65) { return simpleKey(KEY_ARROW_UP); }
   if (b3 == 66) { return simpleKey(KEY_ARROW_DOWN); }
   if (b3 == 67) { return simpleKey(KEY_ARROW_RIGHT); }
@@ -307,6 +309,43 @@ test("readKey decodes a lone Escape with nothing following", () => {
   let fd = tty_open_test_pipe();
   tty_write_byte_to_test_pipe(27);
   expect(readKey(fd).kind == KEY_ESCAPE);
+});
+
+function writeBacktab(): void {
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(90);
+}
+
+test("readKey decodes shift+tab as backtab, distinct from Tab, consuming exactly its three bytes", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(9);
+  expect(readKey(fd).kind == KEY_TAB);
+  writeBacktab();
+  tty_write_byte_to_test_pipe(122);
+  let k = readKey(fd);
+  expect(k.kind == KEY_BACKTAB);
+  expect(k.char == "");
+  let next = readKey(fd);
+  expect(next.kind == KEY_CHAR);
+  expect(next.char == "z");
+});
+
+test("backtab decoding leaves lone Escape and the neighbouring CSI finals alone", () => {
+  let fd = tty_open_test_pipe();
+  tty_write_byte_to_test_pipe(27);
+  expect(readKeyTimeout(fd, 50).kind == KEY_ESCAPE);
+  writeBacktab();
+  expect(readKeyTimeout(fd, 50).kind == KEY_BACKTAB);
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(65);
+  expect(readKey(fd).kind == KEY_ARROW_UP);
+  tty_write_byte_to_test_pipe(27);
+  tty_write_byte_to_test_pipe(91);
+  tty_write_byte_to_test_pipe(54);
+  tty_write_byte_to_test_pipe(126);
+  expect(readKey(fd).kind == KEY_PAGE_DOWN);
 });
 
 test("readKey decodes a 2-byte UTF-8 character", () => {

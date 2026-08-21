@@ -1,4 +1,4 @@
-import { consumeStream, errorReplyFromBody, requestBody, ToolSchema } from "./openai.ts";
+import { consumeStream, errorReplyFromBody, requestBody, usageTotalTokens, ToolSchema } from "./openai.ts";
 import { Message } from "../session/types.ts";
 
 class LineQueue {
@@ -184,4 +184,44 @@ test("a system message serializes as a plain role/content pair, first in the arr
   let systemIdx = body.indexOf("\"role\":\"system\"");
   let userIdx = body.indexOf("\"role\":\"user\"");
   expect(systemIdx >= 0 && userIdx >= 0 && systemIdx < userIdx);
+});
+
+test("total_tokens is read out of a usage object and ignored when the payload has none", () => {
+  expect(usageTotalTokens("{\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":12,\"total_tokens\":18}}") == 18);
+  expect(usageTotalTokens("{\"usage\":{\"total_tokens\": 4096}}") == 4096);
+  expect(usageTotalTokens("{\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}") == 0);
+  expect(usageTotalTokens("{\"usage\":null}") == 0);
+  expect(usageTotalTokens("") == 0);
+});
+
+test("a total_tokens that only appears escaped inside a quoted argument is not read as usage", () => {
+  let payload = "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"{\\\"total_tokens\\\":99}\"}}]}}]}";
+  expect(usageTotalTokens(payload) == 0);
+});
+
+test("a stream that reports usage carries the total onto the reply", () => {
+  let q = new LineQueue([
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}",
+    "",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":12,\"total_tokens\":18}}",
+    "",
+    "data: [DONE]",
+  ]);
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
+  expect(!reply.failed);
+  expect(reply.text == "Hi");
+  expect(reply.tokens == 18);
+});
+
+test("a stream with no usage object reports zero tokens rather than a guess", () => {
+  let q = new LineQueue([
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}",
+    "",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    "",
+    "data: [DONE]",
+  ]);
+  let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
+  expect(!reply.failed);
+  expect(reply.tokens == 0);
 });

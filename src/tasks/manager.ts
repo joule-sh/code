@@ -54,6 +54,10 @@ export class TaskManager {
     return this.board.listText();
   }
 
+  runningTaskCount(): int {
+    return this.board.runningCount();
+  }
+
   hasPendingApproval(): bool {
     return this.board.hasPendingApproval();
   }

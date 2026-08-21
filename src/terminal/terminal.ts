@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -23,7 +23,7 @@ import { TaskManager } from "../tasks/manager.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
-import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode } from "./slots.ts";
+import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode, nextMode } from "./slots.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -93,14 +93,14 @@ export function runTerminal(argv: string[]): void {
         sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
       }
       if (gateBox.slot.length > 0) {
-        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+        drawScreen(sb, input, gateBox.slot[0].mode, rk);
       }
     } else if ((k.kind == KEY_ARROW_UP || k.kind == KEY_ARROW_DOWN) && gateBox.slot.length > 0) {
       let delta = 1;
       if (k.kind == KEY_ARROW_UP) { delta = -1; }
       if (pendingApproval.moveSelection(delta, APPROVAL_OPTION_COUNT)) {
         repaintApprovalOptions(sb, pendingApproval);
-        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+        drawScreen(sb, input, gateBox.slot[0].mode, rk);
       }
     } else if (k.kind == KEY_ENTER && gateBox.slot.length > 0) {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, pendingApproval.selected);
@@ -108,7 +108,7 @@ export function runTerminal(argv: string[]): void {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, approvalOptionForChar(k.char));
     } else if (k.kind == KEY_CTRL_O && gateBox.slot.length > 0) {
       if (sb.toggleLastGroup()) {
-        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+        drawScreen(sb, input, gateBox.slot[0].mode, rk);
       }
     } else if (k.kind == KEY_CTRL_C) {
       if (gateBox.slot.length > 0) {
@@ -136,6 +136,7 @@ export function runTerminal(argv: string[]): void {
     startSubagent: (task: string) => tasks.startSubagent(task),
   };
   registry.setTaskRunner(taskRunner);
+  rk.bind(tracker, () => tasks.runningTaskCount());
   let approvalResponder: ApprovalResponder = {
     hasPendingApproval: () => tasks.hasPendingApproval(),
     answerActiveApproval: (d: string) => tasks.answerActiveApproval(d),
@@ -154,13 +155,13 @@ export function runTerminal(argv: string[]): void {
   let attachToRelay = () => {
     if (relay.isAttached()) {
       sb.append("\nalready attached to the relay");
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       return;
     }
     let result = relay.connect(workspaceRoot, live.cfg.model);
     if (!result.ok) {
       sb.append("\ncould not attach to the relay: " + result.error);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       return;
     }
     let hello: SessionHelloFrame = {
@@ -170,7 +171,7 @@ export function runTerminal(argv: string[]): void {
     };
     relay.publish(encodeSessionHello(hello));
     sb.append("\nattached - code " + result.code + " - " + result.url);
-    drawScreen(sb, input, gate.mode, rk.quantaText());
+    drawScreen(sb, input, gate.mode, rk);
   };
 
   session.subscribe((frameJson: string) => {
@@ -190,7 +191,7 @@ export function runTerminal(argv: string[]): void {
       appendFrame(sb, rk, frameJson);
     }
     if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, session.history); }
-    drawScreen(sb, input, gate.mode, rk.quantaText());
+    drawScreen(sb, input, gate.mode, rk);
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
 
@@ -200,7 +201,7 @@ export function runTerminal(argv: string[]): void {
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   if (resume.note != "") { sb.append(resume.note); }
-  drawScreen(sb, input, gate.mode, rk.quantaText());
+  drawScreen(sb, input, gate.mode, rk);
 
   if (hasFlag(argv, "--share")) {
     attachToRelay();
@@ -224,7 +225,7 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_CTRL_C) {
       if (input.buf != "") {
         input.clear();
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
       } else {
         running = false;
       }
@@ -234,61 +235,67 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_BACKSPACE) {
       input.backspace();
       history.cancelNavigation();
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_CHAR) {
       if (tryHandleAgentApprovalChar(approvalResponder, input.buf == "", k.char)) {
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
         continue;
       }
       input.push(k.char);
       history.cancelNavigation();
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
+      continue;
+    }
+
+    if (k.kind == KEY_BACKTAB) {
+      gate.mode = nextMode(gate.mode);
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_TAB || k.kind == KEY_ARROW_RIGHT) {
       if (input.acceptCompletion()) {
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
       }
       continue;
     }
 
     if (k.kind == KEY_ARROW_UP) {
       if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", -1)) {
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
         continue;
       }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(-1);
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
         continue;
       }
       input.setBuf(history.back(input.buf));
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_ARROW_DOWN) {
       if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", 1)) {
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
         continue;
       }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(1);
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
         continue;
       }
       input.setBuf(history.forward());
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_CTRL_O) {
       if (sb.toggleLastGroup()) {
-        drawScreen(sb, input, gate.mode, rk.quantaText());
+        drawScreen(sb, input, gate.mode, rk);
       }
       continue;
     }
@@ -296,28 +303,28 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_PAGE_UP) {
       let r = screenRows();
       sb.scrollUp(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_PAGE_DOWN) {
       let r = screenRows();
       sb.scrollDown(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_SCROLL_UP) {
       let r = screenRows();
       sb.scrollUp(r - 1, WHEEL_SCROLL_LINES);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (k.kind == KEY_SCROLL_DOWN) {
       let r = screenRows();
       sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -326,12 +333,12 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (tryHandleAgentApprovalEnter(approvalResponder, sb, input.buf == "")) {
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     let line = input.takeAndClear();
-    drawScreen(sb, input, gate.mode, rk.quantaText());
+    drawScreen(sb, input, gate.mode, rk);
 
     if (line.trim() == "") {
       continue;
@@ -342,15 +349,15 @@ export function runTerminal(argv: string[]): void {
     if (cmd.kind == CMD_NONE) {
       history.record(line);
       sb.append("\n" + stylePrompt("> ") + line);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       bridge.runNow(session, line);
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (cmd.kind == CMD_HELP) {
       sb.append("\n" + helpText());
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -361,7 +368,7 @@ export function runTerminal(argv: string[]): void {
         live.cfg = { baseUrl: live.cfg.baseUrl, model: cmd.arg, apiKey: live.cfg.apiKey };
         sb.append("\nmodel set to " + cmd.arg);
       }
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -374,7 +381,7 @@ export function runTerminal(argv: string[]): void {
       } else {
         sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, or full-auto)");
       }
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -397,7 +404,7 @@ export function runTerminal(argv: string[]): void {
           }
         }
       }
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -412,13 +419,13 @@ export function runTerminal(argv: string[]): void {
           sb.append("\nusage: /tasks or /tasks cancel <id>");
         }
       }
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
     if (cmd.kind == CMD_CLEAR) {
       sb.clear();
-      drawScreen(sb, input, gate.mode, rk.quantaText());
+      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -428,7 +435,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     sb.append("\nunknown command: /" + cmd.arg);
-    drawScreen(sb, input, gate.mode, rk.quantaText());
+    drawScreen(sb, input, gate.mode, rk);
   }
 
   relay.detach();

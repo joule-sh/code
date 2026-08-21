@@ -102,6 +102,17 @@ export class TaskBoard {
     return out;
   }
 
+  runningCount(): int {
+    let n = 0;
+    for (const t of this.runTasks) {
+      if (!t.done && !t.detached) { n = n + 1; }
+    }
+    for (const t of this.agentTasks) {
+      if (!t.done) { n = n + 1; }
+    }
+    return n;
+  }
+
   hasPendingApproval(): bool {
     return this.pendingApprovals.length > 0;
   }

@@ -1,4 +1,4 @@
-import { buildWelcomeBox, buildStatusLine } from "./layout.ts";
+import { buildWelcomeBox, buildStatusLine, statusText, idleStatus, visualWidth, formatElapsed, formatTokens, formatRunningTasks, StatusInfo, NO_TURN } from "./layout.ts";
 import { VIOLET, DIM, RESET } from "./style.ts";
 import { VERSION } from "../version.ts";
 
@@ -11,23 +11,6 @@ function stripColor(line: string, color: string): string {
     out = out.slice(0, out.length - RESET.length);
   }
   return out;
-}
-
-function utf8ByteCount(first: int): int {
-  if (first >= 240) { return 4; }
-  if (first >= 224) { return 3; }
-  if (first >= 192) { return 2; }
-  return 1;
-}
-
-function visualWidth(plain: string): int {
-  let count = 0;
-  let i = 0;
-  while (i < plain.length) {
-    i = i + utf8ByteCount(plain.charCodeAt(i));
-    count = count + 1;
-  }
-  return count;
 }
 
 function allEqual(widths: int[]): bool {
@@ -50,6 +33,10 @@ function plainLines(box: string): string[] {
     i = i + 1;
   }
   return out;
+}
+
+function busy(): StatusInfo {
+  return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2 };
 }
 
 test("the welcome box is nine rows: top border, title, blank, three fields, blank, tagline, bottom border", () => {
@@ -125,7 +112,7 @@ test("a workspace path too long for the box is truncated rather than breaking ro
 });
 
 test("the status line names the current mode and the key hints, dim and reset", () => {
-  let line = buildStatusLine("read-only");
+  let line = buildStatusLine(idleStatus("read-only"), 80);
   expect(line.indexOf(DIM) == 0);
   expect(line.slice(line.length - RESET.length, line.length) == RESET);
   expect(line.indexOf("read-only") >= 0);
@@ -135,11 +122,107 @@ test("the status line names the current mode and the key hints, dim and reset", 
 });
 
 test("the status line reflects a different mode when given one", () => {
-  let line = buildStatusLine("full-auto");
+  let line = buildStatusLine(idleStatus("full-auto"), 80);
   expect(line.indexOf("full-auto") >= 0);
 });
 
 test("the welcome box shows the running version, so a released build is distinguishable from a source build", () => {
   let box = buildWelcomeBox("m", "/w", "auto-edit");
   expect(box.indexOf(" joule " + VERSION) >= 0);
+});
+
+test("an idle status line carries neither an elapsed clock nor a token or task count", () => {
+  let line = statusText(idleStatus("auto-edit"), 80);
+  expect(line == "mode: auto-edit · /help for commands · PageUp/PageDown to scroll");
+});
+
+test("elapsed time reads as seconds, then padded minutes, then padded hours", () => {
+  expect(formatElapsed(0) == "0s");
+  expect(formatElapsed(900) == "0s");
+  expect(formatElapsed(9000) == "9s");
+  expect(formatElapsed(59000) == "59s");
+  expect(formatElapsed(60000) == "1m 00s");
+  expect(formatElapsed(64000) == "1m 04s");
+  expect(formatElapsed(592000) == "9m 52s");
+  expect(formatElapsed(3599000) == "59m 59s");
+  expect(formatElapsed(3600000) == "1h 00m");
+  expect(formatElapsed(7860000) == "2h 11m");
+});
+
+test("a negative elapsed value clamps to zero rather than printing a minus sign", () => {
+  expect(formatElapsed(NO_TURN) == "0s");
+});
+
+test("token counts read exactly below a thousand and rounded to thousands above it", () => {
+  expect(formatTokens(1) == "1 token");
+  expect(formatTokens(0) == "0 tokens");
+  expect(formatTokens(999) == "999 tokens");
+  expect(formatTokens(1000) == "1k tokens");
+  expect(formatTokens(1499) == "1k tokens");
+  expect(formatTokens(1500) == "2k tokens");
+  expect(formatTokens(18432) == "18k tokens");
+});
+
+test("the running-task count is singular for one task", () => {
+  expect(formatRunningTasks(1) == "1 running task");
+  expect(formatRunningTasks(2) == "2 running tasks");
+});
+
+test("a wide terminal shows every field, in mode, elapsed, tokens, tasks, hints order", () => {
+  let line = statusText(busy(), 120);
+  expect(line == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands · PageUp/PageDown to scroll");
+  expect(visualWidth(line) == 104);
+});
+
+test("the separator is measured in columns, not in the bytes UTF-8 spends on it", () => {
+  let line = statusText(busy(), 120);
+  expect(visualWidth(line) == 104);
+  expect(line.length > 104);
+});
+
+test("narrowing drops fields lowest priority first: scroll hint, help hint, tokens, tasks, elapsed", () => {
+  expect(statusText(busy(), 104) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands · PageUp/PageDown to scroll");
+  expect(statusText(busy(), 103) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands");
+  expect(statusText(busy(), 76) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands");
+  expect(statusText(busy(), 75) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks");
+  expect(statusText(busy(), 55) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks");
+  expect(statusText(busy(), 54) == "mode: auto-edit · 9m 52s · 2 running tasks");
+  expect(statusText(busy(), 42) == "mode: auto-edit · 9m 52s · 2 running tasks");
+  expect(statusText(busy(), 41) == "mode: auto-edit · 9m 52s");
+  expect(statusText(busy(), 24) == "mode: auto-edit · 9m 52s");
+  expect(statusText(busy(), 23) == "mode: auto-edit");
+});
+
+test("the mode is never dropped, even when it alone overflows the terminal", () => {
+  expect(statusText(busy(), 10) == "mode: auto-edit");
+  expect(statusText(busy(), 1) == "mode: auto-edit");
+});
+
+test("at the harness sizes the line stays on one row, with the mode always readable", () => {
+  let at80 = statusText(busy(), 80);
+  let at45 = statusText(busy(), 45);
+  expect(visualWidth(at80) <= 80);
+  expect(visualWidth(at45) <= 45);
+  expect(at80.indexOf("mode: auto-edit") == 0);
+  expect(at45.indexOf("mode: auto-edit") == 0);
+  expect(at80.indexOf("\n") < 0);
+  expect(at45.indexOf("\n") < 0);
+});
+
+test("an idle 45-column terminal keeps the mode and the help hint the layout harness looks for", () => {
+  let line = statusText(idleStatus("auto-edit"), 45);
+  expect(visualWidth(line) <= 45);
+  expect(line.indexOf("mode:") >= 0);
+  expect(line.indexOf("/help") >= 0);
+});
+
+test("a field is left out entirely when its source has nothing to report", () => {
+  let noTokens: StatusInfo = { mode: "auto-edit", elapsedMs: 5000, tokens: 0, runningTasks: 0 };
+  expect(statusText(noTokens, 120) == "mode: auto-edit · 5s · /help for commands · PageUp/PageDown to scroll");
+  let tasksOnly: StatusInfo = { mode: "read-only", elapsedMs: NO_TURN, tokens: 0, runningTasks: 1 };
+  expect(statusText(tasksOnly, 120) == "mode: read-only · 1 running task · /help for commands · PageUp/PageDown to scroll");
+});
+
+test("a width of zero leaves the line uncut, so the caller's own clip stays in charge", () => {
+  expect(statusText(busy(), 0) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands · PageUp/PageDown to scroll");
 });

@@ -5,7 +5,7 @@ import { RelayInputBridge, dispatchInboundFrame } from "./relay_bridge.ts";
 import { PROTOCOL_VERSION, CANCEL, CancelFrame, encodeCancel, APPROVAL_REPLY, ApprovalReplyFrame, encodeApprovalReply } from "../protocol/frames.ts";
 
 function okReply(text: string): ProviderReply {
-  return { text: text, calls: [], failed: false, errorCode: "", errorMessage: "" };
+  return { text: text, calls: [], failed: false, errorCode: "", errorMessage: "", tokens: 0 };
 }
 
 function allowAll(): ApprovalGate {
