@@ -5,6 +5,7 @@ const ESC: string = String.fromCharCode(27);
 export const RESET: string = ESC + "[0m";
 export const VIOLET: string = ESC + "[38;2;139;92;246m";
 export const BOLD: string = ESC + "[1m";
+export const UNDERLINE: string = ESC + "[4m";
 export const DIM: string = ESC + "[38;2;120;120;125m";
 export const RED: string = ESC + "[38;2;229;72;77m";
 export const GREEN: string = ESC + "[38;2;110;190;115m";

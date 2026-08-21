@@ -3,22 +3,25 @@ import { RelayClient } from "../relay/client.ts";
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
-import { frameType, decodeToolCall, TOOL_CALL } from "../protocol/frames.ts";
+import { frameType, decodeToolCall, TOOL_CALL, TEXT_DELTA } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { styleFrame, stylePrompt, styleScrollIndicator } from "./style.ts";
 import { buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
 import { Scrollback, InputLine, clip } from "./input_state.ts";
+import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 
 const STDIN: int = 0;
 
 export class TurnStatusTracker {
   prevKind: string;
   lastTool: string;
+  md: MarkdownState;
 
   constructor() {
     this.prevKind = "";
     this.lastTool = "";
+    this.md = new MarkdownState();
   }
 
   recordFrame(frameJson: string): void {
@@ -39,7 +42,16 @@ export class TurnStatusTracker {
 
 export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: string): void {
   let kind = frameType(frameJson);
-  sb.append(styleFrame(kind, renderFrame(frameJson, rk.prevKind)));
+  let rendered = renderFrame(frameJson, rk.prevKind);
+  if (kind == TEXT_DELTA) {
+    sb.append(appendMarkdownDelta(rk.md, rendered));
+  } else {
+    let flushed = flushMarkdown(rk.md);
+    if (flushed != "") {
+      sb.append(flushed);
+    }
+    sb.append(styleFrame(kind, rendered));
+  }
   rk.recordFrame(frameJson);
 }
 
