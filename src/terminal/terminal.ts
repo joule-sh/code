@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -10,7 +10,7 @@ import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
-import { Scrollback, InputLine, PendingApproval, clip } from "./input_state.ts";
+import { Scrollback, InputLine, InputHistory, PendingApproval, clip } from "./input_state.ts";
 import { styleFrame, stylePrompt, styleBanner, styleScrollIndicator } from "./style.ts";
 import { buildWelcomeBox, buildStatusLine } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
@@ -139,6 +139,7 @@ export function runTerminal(argv: string[]): void {
 
   let sb = new Scrollback();
   let input = new InputLine();
+  let history = new InputHistory();
   let rk = new RenderKindTracker();
 
   let tracker = new TurnTracker();
@@ -273,12 +274,26 @@ export function runTerminal(argv: string[]): void {
 
     if (k.kind == KEY_BACKSPACE) {
       input.backspace();
+      history.cancelNavigation();
       drawScreen(sb, input, gate.mode);
       continue;
     }
 
     if (k.kind == KEY_CHAR) {
       input.push(k.char);
+      history.cancelNavigation();
+      drawScreen(sb, input, gate.mode);
+      continue;
+    }
+
+    if (k.kind == KEY_ARROW_UP) {
+      input.setBuf(history.back(input.buf));
+      drawScreen(sb, input, gate.mode);
+      continue;
+    }
+
+    if (k.kind == KEY_ARROW_DOWN) {
+      input.setBuf(history.forward());
       drawScreen(sb, input, gate.mode);
       continue;
     }
@@ -313,6 +328,7 @@ export function runTerminal(argv: string[]): void {
     let cmd = parseCommand(line);
 
     if (cmd.kind == CMD_NONE) {
+      history.record(line);
       sb.append("\n" + stylePrompt("> ") + line);
       drawScreen(sb, input, gate.mode);
       bridge.runNow(session, line);

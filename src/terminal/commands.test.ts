@@ -63,3 +63,10 @@ test("helpText lists every command", () => {
   expect(h.indexOf("/clear") >= 0);
   expect(h.indexOf("/exit") >= 0);
 });
+
+test("helpText documents the PageUp/PageDown scroll keys", () => {
+  let h = helpText();
+  expect(h.indexOf("PageUp") >= 0);
+  expect(h.indexOf("PageDown") >= 0);
+  expect(h.indexOf("scroll") >= 0);
+});

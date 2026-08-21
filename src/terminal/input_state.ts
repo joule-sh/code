@@ -122,6 +122,65 @@ export class InputLine {
   clear(): void {
     this.buf = "";
   }
+
+  setBuf(text: string): void {
+    this.buf = text;
+  }
+}
+
+export class InputHistory {
+  entries: string[];
+  cursor: int;
+  stash: string;
+  navigating: bool;
+
+  constructor() {
+    this.entries = [];
+    this.cursor = 0;
+    this.stash = "";
+    this.navigating = false;
+  }
+
+  record(text: string): void {
+    this.entries.push(text);
+    this.cursor = this.entries.length;
+    this.stash = "";
+    this.navigating = false;
+  }
+
+  cancelNavigation(): void {
+    this.navigating = false;
+  }
+
+  back(current: string): string {
+    if (this.entries.length == 0) {
+      return current;
+    }
+    if (!this.navigating) {
+      this.stash = current;
+      this.navigating = true;
+      this.cursor = this.entries.length;
+    }
+    if (this.cursor > 0) {
+      this.cursor = this.cursor - 1;
+    }
+    return this.entries[this.cursor];
+  }
+
+  forward(): string {
+    if (!this.navigating) {
+      return this.stash;
+    }
+    this.cursor = this.cursor + 1;
+    if (this.cursor >= this.entries.length) {
+      this.cursor = this.entries.length;
+      this.navigating = false;
+      let out = this.stash;
+      this.stash = "";
+      return out;
+    }
+    return this.entries[this.cursor];
+  }
 }
 
 export class PendingApproval {
