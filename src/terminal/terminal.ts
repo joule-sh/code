@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, rows, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, rows, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -22,11 +22,14 @@ import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, cancelCommandArg } from "./tasks_bridge.ts";
 
 const STDIN: int = 0;
-const KEY_Y: int = 121;
-const KEY_N: int = 110;
-const KEY_A: int = 97;
-const KEY_CTRL_C_BYTE: int = 3;
 const RELAY_POLL_MS: int = 100;
+const WHEEL_SCROLL_LINES: int = 3;
+
+function screenRows(): int {
+  let r = rows(STDIN);
+  if (r <= 1) { r = 24; }
+  return r;
+}
 
 function hasFlag(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -128,17 +131,27 @@ export function runTerminal(argv: string[]): void {
     if (tasksBox.slot.length > 0 && relayBox.sessionSlot.length > 0) {
       tasksBox.slot[0].poll(relayBox.sessionSlot[0]);
     }
-    let b = readByteTimeout(STDIN, 0);
-    if (b == KEY_Y && gateBox.slot.length > 0) {
+    let k = readKeyTimeout(STDIN, 0);
+    if (k.kind == KEY_SCROLL_UP || k.kind == KEY_SCROLL_DOWN) {
+      let r = screenRows();
+      if (k.kind == KEY_SCROLL_UP) {
+        sb.scrollUp(r - 1, WHEEL_SCROLL_LINES);
+      } else {
+        sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
+      }
+      if (gateBox.slot.length > 0) {
+        drawScreen(sb, input, gateBox.slot[0].mode, rk.quantaText());
+      }
+    } else if (k.kind == KEY_CHAR && k.char == "y" && gateBox.slot.length > 0) {
       gateBox.slot[0].reply(pendingApproval.callId, REPLY_ALLOW);
       pendingApproval.clearIfMatches(pendingApproval.callId);
-    } else if (b == KEY_N && gateBox.slot.length > 0) {
+    } else if (k.kind == KEY_CHAR && k.char == "n" && gateBox.slot.length > 0) {
       gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);
       pendingApproval.clearIfMatches(pendingApproval.callId);
-    } else if (b == KEY_A && gateBox.slot.length > 0) {
+    } else if (k.kind == KEY_CHAR && k.char == "a" && gateBox.slot.length > 0) {
       gateBox.slot[0].reply(pendingApproval.callId, REPLY_ALWAYS);
       pendingApproval.clearIfMatches(pendingApproval.callId);
-    } else if (b == KEY_CTRL_C_BYTE) {
+    } else if (k.kind == KEY_CTRL_C) {
       if (gateBox.slot.length > 0) {
         gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);
       }
@@ -195,7 +208,6 @@ export function runTerminal(argv: string[]): void {
     drawScreen(sb, input, gate.mode, rk.quantaText());
   };
 
-
   session.subscribe((frameJson: string) => {
     relay.publish(frameJson);
     if (frameType(frameJson) == TURN_START) {
@@ -213,7 +225,7 @@ export function runTerminal(argv: string[]): void {
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
 
-  process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR);
+  process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR + ENABLE_MOUSE_REPORTING);
   rawEnable(STDIN);
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode));
@@ -280,17 +292,29 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind == KEY_PAGE_UP) {
-      let r = rows(STDIN);
-      if (r <= 1) { r = 24; }
+      let r = screenRows();
       sb.scrollUp(r - 1, r - 1);
       drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (k.kind == KEY_PAGE_DOWN) {
-      let r = rows(STDIN);
-      if (r <= 1) { r = 24; }
+      let r = screenRows();
       sb.scrollDown(r - 1, r - 1);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
+      continue;
+    }
+
+    if (k.kind == KEY_SCROLL_UP) {
+      let r = screenRows();
+      sb.scrollUp(r - 1, WHEEL_SCROLL_LINES);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
+      continue;
+    }
+
+    if (k.kind == KEY_SCROLL_DOWN) {
+      let r = screenRows();
+      sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
       drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
@@ -402,6 +426,6 @@ export function runTerminal(argv: string[]): void {
 
   relay.detach();
 
-  process.stdout().write(SHOW_CURSOR + EXIT_ALT_SCREEN);
+  process.stdout().write(DISABLE_MOUSE_REPORTING + SHOW_CURSOR + EXIT_ALT_SCREEN);
   rawDisable(STDIN);
 }

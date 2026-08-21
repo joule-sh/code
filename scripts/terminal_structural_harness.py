@@ -33,6 +33,14 @@ SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 RESET_SEQ = "\x1b[0m"
 SCROLL_INDICATOR = "scrolled up, PageDown to return to the live view"
 BANNER = "joule - type a request, /help for commands, ctrl-d to quit"
+ALT_ENTER = "\x1b[?1049h"
+ALT_EXIT = "\x1b[?1049l"
+HIDE_CURSOR = "\x1b[?25l"
+MOUSE_ENABLE = "\x1b[?1000h\x1b[?1006h"
+MOUSE_DISABLE = "\x1b[?1000l\x1b[?1006l"
+WHEEL_UP = b"\x1b[<64;10;5M"
+WHEEL_DOWN = b"\x1b[<65;10;5M"
+MOUSE_CLICK = b"\x1b[<0;5;5M\x1b[<0;5;5m"
 
 TOOL_CALL_MARKER = "  -> "
 TOOL_RESULT_OK_MARKER = "     ok:"
@@ -305,6 +313,41 @@ def self_test_color_bleed_detector():
     ok(bled_caught, "color-bleed detector self-test: an unreset color bleeding into the next row is caught")
 
 
+def check_mouse_teardown(full_text, exit_label):
+    disable_idx = full_text.rfind(MOUSE_DISABLE)
+    exit_idx = full_text.rfind(ALT_EXIT)
+    ok(disable_idx >= 0, "the mouse reporting disable sequences (1000l+1006l) appear in the byte stream on %s exit (ticket #82)" % exit_label)
+    ok(exit_idx >= 0, "the alt screen exit sequence appears in the byte stream on %s exit" % exit_label)
+    ok(disable_idx >= 0 and exit_idx >= 0 and disable_idx < exit_idx, "mouse reporting is disabled before the alt screen exits on %s exit (ticket #82)" % exit_label)
+
+
+def run_ctrl_c_exit_scenario():
+    work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-ctrlc-")
+    repo_dir = os.path.join(work_dir, "repo")
+    home_dir = os.path.join(work_dir, "home")
+    os.makedirs(home_dir, exist_ok=True)
+    seed_workspace(repo_dir)
+    joule_env = dict(os.environ)
+    joule_env["HOME"] = home_dir
+    joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:1"
+    joule_env["JOULE_CODE_MODEL"] = "stub"
+    joule_env["JOULE_CODE_API_KEY"] = "stub-key"
+    joule_env["TERM"] = "xterm-256color"
+    session = None
+    try:
+        session = PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
+        session.wait_for(BANNER, timeout=10.0)
+        session.write("\x03")
+        exited = session.wait_exit(5.0)
+        ok(exited, "joule exits cleanly on ctrl-c with an empty input line")
+        session._pump(0.5)
+        check_mouse_teardown(text(bytes(session.raw)), "ctrl-c")
+    finally:
+        if session is not None:
+            session.close()
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 def visible_rows(screen_block):
     return [strip_sgr(c) for (_, c) in parse_redraw_rows(screen_block)]
 
@@ -365,6 +408,12 @@ def run_scenario():
 
         session.wait_for(BANNER, timeout=10.0)
         ok(True, "joule starts under a real pty and prints its banner")
+
+        startup_text = text(bytes(session.raw))
+        alt_idx = startup_text.find(ALT_ENTER)
+        ok(alt_idx >= 0, "the alt screen enter sequence appears at startup")
+        expected_mouse_idx = alt_idx + len(ALT_ENTER) + len(HIDE_CURSOR)
+        ok(startup_text.find(MOUSE_ENABLE) == expected_mouse_idx, "mouse reporting (1000h+1006h) is enabled immediately after entering the alt screen and hiding the cursor (ticket #82)")
 
         session.write("abc")
         session.write("\x7f\x7f\x7f")
@@ -431,6 +480,30 @@ def run_scenario():
         ok(SCROLL_INDICATOR not in screen_after_pagedown, "PageDown all the way back down drops the scrolled-up indicator")
         ok("FILE_A_LINE_050" in strip_sgr(screen_after_pagedown), "PageDown resumes auto-follow and shows the newly arrived content")
 
+        for _ in range(3):
+            session.write(WHEEL_UP)
+            session.settle(0.15, 1.0)
+        screen_after_wheel_up = last_redraw_block(text(bytes(session.raw)))
+        ok(SCROLL_INDICATOR in screen_after_wheel_up, "SGR wheel-up events scroll the view and show the scrolled-up indicator (ticket #82)")
+
+        for _ in range(5):
+            session.write(WHEEL_DOWN)
+            session.settle(0.15, 1.0)
+        screen_after_wheel_down = last_redraw_block(text(bytes(session.raw)))
+        ok(SCROLL_INDICATOR not in screen_after_wheel_down, "SGR wheel-down events return to the bottom and drop the indicator (ticket #82)")
+        ok("FILE_A_LINE_050" in strip_sgr(screen_after_wheel_down), "wheel-down all the way resumes auto-follow at the live view (ticket #82)")
+
+        session.write(MOUSE_CLICK)
+        session.settle(0.2, 1.0)
+        session.write("q")
+        session.settle(0.2, 1.5)
+        screen_after_click = last_redraw_block(text(bytes(session.raw)))
+        rows_after_click = parse_redraw_rows(screen_after_click)
+        input_rows = [strip_sgr(c) for (_, c) in rows_after_click if "> " in strip_sgr(c)]
+        ok(any(r.endswith("> q") for r in input_rows), "a mouse click press+release pair is consumed silently, the next typed character lands alone on the input row (ticket #82)")
+        session.write("\x7f")
+        session.settle(0.2, 1.0)
+
         session.resize(15, 60)
         session.write("z")
         session.write("\x7f")
@@ -444,11 +517,13 @@ def run_scenario():
         session.write("\x04")
         exited = session.wait_exit(5.0)
         ok(exited, "joule exits cleanly on ctrl-d")
+        session._pump(0.5)
 
         full_text = text(bytes(session.raw))
         check_zero_newlines(full_text)
         check_cursor_monotonic(full_text)
         check_color_bleed(full_text)
+        check_mouse_teardown(full_text, "ctrl-d")
 
     finally:
         if session is not None:
@@ -475,6 +550,11 @@ def main():
     start = time.time()
     try:
         run_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_ctrl_c_exit_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))
