@@ -101,6 +101,36 @@ const secondDeltaFrame = "{\"v\":1,\"seq\":2,\"type\":\"text.delta\",\"turnId\":
 const streamedOut = renderFrameText(firstDeltaFrame, "text.delta") + renderFrameText(secondDeltaFrame, frameKindOf(firstDeltaFrame));
 expectTrue(streamedOut === "No health route yet. I'll add GET /health.", "two consecutive text.delta frames do not get a newline inserted between them");
 
+const ESC = String.fromCharCode(27);
+const ANSI_RESET = ESC + "[0m";
+const ANSI_RED = ESC + "[38;2;229;72;77m";
+const ANSI_GREEN = ESC + "[38;2;110;190;115m";
+
+function toolCallFrame(tool, args) {
+  return JSON.stringify({ v: 1, seq: 1, type: "tool.call", turnId: "t1", callId: "c1", tool: tool, args: JSON.stringify(args) });
+}
+
+const editDiffOut = renderFrameText(toolCallFrame("edit", { path: "src/a.ts", old_text: "const x = 1;", new_text: "const x = 2;" }), "");
+expectContains(editDiffOut, "-> edit src/a.ts", "an edit tool.call renders the path (#68 diff rendering)");
+expectContains(editDiffOut, ANSI_RED + "- const x = 1;", "an edit tool.call renders a red removed line (#68 diff rendering)");
+expectContains(editDiffOut, ANSI_GREEN + "+ const x = 2;", "an edit tool.call renders a green added line (#68 diff rendering)");
+
+const writeDiffOut = renderFrameText(toolCallFrame("write", { path: "src/new.ts", content: "line one\nline two" }), "");
+expectContains(writeDiffOut, "-> write src/new.ts", "a write tool.call renders the path (#68 diff rendering)");
+expectContains(writeDiffOut, ANSI_GREEN + "+ line one", "a write tool.call renders green added lines against empty old text (#68 diff rendering)");
+expectContains(writeDiffOut, ANSI_GREEN + "+ line two", "a write tool.call renders every added line (#68 diff rendering)");
+
+const noopEditOut = renderFrameText(toolCallFrame("edit", { path: "src/same.ts", old_text: "same", new_text: "same" }), "");
+expectTrue(noopEditOut === "\n  -> edit src/same.ts", "an edit tool.call with unchanged text renders the path but no diff body (#68 diff rendering)");
+
+let bigContent = "";
+for (let i = 0; i < 500; i++) {
+  if (i > 0) { bigContent += "\n"; }
+  bigContent += "line " + i;
+}
+const bigDiffOut = renderFrameText(toolCallFrame("write", { path: "src/big.ts", content: bigContent }), "");
+expectTrue(bigDiffOut === "\n  -> write src/big.ts", "a diff larger than the terminal display cap falls back to the plain summary line (#68 diff rendering)");
+
 console.log("");
 if (failures > 0) {
   console.error(failures + " assertion(s) failed");

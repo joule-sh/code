@@ -1,6 +1,22 @@
 import { renderFrame } from "./renderer.ts";
 import { fixtureScript } from "./fixture.ts";
-import { frameType, TEXT_DELTA } from "../protocol/frames.ts";
+import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, ToolCallFrame, encodeToolCall } from "../protocol/frames.ts";
+import { GREEN, RED } from "./style.ts";
+
+type EditArgs = { path: string, old_text: string, new_text: string };
+type WriteArgs = { path: string, content: string };
+
+function editCallFrame(path: string, oldText: string, newText: string): string {
+  let args: EditArgs = { path: path, old_text: oldText, new_text: newText };
+  let f: ToolCallFrame = { v: PROTOCOL_VERSION, seq: 1, type: TOOL_CALL, turnId: "t1", callId: "c1", tool: "edit", args: JSON.stringify(args) };
+  return encodeToolCall(f);
+}
+
+function writeCallFrame(path: string, content: string): string {
+  let args: WriteArgs = { path: path, content: content };
+  let f: ToolCallFrame = { v: PROTOCOL_VERSION, seq: 1, type: TOOL_CALL, turnId: "t1", callId: "c1", tool: "write", args: JSON.stringify(args) };
+  return encodeToolCall(f);
+}
 
 test("the fixture script renders into an expected transcript", () => {
   let script = fixtureScript();
@@ -67,4 +83,49 @@ test("two consecutive text.delta frames do not get a newline inserted between th
   let second = "{\"v\":1,\"seq\":2,\"type\":\"text.delta\",\"turnId\":\"t1\",\"text\":\"I'll add GET /health.\"}";
   let out = renderFrame(first, TEXT_DELTA) + renderFrame(second, frameType(first));
   expect(out == "No health route yet. I'll add GET /health.");
+});
+
+test("an edit tool.call renders the path, then a colored diff of old_text vs new_text", () => {
+  let f = editCallFrame("src/a.ts", "const x = 1;", "const x = 2;");
+  let out = renderFrame(f, "");
+  expect(out.indexOf("-> edit src/a.ts") >= 0);
+  expect(out.indexOf(RED + "- const x = 1;") >= 0);
+  expect(out.indexOf(GREEN + "+ const x = 2;") >= 0);
+});
+
+test("a write tool.call renders the path, then a diff against empty old text with green added lines", () => {
+  let f = writeCallFrame("src/new.ts", "line one\nline two");
+  let out = renderFrame(f, "");
+  expect(out.indexOf("-> write src/new.ts") >= 0);
+  expect(out.indexOf(GREEN + "+ line one") >= 0);
+  expect(out.indexOf(GREEN + "+ line two") >= 0);
+});
+
+test("an edit tool.call with unchanged text renders the path but no diff body", () => {
+  let f = editCallFrame("src/same.ts", "same", "same");
+  let out = renderFrame(f, "");
+  expect(out == "\n  -> edit src/same.ts");
+});
+
+function manyLines(prefix: string, count: int): string {
+  let out = "";
+  let i = 0;
+  while (i < count) {
+    if (i > 0) { out = out + "\n"; }
+    out = out + prefix + `${i}`;
+    i = i + 1;
+  }
+  return out;
+}
+
+test("a diff larger than the terminal display cap falls back to the plain summary line, no diff body", () => {
+  let f = writeCallFrame("src/big.ts", manyLines("line ", 500));
+  let out = renderFrame(f, "");
+  expect(out == "\n  -> write src/big.ts");
+});
+
+test("a tool.call for a non-diffable tool still dumps its raw args, unchanged", () => {
+  let f = "{\"v\":1,\"seq\":1,\"type\":\"tool.call\",\"turnId\":\"t1\",\"callId\":\"c1\",\"tool\":\"grep\",\"args\":\"{\\\"pattern\\\":\\\"TODO\\\"}\"}";
+  let out = renderFrame(f, "");
+  expect(out == "\n  -> grep {\"pattern\":\"TODO\"}");
 });
