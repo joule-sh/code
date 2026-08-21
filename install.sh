@@ -39,15 +39,6 @@ target="$install_root/$version"
 mkdir -p "$target"
 cp "$work/code-$platform/joule" "$work/code-$platform/relay" "$target/"
 
-# The macOS builds carry their own copy of the Boehm collector and load it from
-# @executable_path, so it has to land beside the binaries. Linux archives have
-# no such file and this loop does nothing there.
-for lib in "$work/code-$platform"/*.dylib; do
-  if [ -e "$lib" ]; then
-    cp "$lib" "$target/"
-  fi
-done
-
 mkdir -p "$bin_dir"
 ln -sf "$target/joule" "$bin_dir/joule"
 ln -sf "$target/relay" "$bin_dir/relay"

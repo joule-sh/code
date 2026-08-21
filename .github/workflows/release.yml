@@ -28,9 +28,8 @@ jobs:
       LUMEN_VERSION: v0.6.0
     steps:
       - uses: actions/checkout@v4
-      # The Boehm collector behind Lumen's allocator is a system library. The
-      # Linux runner already has it; macOS has no copy at all, so Homebrew
-      # provides one and LIBRARY_PATH points the native backend at it.
+      # Lumen's allocator links the Boehm collector as a system library. The
+      # Linux runner has one; macOS has none, so Homebrew provides it.
       - if: runner.os == 'macOS'
         run: brew install bdw-gc
       - run: |
@@ -42,39 +41,35 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           echo "export const VERSION: string = \"$version\";" > src/version.ts
           cat src/version.ts
-      # Zig ignores LIBRARY_PATH on macOS and only has Apple Silicon's
-      # /opt/homebrew baked into its library search paths, so on Intel the
-      # collector is never found. Hand the keg's lib directory to the native
-      # backend as an explicit -L, which lumen forwards ahead of its own -lgc.
-      - if: runner.os == 'macOS'
-        run: echo "LUMEN_FLAGS=--link -L$(brew --prefix bdw-gc)/lib" >> "$GITHUB_ENV"
-      - run: make release
-      - run: ./bin/joule --version
-      # A released macOS binary cannot depend on the builder's Homebrew prefix,
-      # so the collector travels with it: copied next to the executables and
-      # loaded from @executable_path. Rewriting the load command invalidates
-      # the arm64 signature, so each binary is ad-hoc signed again afterwards.
+      # Link the collector statically so a released macOS binary depends on
+      # nothing but libSystem. Two things make that work. The backend prefers a
+      # dylib whenever it can see one, so the static archive is staged alone in
+      # its own directory and Homebrew's dylib symlinks are unlinked. And Zig
+      # ignores LIBRARY_PATH on macOS while knowing only Apple Silicon's
+      # /opt/homebrew, so the directory is passed as an explicit -L, which
+      # lumen forwards to the backend ahead of its own -lgc.
       - if: runner.os == 'macOS'
         run: |
-          gc_dylib="$(otool -L bin/joule | awk '/libgc/ {print $1}')"
-          if [ -z "$gc_dylib" ]; then
-            echo "expected bin/joule to link the Boehm collector, found none" >&2
+          mkdir -p "$PWD/gcstatic"
+          cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
+          brew unlink bdw-gc
+          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+      - run: make release
+      - run: ./bin/joule --version
+      # Guard the property the archives depend on: if a future toolchain change
+      # reintroduces a dynamic libgc, the release should fail here rather than
+      # ship binaries that die on a machine without Homebrew.
+      - if: runner.os == 'macOS'
+        run: |
+          otool -L bin/joule bin/relay
+          if otool -L bin/joule bin/relay | grep -q libgc; then
+            echo "a macOS binary still links libgc dynamically" >&2
             exit 1
           fi
-          cp "$gc_dylib" bin/
-          gc_base="$(basename "$gc_dylib")"
-          for b in bin/joule bin/relay; do
-            install_name_tool -change "$gc_dylib" "@executable_path/$gc_base" "$b"
-            codesign --force --sign - "$b"
-          done
-          otool -L bin/joule
       - run: |
           dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
           cp bin/joule bin/relay README.md "$dir/"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            cp bin/*.dylib "$dir/"
-          fi
           tar -czf "$dir.tar.gz" "$dir"
       - uses: actions/upload-artifact@v4
         with:

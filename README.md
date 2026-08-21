@@ -61,8 +61,9 @@ The `-L` is not optional on Intel Macs. Zig ignores `LIBRARY_PATH` on macOS and
 only has Apple Silicon's `/opt/homebrew` in its built-in search paths, so an
 Intel build fails without it.
 
-The macOS release archives carry their own copy of that library beside the
-binaries, so an installed release needs no Homebrew.
+The macOS release archives link that library statically, so an installed
+release depends on nothing but the system's own libSystem and needs no
+Homebrew.
 
 ```sh
 git clone https://github.com/joule-sh/code.git
