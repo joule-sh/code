@@ -2,11 +2,12 @@ import { cols, rows, cursorTo, CLEAR_LINE } from "../vendor/tty/tty.ts";
 import { RelayClient } from "../relay/client.ts";
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
+import { TurnTracker } from "../providers/live.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
-import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA } from "../protocol/frames.ts";
+import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
 import { styleFrame, stylePrompt, styleScrollIndicator } from "./style.ts";
-import { buildStatusLine } from "./layout.ts";
+import { StatusInfo, NO_TURN, buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
 import { InputLine, clip } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
@@ -20,15 +21,35 @@ export class TurnStatusTracker {
   prevKind: string;
   lastTool: string;
   md: MarkdownState;
+  startedAt: i64;
+  inTurn: bool;
+  trackerSlot: TurnTracker[];
+  runningTasksSlot: (() => int)[];
 
   constructor() {
     this.prevKind = "";
     this.lastTool = "";
     this.md = new MarkdownState();
+    this.startedAt = 0;
+    this.inTurn = false;
+    this.trackerSlot = [];
+    this.runningTasksSlot = [];
+  }
+
+  bind(tracker: TurnTracker, countRunning: () => int): void {
+    this.trackerSlot = [tracker];
+    this.runningTasksSlot = [countRunning];
   }
 
   recordFrame(frameJson: string): void {
     let kind = frameType(frameJson);
+    if (kind == TURN_START) {
+      this.startedAt = time.monotonic();
+      this.inTurn = true;
+    }
+    if (kind == TURN_END) {
+      this.inTurn = false;
+    }
     if (kind == TOOL_CALL) {
       let f = decodeToolCall(frameJson);
       if (f != null) {
@@ -40,6 +61,25 @@ export class TurnStatusTracker {
 
   quantaText(): string {
     return buildQuantaIndicator(this.prevKind, this.lastTool);
+  }
+
+  elapsedMs(): i64 {
+    if (!this.inTurn) { return NO_TURN; }
+    return time.monotonic() - this.startedAt;
+  }
+
+  turnTokens(): int {
+    if (!this.inTurn || this.trackerSlot.length == 0) { return 0; }
+    return this.trackerSlot[0].tokens;
+  }
+
+  runningTasks(): int {
+    if (this.runningTasksSlot.length == 0) { return 0; }
+    return this.runningTasksSlot[0]();
+  }
+
+  statusInfo(mode: string): StatusInfo {
+    return { mode: mode, elapsedMs: this.elapsedMs(), tokens: this.turnTokens(), runningTasks: this.runningTasks() };
   }
 }
 
@@ -71,12 +111,13 @@ export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: st
   rk.recordFrame(frameJson);
 }
 
-export function drawScreen(sb: Scrollback, input: InputLine, mode: string, quantaText: string): void {
+export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker): void {
   let c = cols(STDIN);
   let r = rows(STDIN);
   if (c <= 0) { c = 80; }
   if (r <= 1) { r = 24; }
 
+  let quantaText = rk.quantaText();
   let atBottom = sb.isAtBottom();
   let indicatorRows = 0;
   if (!atBottom) { indicatorRows = indicatorRows + 1; }
@@ -116,7 +157,7 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, quant
     row = row + 1;
     pr = pr + 1;
   }
-  out = out + cursorTo(r - 1, 1) + CLEAR_LINE + clip(buildStatusLine(mode), c);
+  out = out + cursorTo(r - 1, 1) + CLEAR_LINE + clip(buildStatusLine(rk.statusInfo(mode), c), c);
   out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;
   process.stdout().write(out);
 }
@@ -129,6 +170,6 @@ export function runRelayTick(relay: RelayClient, session: Session, gate: Gate, b
     i = i + 1;
   }
   if (diags.length > 0) {
-    drawScreen(sb, input, gate.mode, rk.quantaText());
+    drawScreen(sb, input, gate.mode, rk);
   }
 }

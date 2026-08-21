@@ -19,5 +19,5 @@ export function answerApproval(gate: Gate, sb: Scrollback, input: InputLine, rk:
   let callId = pending.callId;
   gate.reply(callId, decisionForApprovalOption(index));
   pending.clearIfMatches(callId);
-  drawScreen(sb, input, gate.mode, rk.quantaText());
+  drawScreen(sb, input, gate.mode, rk);
 }

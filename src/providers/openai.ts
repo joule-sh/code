@@ -85,13 +85,35 @@ export function errorReplyFromBody(status: int, raw: string): ProviderReply {
   let msg = jsonErrorText(raw);
   if (msg == "") { msg = raw; }
   let code = "E_HTTP_" + `${status}`;
-  return { text: "", calls: [], failed: true, errorCode: code, errorMessage: msg };
+  return { text: "", calls: [], failed: true, errorCode: code, errorMessage: msg, tokens: 0 };
+}
+
+const TOTAL_TOKENS_KEY: string = "\"total_tokens\":";
+
+export function usageTotalTokens(payload: string): int {
+  let at = payload.indexOf(TOTAL_TOKENS_KEY);
+  if (at < 0) { return 0; }
+  if (at > 0 && payload.charAt(at - 1) == "\\") { return 0; }
+  let i = at + TOTAL_TOKENS_KEY.length;
+  while (i < payload.length && payload.charAt(i) == " ") { i = i + 1; }
+  let total = 0;
+  let digits = 0;
+  while (i < payload.length) {
+    let c = payload.charCodeAt(i);
+    if (c < 48 || c > 57) { break; }
+    total = total * 10 + (c - 48);
+    digits = digits + 1;
+    i = i + 1;
+  }
+  if (digits == 0) { return 0; }
+  return total;
 }
 
 export function consumeStream(readLine: () => string, isDone: () => bool, shouldStop: () => bool, onDelta: (text: string) => void): ProviderReply {
   let assembler = new ToolCallAssembler();
   let text = "";
   let sawFinish = false;
+  let usage = 0;
 
   while (!isDone() && !shouldStop()) {
     let line = readLine();
@@ -102,7 +124,7 @@ export function consumeStream(readLine: () => string, isDone: () => bool, should
 
     if (jsonHasError(payload)) {
       let msg = jsonErrorText(payload);
-      return { text: "", calls: [], failed: true, errorCode: "E_STREAM", errorMessage: msg };
+      return { text: "", calls: [], failed: true, errorCode: "E_STREAM", errorMessage: msg, tokens: usage };
     }
 
     let delta = jsonChoiceText(payload, "delta");
@@ -116,6 +138,9 @@ export function consumeStream(readLine: () => string, isDone: () => bool, should
       assembler.add(f);
     }
 
+    let reported = usageTotalTokens(payload);
+    if (reported > 0) { usage = reported; }
+
     let finish = jsonChoiceString(payload, "finish_reason");
     if (finish != "") {
       sawFinish = true;
@@ -126,10 +151,10 @@ export function consumeStream(readLine: () => string, isDone: () => bool, should
 
   if (text == "" && calls.length == 0 && sawFinish) {
     let msg = "the model returned an empty answer (finish_reason set, no text, no tool calls) - likely a thinking-mode response with the answer consumed silently";
-    return { text: "", calls: [], failed: true, errorCode: "E_EMPTY_ANSWER", errorMessage: msg };
+    return { text: "", calls: [], failed: true, errorCode: "E_EMPTY_ANSWER", errorMessage: msg, tokens: usage };
   }
 
-  return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "" };
+  return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "", tokens: usage };
 }
 
 export function streamChat(cfg: ProviderConfig, messages: Message[], tools: ToolSchema[], onDelta: (text: string) => void, shouldStop: () => bool): ProviderReply {

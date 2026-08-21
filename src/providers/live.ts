@@ -26,11 +26,17 @@ export class CancelWatch {
 
 export class TurnTracker {
   current: string;
+  tokens: int;
   constructor() {
     this.current = "";
+    this.tokens = 0;
   }
   setCurrent(id: string): void {
     this.current = id;
+    this.tokens = 0;
+  }
+  addTokens(n: int): void {
+    this.tokens = this.tokens + n;
   }
 }
 
@@ -68,6 +74,8 @@ export class LiveProvider {
       }
     };
     let shouldStop = () => this.watch.tripped();
-    return streamChat(this.cfg, history, this.toolSchemas, wrapped, shouldStop);
+    let reply = streamChat(this.cfg, history, this.toolSchemas, wrapped, shouldStop);
+    this.tracker.addTokens(reply.tokens);
+    return reply;
   }
 }

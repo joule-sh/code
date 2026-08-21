@@ -20,7 +20,7 @@ function freshMissingPath(name: string): string {
 
 function noopProvider(): Provider {
   return { ask: (h: Message[], d: (text: string) => void): ProviderReply => {
-    return { text: "", calls: [], failed: false, errorCode: "", errorMessage: "" };
+    return { text: "", calls: [], failed: false, errorCode: "", errorMessage: "", tokens: 0 };
   } };
 }
 

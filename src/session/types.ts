@@ -7,7 +7,7 @@ export type ToolCallReq = { callId: string, tool: string, args: string };
 
 export type Message = { role: string, text: string, toolCallId: string, toolCalls: ToolCallReq[] };
 
-export type ProviderReply = { text: string, calls: ToolCallReq[], failed: bool, errorCode: string, errorMessage: string };
+export type ProviderReply = { text: string, calls: ToolCallReq[], failed: bool, errorCode: string, errorMessage: string, tokens: int };
 
 export type Provider = { ask: (history: Message[], onDelta: (text: string) => void) => ProviderReply };
 

@@ -26,6 +26,12 @@ export function isValidMode(mode: string): bool {
   return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_FULL_AUTO;
 }
 
+export function nextMode(mode: string): string {
+  if (mode == MODE_READ_ONLY) { return MODE_AUTO_EDIT; }
+  if (mode == MODE_AUTO_EDIT) { return MODE_FULL_AUTO; }
+  return MODE_READ_ONLY;
+}
+
 export class GateBox {
   slot: Gate[];
   constructor() {

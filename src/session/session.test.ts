@@ -3,11 +3,11 @@ import { Message, ProviderReply, ToolCallReq, Provider, ToolRegistry, ApprovalGa
 import { Session, SYSTEM_PROMPT } from "./session.ts";
 
 function okReply(text: string, calls: ToolCallReq[]): ProviderReply {
-  return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "" };
+  return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "", tokens: 0 };
 }
 
 function failReply(code: string, message: string): ProviderReply {
-  return { text: "", calls: [], failed: true, errorCode: code, errorMessage: message };
+  return { text: "", calls: [], failed: true, errorCode: code, errorMessage: message, tokens: 0 };
 }
 
 class StepProvider {
