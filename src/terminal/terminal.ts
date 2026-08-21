@@ -58,11 +58,23 @@ class RelayBox {
   }
 }
 
-function runRelayTick(relay: RelayClient, session: Session, gate: Gate, bridge: RelayInputBridge, sb: Scrollback, input: InputLine): void {
+class RenderKindTracker {
+  prevKind: string;
+  constructor() {
+    this.prevKind = "";
+  }
+  record(kind: string): void {
+    this.prevKind = kind;
+  }
+}
+
+function runRelayTick(relay: RelayClient, session: Session, gate: Gate, bridge: RelayInputBridge, sb: Scrollback, input: InputLine, rk: RenderKindTracker): void {
   let diags = pollRelay(relay, session, gate, bridge);
   let i = 0;
   while (i < diags.length) {
-    sb.append(styleFrame(frameType(diags[i]), renderFrame(diags[i])));
+    let kind = frameType(diags[i]);
+    sb.append(styleFrame(kind, renderFrame(diags[i], rk.prevKind)));
+    rk.record(kind);
     i = i + 1;
   }
   if (diags.length > 0) {
@@ -125,6 +137,7 @@ export function runTerminal(argv: string[]): void {
 
   let sb = new Scrollback();
   let input = new InputLine();
+  let rk = new RenderKindTracker();
 
   let tracker = new TurnTracker();
   let watch = new CancelWatch();
@@ -149,7 +162,7 @@ export function runTerminal(argv: string[]): void {
 
   let onApprovalPoll = () => {
     if (relayBox.relaySlot.length > 0 && gateBox.slot.length > 0) {
-      runRelayTick(relayBox.relaySlot[0], relayBox.sessionSlot[0], gateBox.slot[0], relayBox.bridgeSlot[0], sb, input);
+      runRelayTick(relayBox.relaySlot[0], relayBox.sessionSlot[0], gateBox.slot[0], relayBox.bridgeSlot[0], sb, input, rk);
     }
     let b = readByteTimeout(STDIN, 0);
     if (b == KEY_Y && gateBox.slot.length > 0) {
@@ -214,9 +227,11 @@ export function runTerminal(argv: string[]): void {
         tracker.setCurrent(f.turnId);
       }
     }
-    sb.append(styleFrame(frameType(frameJson), renderFrame(frameJson)));
+    let kind = frameType(frameJson);
+    sb.append(styleFrame(kind, renderFrame(frameJson, rk.prevKind)));
+    rk.record(kind);
     drawScreen(sb, input);
-    runRelayTick(relay, session, gate, bridge, sb, input);
+    runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
 
   process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR);
@@ -234,7 +249,7 @@ export function runTerminal(argv: string[]): void {
     let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
 
     if (k.kind == KEY_TIMEOUT) {
-      runRelayTick(relay, session, gate, bridge, sb, input);
+      runRelayTick(relay, session, gate, bridge, sb, input, rk);
       continue;
     }
 

@@ -67,13 +67,15 @@ function fixtureScript() {
   return out;
 }
 
-function renderFrameText(frameJson) {
+function renderFrameText(frameJson, prevKind) {
   var f = decodeFrame(frameJson);
   if (f === null) { return ""; }
   var kind = f.type;
 
   if (kind === TEXT_DELTA) {
-    return typeof f.text === "string" ? f.text : "";
+    var deltaText = typeof f.text === "string" ? f.text : "";
+    if (prevKind !== TEXT_DELTA) { return "\\n" + deltaText; }
+    return deltaText;
   }
   if (kind === TOOL_CALL) {
     return "\\n  -> " + f.tool + " " + f.args;

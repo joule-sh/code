@@ -322,7 +322,7 @@ def assert_no_model_markers_in_new_rows(new_rows, label):
 def seed_workspace(repo_dir):
     os.makedirs(repo_dir, exist_ok=True)
     with open(os.path.join(repo_dir, "README.md"), "w") as f:
-        f.write("# demo\n\nNo health route yet.\n")
+        f.write("# demo\n\nNo health route yet.")
     file_a_lines = ["FILE_A_LINE_%03d of alpha content padding the row" % i for i in range(1, 51)]
     file_b_lines = ["FILE_B_LINE_%03d of beta content padding the row" % i for i in range(1, 51)]
     with open(os.path.join(repo_dir, "file_a.txt"), "w") as f:
@@ -382,6 +382,11 @@ def run_scenario():
         turn_segment = text(bytes(session.raw[pre_turn_idx:]))
         ok(APPROVAL_MARKER in turn_segment, "a real model turn through the stub model produced an approval prompt (proves the marker check below is not vacuous)")
         ok(TOOL_CALL_MARKER in turn_segment, "the same turn produced a tool.call marker (proves the marker check below is not vacuous)")
+
+        rows_after_turn = visible_rows(last_redraw_block(text(bytes(session.raw))))
+        garbled_concatenation = "route yet.No health route yet"
+        ok(all(garbled_concatenation not in r for r in rows_after_turn), "the read tool.result's last line never runs directly into the run step's resumed text.delta with no separator (ticket #62)")
+        ok(any("No health route yet. I will fix it." in r for r in rows_after_turn), "the run step's resumed text.delta appears on its own row after the read tool.result (ticket #62)")
 
         rows_before_cat_a = visible_rows(last_redraw_block(text(bytes(session.raw))))
         session.write("/cat file_a.txt\r")
