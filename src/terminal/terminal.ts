@@ -8,7 +8,7 @@ import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_DENY } from
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
-import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
@@ -21,6 +21,7 @@ import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./scre
 import { TaskManager } from "../tasks/manager.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, cancelCommandArg } from "./tasks_bridge.ts";
+import { resolveResume, persistTurnEnd } from "./resume.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -94,6 +95,7 @@ export function runTerminal(argv: string[]): void {
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
   }
   let workspaceRoot = process.cwd();
+  let resume = resolveResume(argv, workspaceRoot);
 
   let registry = new ToolsRegistry(workspaceRoot);
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
@@ -172,6 +174,7 @@ export function runTerminal(argv: string[]): void {
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
+  if (resume.history != null) { session.history = resume.history; }
   live.setSession(session);
 
   let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode);
@@ -226,6 +229,7 @@ export function runTerminal(argv: string[]): void {
     } else {
       appendFrame(sb, rk, frameJson);
     }
+    if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, session.history); }
     drawScreen(sb, input, gate.mode, rk.quantaText());
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
@@ -235,6 +239,7 @@ export function runTerminal(argv: string[]): void {
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
+  if (resume.note != "") { sb.append(resume.note); }
   drawScreen(sb, input, gate.mode, rk.quantaText());
 
   if (hasFlag(argv, "--share")) {
