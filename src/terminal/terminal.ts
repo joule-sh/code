@@ -20,7 +20,7 @@ import { RelayInputBridge } from "./relay_bridge.ts";
 import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
-import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, cancelCommandArg } from "./tasks_bridge.ts";
+import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
 
 const STDIN: int = 0;
@@ -187,6 +187,11 @@ export function runTerminal(argv: string[]): void {
   let approvalResponder: ApprovalResponder = {
     hasPendingApproval: () => tasks.hasPendingApproval(),
     answerActiveApproval: (d: string) => tasks.answerActiveApproval(d),
+    activeApprovalTool: () => tasks.activeApprovalTool(),
+    activeApprovalSelected: () => tasks.activeApprovalSelected(),
+    activeApprovalHasOptionRows: () => tasks.activeApprovalHasOptionRows(),
+    activeApprovalOptionRows: () => tasks.activeApprovalOptionRows(),
+    moveActiveApprovalSelection: (delta: int, count: int) => tasks.moveActiveApprovalSelection(delta, count),
   };
 
   let relayCfg = loadRelayConfig();
@@ -226,6 +231,9 @@ export function runTerminal(argv: string[]): void {
     }
     if (isTaskTurnId(frameTurnId(frameJson))) {
       appendTaggedFrame(sb, frameJson);
+      if (frameType(frameJson) == APPROVAL_REQUEST) {
+        tasks.setLatestApprovalOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
+      }
     } else {
       appendFrame(sb, rk, frameJson);
     }
@@ -290,12 +298,20 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind == KEY_ARROW_UP) {
+      if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", -1)) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+        continue;
+      }
       input.setBuf(history.back(input.buf));
       drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (k.kind == KEY_ARROW_DOWN) {
+      if (tryHandleAgentApprovalArrow(approvalResponder, sb, input.buf == "", 1)) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+        continue;
+      }
       input.setBuf(history.forward());
       drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
@@ -330,6 +346,11 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind != KEY_ENTER) {
+      continue;
+    }
+
+    if (tryHandleAgentApprovalEnter(approvalResponder, sb, input.buf == "")) {
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 

@@ -57,11 +57,45 @@ export class PendingAgentApproval {
   localCallId: string;
   tool: string;
   summary: string;
+  selected: int;
+  firstOptionRow: int;
 
   constructor(agentId: string, localCallId: string, tool: string, summary: string) {
     this.agentId = agentId;
     this.localCallId = localCallId;
     this.tool = tool;
     this.summary = summary;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int, count: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) {
+      next = 0;
+    }
+    if (next > count - 1) {
+      next = count - 1;
+    }
+    if (next == this.selected) {
+      return false;
+    }
+    this.selected = next;
+    return true;
+  }
+
+  select(index: int, count: int): void {
+    if (index < 0 || index >= count) {
+      return;
+    }
+    this.selected = index;
   }
 }
