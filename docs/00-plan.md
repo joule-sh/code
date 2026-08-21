@@ -117,6 +117,16 @@ approval gate's ~100ms poll tick, which means a turn keeps running for that
 last stretch of a network wait with no chunks flowing before a cancel lands
 - the same kind of best-effort gap the run tool's own timeout already has.
 
+That same silent stretch is why the Quanta loading indicator (#67) only shows
+a static "thinking" state rather than an animated one. `Session.submit()`
+blocks synchronously inside `provider.ask()` until the first delta arrives,
+and curl against the real provider during that ticket confirmed the
+connection is genuinely quiet in between - no SSE comment or keep-alive
+lines, `readLine()` just sits on the socket. Nothing periodic exists to
+advance a frame on, so the indicator is drawn once, synchronously, the
+moment `turn.start` fires and before the blocking call begins, then left
+alone until the next real frame overwrites it.
+
 **Auth is the console's job, not the relay's.** The console already turns a
 cookie into a user (`readSession`) and mints the `x-user` document the engine
 consumes (`xUserDocument`). The relay sits behind that proxy and trusts `x-user`,

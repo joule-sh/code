@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, cols, rows, cursorTo, CLEAR_LINE, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, rows, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -8,14 +8,14 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { renderFrame } from "./renderer.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
-import { Scrollback, InputLine, InputHistory, PendingApproval, clip } from "./input_state.ts";
-import { styleFrame, stylePrompt, styleBanner, styleScrollIndicator } from "./style.ts";
-import { buildWelcomeBox, buildStatusLine } from "./layout.ts";
+import { Scrollback, InputLine, InputHistory, PendingApproval } from "./input_state.ts";
+import { stylePrompt, styleBanner } from "./style.ts";
+import { buildWelcomeBox } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
-import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
+import { RelayInputBridge } from "./relay_bridge.ts";
+import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
 
 const STDIN: int = 0;
 const KEY_Y: int = 121;
@@ -59,67 +59,6 @@ class RelayBox {
   }
 }
 
-class RenderKindTracker {
-  prevKind: string;
-  constructor() {
-    this.prevKind = "";
-  }
-  record(kind: string): void {
-    this.prevKind = kind;
-  }
-}
-
-function runRelayTick(relay: RelayClient, session: Session, gate: Gate, bridge: RelayInputBridge, sb: Scrollback, input: InputLine, rk: RenderKindTracker): void {
-  let diags = pollRelay(relay, session, gate, bridge);
-  let i = 0;
-  while (i < diags.length) {
-    let kind = frameType(diags[i]);
-    sb.append(styleFrame(kind, renderFrame(diags[i], rk.prevKind)));
-    rk.record(kind);
-    i = i + 1;
-  }
-  if (diags.length > 0) {
-    drawScreen(sb, input, gate.mode);
-  }
-}
-
-function drawScreen(sb: Scrollback, input: InputLine, mode: string): void {
-  let c = cols(STDIN);
-  let r = rows(STDIN);
-  if (c <= 0) { c = 80; }
-  if (r <= 1) { r = 24; }
-
-  let atBottom = sb.isAtBottom();
-  let indicatorRows = 0;
-  if (!atBottom) { indicatorRows = 1; }
-
-  let visible = r - 2 - indicatorRows;
-  if (visible < 0) { visible = 0; }
-  let tail = sb.tailFrom(visible, sb.offset);
-  let blanks = visible - tail.length;
-  if (blanks < 0) { blanks = 0; }
-
-  let out = "";
-  let row = 1;
-  while (row <= blanks) {
-    out = out + cursorTo(row, 1) + CLEAR_LINE;
-    row = row + 1;
-  }
-  let i = 0;
-  while (i < tail.length) {
-    out = out + cursorTo(row, 1) + CLEAR_LINE + clip(tail[i], c);
-    row = row + 1;
-    i = i + 1;
-  }
-  if (!atBottom) {
-    out = out + cursorTo(row, 1) + CLEAR_LINE + styleScrollIndicator(clip("-- scrolled up, PageDown to return to the live view --", c));
-    row = row + 1;
-  }
-  out = out + cursorTo(r - 1, 1) + CLEAR_LINE + clip(buildStatusLine(mode), c);
-  out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;
-  process.stdout().write(out);
-}
-
 function isValidMode(mode: string): bool {
   return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_FULL_AUTO;
 }
@@ -140,7 +79,7 @@ export function runTerminal(argv: string[]): void {
   let sb = new Scrollback();
   let input = new InputLine();
   let history = new InputHistory();
-  let rk = new RenderKindTracker();
+  let rk = new TurnStatusTracker();
 
   let tracker = new TurnTracker();
   let watch = new CancelWatch();
@@ -203,13 +142,13 @@ export function runTerminal(argv: string[]): void {
   let attachToRelay = () => {
     if (relay.isAttached()) {
       sb.append("\nalready attached to the relay");
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       return;
     }
     let result = relay.connect(workspaceRoot, live.cfg.model);
     if (!result.ok) {
       sb.append("\ncould not attach to the relay: " + result.error);
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       return;
     }
     let hello: SessionHelloFrame = {
@@ -219,7 +158,7 @@ export function runTerminal(argv: string[]): void {
     };
     relay.publish(encodeSessionHello(hello));
     sb.append("\nattached - code " + result.code + " - " + result.url);
-    drawScreen(sb, input, gate.mode);
+    drawScreen(sb, input, gate.mode, rk.quantaText());
   };
 
   session.subscribe((frameJson: string) => {
@@ -230,10 +169,8 @@ export function runTerminal(argv: string[]): void {
         tracker.setCurrent(f.turnId);
       }
     }
-    let kind = frameType(frameJson);
-    sb.append(styleFrame(kind, renderFrame(frameJson, rk.prevKind)));
-    rk.record(kind);
-    drawScreen(sb, input, gate.mode);
+    appendFrame(sb, rk, frameJson);
+    drawScreen(sb, input, gate.mode, rk.quantaText());
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
 
@@ -242,7 +179,7 @@ export function runTerminal(argv: string[]): void {
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
-  drawScreen(sb, input, gate.mode);
+  drawScreen(sb, input, gate.mode, rk.quantaText());
 
   if (hasFlag(argv, "--share")) {
     attachToRelay();
@@ -265,7 +202,7 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_CTRL_C) {
       if (input.buf != "") {
         input.clear();
-        drawScreen(sb, input, gate.mode);
+        drawScreen(sb, input, gate.mode, rk.quantaText());
       } else {
         running = false;
       }
@@ -275,26 +212,26 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_BACKSPACE) {
       input.backspace();
       history.cancelNavigation();
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (k.kind == KEY_CHAR) {
       input.push(k.char);
       history.cancelNavigation();
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (k.kind == KEY_ARROW_UP) {
       input.setBuf(history.back(input.buf));
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (k.kind == KEY_ARROW_DOWN) {
       input.setBuf(history.forward());
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -302,7 +239,7 @@ export function runTerminal(argv: string[]): void {
       let r = rows(STDIN);
       if (r <= 1) { r = 24; }
       sb.scrollUp(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -310,7 +247,7 @@ export function runTerminal(argv: string[]): void {
       let r = rows(STDIN);
       if (r <= 1) { r = 24; }
       sb.scrollDown(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -319,7 +256,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     let line = input.takeAndClear();
-    drawScreen(sb, input, gate.mode);
+    drawScreen(sb, input, gate.mode, rk.quantaText());
 
     if (line.trim() == "") {
       continue;
@@ -330,15 +267,15 @@ export function runTerminal(argv: string[]): void {
     if (cmd.kind == CMD_NONE) {
       history.record(line);
       sb.append("\n" + stylePrompt("> ") + line);
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       bridge.runNow(session, line);
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (cmd.kind == CMD_HELP) {
       sb.append("\n" + helpText());
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -349,7 +286,7 @@ export function runTerminal(argv: string[]): void {
         live.cfg = { baseUrl: live.cfg.baseUrl, model: cmd.arg, apiKey: live.cfg.apiKey };
         sb.append("\nmodel set to " + cmd.arg);
       }
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -362,7 +299,7 @@ export function runTerminal(argv: string[]): void {
       } else {
         sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, or full-auto)");
       }
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -385,13 +322,13 @@ export function runTerminal(argv: string[]): void {
           }
         }
       }
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
     if (cmd.kind == CMD_CLEAR) {
       sb.clear();
-      drawScreen(sb, input, gate.mode);
+      drawScreen(sb, input, gate.mode, rk.quantaText());
       continue;
     }
 
@@ -401,7 +338,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     sb.append("\nunknown command: /" + cmd.arg);
-    drawScreen(sb, input, gate.mode);
+    drawScreen(sb, input, gate.mode, rk.quantaText());
   }
 
   relay.detach();
