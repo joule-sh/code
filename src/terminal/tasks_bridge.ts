@@ -78,11 +78,11 @@ function appendTaggedLines(sb: Scrollback, text: string, tag: string): void {
   let out = "";
   let i = 0;
   while (i < n) {
-    out = out + "\n" + tag + parts[i];
+    if (i > 0) { out = out + "\n"; }
+    out = out + tag + parts[i];
     i = i + 1;
   }
-  if (out == "") { return; }
-  sb.append(out);
+  sb.appendBlock(out);
 }
 
 export function appendTaggedFrame(sb: Scrollback, turns: TaggedTurns, frameJson: string): void {
@@ -97,7 +97,7 @@ export function appendTaggedFrame(sb: Scrollback, turns: TaggedTurns, frameJson:
   appendTaggedLines(sb, flushMarkdown(state.md), tag);
   let rendered = renderFrame(frameJson, "");
   if (rendered != "") {
-    sb.append(insertTag(rendered, tag));
+    sb.appendBlock(insertTag(rendered, tag));
   }
   if (kind == TURN_END) {
     turns.forget(turnId);

@@ -45,11 +45,11 @@ export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: st
   let kind = frameType(frameJson);
   let rendered = renderFrame(frameJson, rk.prevKind);
   if (kind == TEXT_DELTA) {
-    sb.append(appendMarkdownDelta(rk.md, rendered));
+    sb.appendBlock(appendMarkdownDelta(rk.md, rendered));
   } else {
     let flushed = flushMarkdown(rk.md);
     if (flushed != "") {
-      sb.append(flushed);
+      sb.appendBlock(flushed);
     }
     sb.append(styleFrame(kind, rendered));
   }

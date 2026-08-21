@@ -32,6 +32,15 @@ export class Scrollback {
     }
   }
 
+  appendBlock(text: string): void {
+    if (text == "") { return; }
+    if (text.charAt(0) == "\n" || this.lines[this.lines.length - 1] == "") {
+      this.append(text);
+      return;
+    }
+    this.append("\n" + text);
+  }
+
   clear(): void {
     this.lines = [""];
     this.offset = 0;
