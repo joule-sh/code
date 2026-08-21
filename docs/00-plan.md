@@ -459,3 +459,137 @@ wait in the script. Zero flakes in the 10 runs after that fix.
 [self-hosted, diff]` (the same runner label the existing `test` job already
 uses), separate from it, `make e2e` (which depends on `build` plus a new
 `bin/stub_model` target).
+
+## #77 landing notes: background run tasks and subagents
+
+Both pieces from the spike (`docs/02-background-task-spike.md`) are real,
+shipped features now, built on the exact `Worker.run` + mailbox mechanism
+#14 proved, generalized in two directions the spike itself flagged as
+unproven: a streaming variant of the `run` tool, and a genuinely
+bidirectional mailbox for a subagent's own approval requests.
+
+**Background `run` tool call.** `run`'s schema gained a `background: bool`
+field; approval still happens synchronously on the main thread, through the
+exact same `Gate.check()` as any other `run` call, before a background
+worker is ever spawned - only the execution after approval moves off-thread.
+`src/tasks/background_run.ts` streams stdout line by line via
+`child_process.spawn`, appending an exit-code marker line the caller strips
+back out (`spawnSync`'s own status field has no streaming equivalent per
+spec 450). A `TaskManager`/`TaskBoard` pair (`src/tasks/manager.ts`,
+`task_board.ts` - split specifically so the pure state-tracking logic stays
+`lumen test`-able even though the thin `manager.ts` wrapper that calls
+`Worker.run` cannot be, see below) polls each task's mailbox on the same
+`RELAY_POLL_MS` tick the relay already used, and renders output tagged
+`[task <id>]` in the scrollback via the existing frame vocabulary,
+namespaced by `turnId` (`bg:<id>`) rather than a new frame type - see
+`specs/001-frames/spec.md`'s new section on this. Completion is
+UI-only, not fed back into `Session.history` automatically: the ticket's own
+framing ("keep working, check back on it") reads as a human checking in
+later, not an automatic re-injection, and a background shell command has no
+natural moment to interrupt an unrelated ongoing conversation the way a
+delegated sub-task does. Cancellation is real, but is honestly a *detach*,
+not a kill - `lumen-lang-org/lumen#6` (open, unrelated to this ticket) still
+means no spawned process can be forcibly stopped; `/tasks cancel <id>` on a
+background task just stops rendering/tracking it, told to the user in the
+same message.
+
+**Subagents.** A `spawn_agent` tool (task string only, kept minimal for v1)
+spawns a worker-hosted, reduced reimplementation of `Session.submit()`'s
+loop (`src/tasks/subagent_worker.ts`) against the real `streamChat` and the
+real per-tool free functions (`src/tools/dispatch.ts`, extracted from
+`ToolsRegistry` specifically so both the foreground session and a
+worker-hosted subagent call the identical implementation, not a duplicated
+one). The genuinely new piece: a subagent's own tool calls go through
+approval too, via a second, reversed-direction mailbox file (subagent writes
+an approval request and blocks polling for the reply; the main thread writes
+the reply after the user answers) - proven with a direct, isolated round-trip
+test before it was ever wired into the real feature (a worker blocking in a
+read loop on a file the main thread writes *after* the worker was already
+running), then proven again for real against a live model and a live
+approval card rendered in the terminal (see PR body for the actual
+transcript). Subagent approval mirrors `Gate`'s own mode rules exactly
+(read tools always auto, `read-only` denies outright, `auto-edit` only
+asks for `run`, `full-auto` never asks, `always` remembered for the rest of
+that subagent's own run) but is its own worker-local reimplementation, not a
+shared `Gate` instance, for the same scalar-only `Worker.run` reason #14
+already established. Cancellation checks a flag file between steps and
+inside `streamChat`'s own `shouldStop` callback (finer than the ticket
+asked for - stream-boundary, not just step-boundary), the same polling
+shape `CancelWatch` already uses on the main thread. A subagent's result
+*is* fed back into `Session.history` automatically, unlike a background run
+task - a `spawn_agent` call is a clearly delegated sub-task the calling turn
+is waiting to incorporate, not a fire-and-forget job - but as a synthetic
+`user`-role note (`"[subagent <id> report - task: ...]\n<result>"`), not a
+literal paired tool-response, since the completion can and does arrive many
+turns after the original call, and appending a second `tool`-role message
+against an already-satisfied `tool_calls` entry risks violating the strict
+tool-call/tool-response pairing several OpenAI-compatible APIs enforce.
+
+**Two genuine new Lumen compiler bugs, both with confirmed workarounds,
+filed as
+[lumen#14](https://github.com/lumen-lang-org/lumen/issues/14) and
+[lumen#15](https://github.com/lumen-lang-org/lumen/issues/15).** #14: the
+exact same `net.createServer`-plus-throwing-handler shape #13 already
+documented, but for `Worker.run` inside an `async` caller - same inline-arrow
+workaround (`Worker.run(() => { return theRealFn(); })`), applied to every
+worker-spawning call site. #15: `arr[idx].field = value` fails to parse as
+an assignment target (`arr[idx].field` reads and `arr[idx].method()` calls
+both work); worked around by binding the element to a local first
+(`let x = arr[idx]; x.field = value;`).
+
+**A third, harder-to-isolate false-positive type error, filed as
+[lumen#16](https://github.com/lumen-lang-org/lumen/issues/16).** Comparing a
+decoded `T | null` to `null` type-checked fine in every reduced repro tried
+(a standalone program, `lumen test` on the module in isolation, `lumen
+compile` on the module or its direct parent as the entry point) but failed
+with a false-positive `E_TYPE_MISMATCH` only once reached through
+`terminal.ts`'s full ~20-import compilation unit - moving the exact same
+code to a different file didn't help, only changing the return shape did.
+Worked around by replacing every `T | null` return in
+`src/tasks/subagent_protocol.ts` with a `{ found: bool, value: T }` struct,
+confirmed clean across the real `terminal.ts` build and the full test suite.
+
+**A fourth bug, genuinely dangerous because it fails silently, filed as
+[lumen#17](https://github.com/lumen-lang-org/lumen/issues/17).** Pushing
+onto an array received as a plain function parameter does not mutate the
+caller's array - no error, unlike the same mistake through a closure
+capture, which the compiler correctly rejects
+(`E_CAPTURED_MUTATION`). Caught by a unit test, not by the compiler: a
+subagent's "always allow" memory was passed into a helper function that
+pushed the newly-approved tool onto it, silently never actually growing the
+caller's list, so "always" behaved like a one-time "allow" instead of being
+remembered for the rest of that subagent's run. Fixed by returning an
+outcome value instead and pushing from the array's own owning scope - the
+same pattern every other `.push()` call in this codebase already used
+(`this.field.push(...)` from inside the owning class's own method, or a
+`let` array pushed directly within the function that declared it), now
+confirmed to be load-bearing, not just a style preference.
+
+**A serious runtime stability bug, not a compiler bug, found during live
+verification against the real DeepSeek API and filed as
+[lumen#18](https://github.com/lumen-lang-org/lumen/issues/18), stated
+plainly because it changes what can honestly be claimed about this
+feature's readiness.** A real `joule` process running a subagent for
+roughly 15-20+ seconds - streaming a live model response, dispatching one
+real tool call, all through the exact proven `Worker.run` + mailbox pattern
+- reliably crashes the whole process with `SIGABRT`, printing `Signals
+delivery fails constantly at GC #<n>` before dying. This traces to Lumen's
+native runtime using a conservative GC (`libgc`, confirmed via `gc: bool =
+true` in `lumen_emit.zig`) whose Linux thread-stop-the-world mechanism uses
+signals - a mechanism that does not appear to survive a `Worker.run` thread
+staying alive and active for a sustained period, which is exactly the
+scenario `Worker.run`'s own spec (059) anticipates supporting. This is not
+about the mailbox mechanism itself, which round-tripped correctly, repeatedly,
+against a live model before the crash. It reproduces with zero rapid input
+too - a completely quiet wait after spawning a subagent still crashes at
+roughly the same elapsed time - so the trigger is sustained worker-thread
+runtime, not command frequency. `LUMEN_NO_GC=1` (the compiler's own escape
+hatch, per the comment above `gc: bool = true`) could not be tested as a
+mitigation - it fails to link (`undefined symbol: isatty`/`tcgetattr` from
+the vendored `tty_shim.o`) - so no workaround is known today. **The honest
+read: the bidirectional-approval mailbox mechanism this ticket most needed
+proven is proven, genuinely, against a live model, with a real reply
+unblocking a real waiting worker thread - but a subagent that runs for more
+than roughly 15-20 seconds risks taking the whole terminal down with it,
+which is a real, currently-open limitation of the Lumen runtime this
+feature is built on, not of the feature's own design.**

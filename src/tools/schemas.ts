@@ -32,8 +32,14 @@ export const GREP_SCHEMA: ToolSchema = {
 
 export const RUN_SCHEMA: ToolSchema = {
   name: "run",
-  description: "Run a shell command in the workspace root and capture its output. A non-zero exit is a normal result, not an error - read stdout/stderr to see what happened. Output is capped; check truncated. The command's stdin is not connected to anything, so an interactive prompt fails fast rather than hanging.",
-  parametersJson: "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"timeout_ms\":{\"type\":\"integer\",\"description\":\"best-effort budget in milliseconds; a command that overruns it is flagged but not forcibly stopped\"}},\"required\":[\"command\"]}",
+  description: "Run a shell command in the workspace root and capture its output. A non-zero exit is a normal result, not an error - read stdout/stderr to see what happened. Output is capped; check truncated. The command's stdin is not connected to anything, so an interactive prompt fails fast rather than hanging. Set background to true for a command expected to take a while (a build, a test suite, a dev server) - it starts under approval exactly like any other run call, then keeps running while you keep working; check /tasks or wait for its output to stream into the scrollback. A backgrounded command's stderr is not captured (only stdout streams back) and, like the foreground case, it cannot be forcibly killed once started - only let it finish or let the whole session end with it.",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"timeout_ms\":{\"type\":\"integer\",\"description\":\"best-effort budget in milliseconds; a command that overruns it is flagged but not forcibly stopped\"},\"background\":{\"type\":\"boolean\",\"description\":\"run without blocking the session; output streams into the scrollback and /tasks as it happens instead of being returned all at once\"}},\"required\":[\"command\"]}",
+};
+
+export const SPAWN_AGENT_SCHEMA: ToolSchema = {
+  name: "spawn_agent",
+  description: "Spawn an independent subagent to work a scoped sub-problem on its own turn loop, using the same read/write/edit/list/grep/run tools, while this session keeps going. It runs under the same approval mode this session is in right now - anything it needs to ask about shows up as a normal approval card here. It cannot spawn further subagents, and it cannot be forcibly killed once started, only asked to stop between its own steps (see /tasks). Its result is appended to this conversation's history automatically once it finishes, so a later message can refer to what it found or did.",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\",\"description\":\"a self-contained description of the sub-problem - the subagent starts with no other context\"}},\"required\":[\"task\"]}",
 };
 
 export function allFileToolSchemas(): ToolSchema[] {
@@ -41,5 +47,9 @@ export function allFileToolSchemas(): ToolSchema[] {
 }
 
 export function allToolSchemas(): ToolSchema[] {
+  return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA];
+}
+
+export function subagentToolSchemas(): ToolSchema[] {
   return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA];
 }

@@ -1,4 +1,4 @@
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -69,4 +69,16 @@ test("helpText documents the PageUp/PageDown scroll keys", () => {
   expect(h.indexOf("PageUp") >= 0);
   expect(h.indexOf("PageDown") >= 0);
   expect(h.indexOf("scroll") >= 0);
+});
+
+test("/tasks parses with no arg", () => {
+  let p = parseCommand("/tasks");
+  expect(p.kind == CMD_TASKS);
+  expect(p.arg == "");
+});
+
+test("/tasks cancel <id> keeps the whole remainder as one arg", () => {
+  let p = parseCommand("/tasks cancel agent-1");
+  expect(p.kind == CMD_TASKS);
+  expect(p.arg == "cancel agent-1");
 });

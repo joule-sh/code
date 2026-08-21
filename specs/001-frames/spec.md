@@ -78,6 +78,22 @@ assigned by the terminal). `seq` is what `resume` resumes from, and it is
 assigned by the terminal because the terminal is the only participant that sees
 every frame in order.
 
+## Background tasks and subagents share the vocabulary via turnId
+
+A background `run` task and a subagent (#77) are not a second frame
+vocabulary. Each gets its own `turnId` namespace instead - `bg:<id>` for a
+backgrounded `run` call, `agent:<id>` for a subagent's own turn loop - and
+every frame type above (`text.delta`, `tool.call`, `tool.result`,
+`approval.request`, `turn.end`, `error`) is reused unchanged, with that
+turnId as the disambiguator. A renderer that already switches on `type` and
+carries `turnId` through needs no new cases to show these; the terminal's own
+dispatch only needs to know that a `bg:`/`agent:` turnId belongs to a task
+running independently of the foreground turn, not to a new kind of frame.
+`seq` is still assigned once, by the terminal, from the same counter every
+other frame uses, so a browser resuming with `resume{since}` replays these
+in the same order they happened, interleaved with the foreground turn's own
+frames exactly as they were emitted.
+
 ## The rules
 
 1. **An unknown frame type is ignored, not fatal.** A relay that rejects a frame

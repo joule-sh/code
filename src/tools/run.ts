@@ -1,3 +1,5 @@
+import { shellQuoteSingle } from "./shell_quote.ts";
+
 const MAX_OUTPUT_BYTES: int = 100000;
 
 export type RunResult = { ok: bool, status: int, stdout: string, stderr: string, truncated: bool, killed: bool, error: string };
@@ -14,15 +16,11 @@ function capOutput(s: string): CapResult {
 }
 
 export function run(root: string, command: string, timeoutMs: int): RunResult {
-  let original = process.cwd();
-  process.chdir(root);
-
-  let args: string[] = ["-c", command];
+  let inRoot = "cd " + shellQuoteSingle(root) + " && " + command;
+  let args: string[] = ["-c", inRoot];
   let startedAt = time.monotonic();
   let r = child_process.spawnSync("/bin/sh", args);
   let elapsedMs = time.monotonic() - startedAt;
-
-  process.chdir(original);
 
   if (r.status < 0) {
     let failResult: RunResult = { ok: false, status: r.status, stdout: "", stderr: "", truncated: false, killed: false, error: "failed to spawn the command" };

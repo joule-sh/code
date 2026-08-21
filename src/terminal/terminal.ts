@@ -8,8 +8,8 @@ import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPL
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
-import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { Scrollback, InputLine, InputHistory, PendingApproval } from "./input_state.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox } from "./layout.ts";
@@ -17,6 +17,9 @@ import { RelayClient } from "../relay/client.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
 import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
+import { TaskManager } from "../tasks/manager.ts";
+import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
+import { isTaskTurnId, appendTaggedFrame, tryHandleAgentApprovalChar, cancelCommandArg } from "./tasks_bridge.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -63,6 +66,16 @@ class RelayBox {
   }
 }
 
+class TasksBox {
+  slot: TaskManager[];
+  constructor() {
+    this.slot = [];
+  }
+  set(t: TaskManager): void {
+    this.slot = [t];
+  }
+}
+
 function isValidMode(mode: string): bool {
   return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_FULL_AUTO;
 }
@@ -97,6 +110,7 @@ export function runTerminal(argv: string[]): void {
   let pendingApproval = new PendingApproval();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
+  let tasksBox = new TasksBox();
 
   let onApprovalRequest = (callId: string, tool: string, summary: string, args: string) => {
     pendingApproval.set(callId);
@@ -113,6 +127,9 @@ export function runTerminal(argv: string[]): void {
   let onApprovalPoll = () => {
     if (relayBox.relaySlot.length > 0 && gateBox.slot.length > 0) {
       runRelayTick(relayBox.relaySlot[0], relayBox.sessionSlot[0], gateBox.slot[0], relayBox.bridgeSlot[0], sb, input, rk);
+    }
+    if (tasksBox.slot.length > 0 && relayBox.sessionSlot.length > 0) {
+      tasksBox.slot[0].poll(relayBox.sessionSlot[0]);
     }
     let k = readKeyTimeout(STDIN, 0);
     if (k.kind == KEY_SCROLL_UP || k.kind == KEY_SCROLL_DOWN) {
@@ -152,6 +169,18 @@ export function runTerminal(argv: string[]): void {
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
   live.setSession(session);
 
+  let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode);
+  tasksBox.set(tasks);
+  let taskRunner: TaskRunner = {
+    startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
+    startSubagent: (task: string) => tasks.startSubagent(task),
+  };
+  registry.setTaskRunner(taskRunner);
+  let approvalResponder: ApprovalResponder = {
+    hasPendingApproval: () => tasks.hasPendingApproval(),
+    answerActiveApproval: (d: string) => tasks.answerActiveApproval(d),
+  };
+
   let relayCfg = loadRelayConfig();
   let relay = new RelayClient(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir);
   let bridge = new RelayInputBridge();
@@ -187,7 +216,11 @@ export function runTerminal(argv: string[]): void {
         tracker.setCurrent(f.turnId);
       }
     }
-    appendFrame(sb, rk, frameJson);
+    if (isTaskTurnId(frameTurnId(frameJson))) {
+      appendTaggedFrame(sb, frameJson);
+    } else {
+      appendFrame(sb, rk, frameJson);
+    }
     drawScreen(sb, input, gate.mode, rk.quantaText());
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
@@ -209,6 +242,7 @@ export function runTerminal(argv: string[]): void {
 
     if (k.kind == KEY_TIMEOUT) {
       runRelayTick(relay, session, gate, bridge, sb, input, rk);
+      tasks.poll(session);
       continue;
     }
 
@@ -235,6 +269,10 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind == KEY_CHAR) {
+      if (tryHandleAgentApprovalChar(approvalResponder, input.buf == "", k.char)) {
+        drawScreen(sb, input, gate.mode, rk.quantaText());
+        continue;
+      }
       input.push(k.char);
       history.cancelNavigation();
       drawScreen(sb, input, gate.mode, rk.quantaText());
@@ -350,6 +388,21 @@ export function runTerminal(argv: string[]): void {
           if (r.truncated) {
             sb.append("\n(truncated)");
           }
+        }
+      }
+      drawScreen(sb, input, gate.mode, rk.quantaText());
+      continue;
+    }
+
+    if (cmd.kind == CMD_TASKS) {
+      if (cmd.arg == "") {
+        sb.append("\n" + tasks.listText());
+      } else {
+        let cancelId = cancelCommandArg(cmd.arg);
+        if (cancelId != "") {
+          sb.append("\n" + tasks.cancel(cancelId));
+        } else {
+          sb.append("\nusage: /tasks or /tasks cancel <id>");
         }
       }
       drawScreen(sb, input, gate.mode, rk.quantaText());
