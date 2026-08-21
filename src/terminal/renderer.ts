@@ -43,10 +43,7 @@ function diffBlockFor(tool: string, args: string): string {
 
 function approvalPrompt(summary: string, detail: string, tool: string, args: string): string {
   let diff = diffBlockFor(tool, args);
-  if (diff == "") {
-    return "\n  ? " + summary + " [" + detail + "] (y/n/a)";
-  }
-  return "\n  ? " + summary + " [" + detail + "]" + diff + "\n    (y/n/a)";
+  return "\n  ? " + summary + " [" + detail + "] " + diff + "\n    (y/n/a)";
 }
 
 export function renderFrame(frameJson: string, prevKind: string): string {
