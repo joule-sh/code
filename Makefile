@@ -3,6 +3,12 @@
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
 
+# Extra flags for `lumen compile`. Empty on Linux, where the Boehm collector is
+# a normal system library. macOS has no system copy, and Zig only knows about
+# Apple Silicon's Homebrew prefix, so the release workflow passes the keg's lib
+# directory here as `--link -L<dir>`.
+LUMEN_FLAGS ?=
+
 build: bin/joule bin/relay
 
 src/vendor/tty/tty_shim.o: src/vendor/tty/tty_shim.c
@@ -10,24 +16,24 @@ src/vendor/tty/tty_shim.o: src/vendor/tty/tty_shim.c
 
 bin/joule: $(ALL_TS) src/vendor/tty/tty_shim.o
 	mkdir -p bin
-	lumen compile src/code.ts
+	lumen compile $(LUMEN_FLAGS) src/code.ts
 	mv code bin/joule
 
 bin/relay: $(ALL_TS)
 	mkdir -p bin
-	lumen compile src/relay/relay.ts
+	lumen compile $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
 
 bin/stub_model: $(ALL_TS)
 	mkdir -p bin
-	lumen compile src/e2e/stub_model.ts
+	lumen compile $(LUMEN_FLAGS) src/e2e/stub_model.ts
 	mv stub_model bin/stub_model
 
 release: src/vendor/tty/tty_shim.o
 	mkdir -p bin
-	lumen compile --release-fast src/code.ts
+	lumen compile --release-fast $(LUMEN_FLAGS) src/code.ts
 	mv code bin/joule
-	lumen compile --release-fast src/relay/relay.ts
+	lumen compile --release-fast $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
 
 test: src/vendor/tty/tty_shim.o

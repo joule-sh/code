@@ -42,8 +42,12 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           echo "export const VERSION: string = \"$version\";" > src/version.ts
           cat src/version.ts
+      # Zig ignores LIBRARY_PATH on macOS and only has Apple Silicon's
+      # /opt/homebrew baked into its library search paths, so on Intel the
+      # collector is never found. Hand the keg's lib directory to the native
+      # backend as an explicit -L, which lumen forwards ahead of its own -lgc.
       - if: runner.os == 'macOS'
-        run: echo "LIBRARY_PATH=$(brew --prefix bdw-gc)/lib" >> "$GITHUB_ENV"
+        run: echo "LUMEN_FLAGS=--link -L$(brew --prefix bdw-gc)/lib" >> "$GITHUB_ENV"
       - run: make release
       - run: ./bin/joule --version
       # A released macOS binary cannot depend on the builder's Homebrew prefix,

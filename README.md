@@ -49,9 +49,19 @@ macOS builds too (`lumen-aarch64-macos.tar.gz`, `lumen-x86_64-macos.tar.gz`),
 so this works natively on a Mac.
 
 Lumen's allocator links the Boehm collector as a system library. Linux distros
-ship it as `libgc`; macOS has no copy, so a Mac build needs `brew install
-bdw-gc` and `LIBRARY_PATH=$(brew --prefix bdw-gc)/lib` set when compiling. The
-macOS release archives carry their own copy of that library beside the
+ship it as `libgc` and nothing extra is needed. macOS has no system copy, so a
+Mac build needs Homebrew's and has to point the compiler at it:
+
+```sh
+brew install bdw-gc
+make build LUMEN_FLAGS="--link -L$(brew --prefix bdw-gc)/lib"
+```
+
+The `-L` is not optional on Intel Macs. Zig ignores `LIBRARY_PATH` on macOS and
+only has Apple Silicon's `/opt/homebrew` in its built-in search paths, so an
+Intel build fails without it.
+
+The macOS release archives carry their own copy of that library beside the
 binaries, so an installed release needs no Homebrew.
 
 ```sh
