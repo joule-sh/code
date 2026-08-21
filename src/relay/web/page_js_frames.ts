@@ -29,6 +29,138 @@ function decodeFrame(text) {
   }
 }
 
+function diffLinesJs(oldText, newText) {
+  var a = oldText.split("\\n");
+  var b = newText.split("\\n");
+  if (a.length > 4000 || b.length > 4000) { return null; }
+
+  var start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) { start++; }
+  var endA = a.length, endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+
+  var midA = a.slice(start, endA);
+  var midB = b.slice(start, endB);
+  if (midA.length * midB.length > 1000000) { return null; }
+
+  var w = midB.length + 1;
+  var table = new Array((midA.length + 1) * w).fill(0);
+  for (var i = midA.length - 1; i >= 0; i--) {
+    for (var j = midB.length - 1; j >= 0; j--) {
+      table[i * w + j] = midA[i] === midB[j]
+        ? table[(i + 1) * w + j + 1] + 1
+        : Math.max(table[(i + 1) * w + j], table[i * w + j + 1]);
+    }
+  }
+
+  var rows = [];
+  for (var n = 0; n < start; n++) { rows.push({ kind: "same", text: a[n], a: n + 1, b: n + 1 }); }
+  var ii = 0, jj = 0;
+  while (ii < midA.length && jj < midB.length) {
+    if (midA[ii] === midB[jj]) {
+      rows.push({ kind: "same", text: midA[ii], a: start + ii + 1, b: start + jj + 1 });
+      ii++; jj++;
+    } else if (table[(ii + 1) * w + jj] >= table[ii * w + jj + 1]) {
+      rows.push({ kind: "del", text: midA[ii], a: start + ii + 1, b: 0 });
+      ii++;
+    } else {
+      rows.push({ kind: "add", text: midB[jj], a: 0, b: start + jj + 1 });
+      jj++;
+    }
+  }
+  while (ii < midA.length) { rows.push({ kind: "del", text: midA[ii], a: start + ii + 1, b: 0 }); ii++; }
+  while (jj < midB.length) { rows.push({ kind: "add", text: midB[jj], a: 0, b: start + jj + 1 }); jj++; }
+  for (var m = 0; m < a.length - endA; m++) {
+    rows.push({ kind: "same", text: a[endA + m], a: endA + m + 1, b: endB + m + 1 });
+  }
+  return rows;
+}
+
+function diffCountsJs(rows) {
+  var added = 0, removed = 0;
+  for (var k = 0; k < rows.length; k++) {
+    if (rows[k].kind === "add") { added++; }
+    if (rows[k].kind === "del") { removed++; }
+  }
+  return { added: added, removed: removed };
+}
+
+var ESC = String.fromCharCode(27);
+var ANSI_RESET = ESC + "[0m";
+var ANSI_DIM = ESC + "[38;2;120;120;125m";
+var ANSI_RED = ESC + "[38;2;229;72;77m";
+var ANSI_GREEN = ESC + "[38;2;110;190;115m";
+
+function diffGutterJs(row) {
+  return row.kind === "add" ? row.b : row.a;
+}
+
+function padLeftNumJs(n, width) {
+  var s = "" + n;
+  while (s.length < width) { s = " " + s; }
+  return s;
+}
+
+function renderDiffRowsJs(rows) {
+  if (rows.length === 0) { return ""; }
+  var width = 2;
+  for (var i = 0; i < rows.length; i++) {
+    var s = "" + diffGutterJs(rows[i]);
+    if (s.length > width) { width = s.length; }
+  }
+  var lines = [];
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    var gutter = ANSI_DIM + padLeftNumJs(diffGutterJs(r), width) + ANSI_RESET;
+    if (r.kind === "add") {
+      lines.push(gutter + " " + ANSI_GREEN + "+ " + r.text + ANSI_RESET);
+    } else if (r.kind === "del") {
+      lines.push(gutter + " " + ANSI_RED + "- " + r.text + ANSI_RESET);
+    } else {
+      lines.push(gutter + "   " + r.text);
+    }
+  }
+  return lines.join("\\n");
+}
+
+var DIFF_DISPLAY_MAX_ROWS = 400;
+
+function diffableToolPathJs(tool, args) {
+  if (tool !== "edit" && tool !== "write") { return ""; }
+  try {
+    var p = JSON.parse(args);
+    if (p === null || typeof p !== "object") { return ""; }
+    return typeof p.path === "string" ? p.path : "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function diffBlockForCallJs(tool, args) {
+  var p;
+  try {
+    p = JSON.parse(args);
+  } catch (e) {
+    return "";
+  }
+  var oldText = "";
+  var newText = "";
+  if (tool === "edit") {
+    oldText = typeof p.old_text === "string" ? p.old_text : "";
+    newText = typeof p.new_text === "string" ? p.new_text : "";
+  } else {
+    newText = typeof p.content === "string" ? p.content : "";
+  }
+  var rows = diffLinesJs(oldText, newText);
+  if (rows === null) { return ""; }
+  if (rows.length > DIFF_DISPLAY_MAX_ROWS) { return ""; }
+  var counts = diffCountsJs(rows);
+  if (counts.added === 0 && counts.removed === 0) { return ""; }
+  var body = renderDiffRowsJs(rows);
+  if (body === "") { return ""; }
+  return "\\n" + body;
+}
+
 function frameOfType(type, fields) {
   var out = { v: PROTOCOL_VERSION, seq: 0, type: type };
   for (var key in fields) {
@@ -78,6 +210,10 @@ function renderFrameText(frameJson, prevKind) {
     return deltaText;
   }
   if (kind === TOOL_CALL) {
+    var diffPath = diffableToolPathJs(f.tool, f.args);
+    if (diffPath !== "") {
+      return "\\n  -> " + f.tool + " " + diffPath + diffBlockForCallJs(f.tool, f.args);
+    }
     return "\\n  -> " + f.tool + " " + f.args;
   }
   if (kind === TOOL_RESULT) {
