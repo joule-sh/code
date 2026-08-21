@@ -174,9 +174,60 @@ expectTrue(
   "exactly one option row is highlighted at a time (#88)"
 );
 
+const mdPath = new URL("../src/relay/web/page_js_markdown.ts", import.meta.url);
+const mdSource = fs.readFileSync(mdPath, "utf8");
+const mdStart = mdSource.indexOf("`");
+const mdEnd = mdSource.lastIndexOf("`");
+if (mdStart < 0 || mdEnd <= mdStart) {
+  console.error("could not find the embedded template literal in page_js_markdown.ts");
+  process.exit(1);
+}
+const embeddedMdJs = mdSource.slice(mdStart + 1, mdEnd).replace(/\\\\/g, "\\");
+
+const mdSandbox = {};
+vm.createContext(mdSandbox);
+vm.runInContext(embeddedMdJs, mdSandbox);
+vm.runInContext(
+  "var __mdExports = { mdTokenizeBold: mdTokenizeBold, mdTokenizeItalic: mdTokenizeItalic, mdSplitCodeSpans: mdSplitCodeSpans, mdHeaderLevel: mdHeaderLevel, mdIsFenceLine: mdIsFenceLine };",
+  mdSandbox
+);
+const { mdTokenizeBold, mdTokenizeItalic, mdSplitCodeSpans, mdHeaderLevel, mdIsFenceLine } = mdSandbox.__mdExports;
+
+const boldTokens = mdTokenizeBold("this is **bold** text");
+expectTrue(
+  boldTokens.some((t) => t.type === "bold" && t.text === "bold"),
+  "the web markdown tokenizer finds a bold span (#81 markdown rendering)"
+);
+
+const italicTokens = mdTokenizeItalic("look at _this word_ closely");
+expectTrue(
+  italicTokens.some((t) => t.type === "italic" && t.text === "this word"),
+  "the web markdown tokenizer finds an italic span (#81 markdown rendering)"
+);
+
+const snakeCaseTokens = mdTokenizeItalic("call my_function_name here");
+expectTrue(
+  !snakeCaseTokens.some((t) => t.type === "italic"),
+  "the web markdown tokenizer leaves snake_case identifiers alone, same as the terminal (#81 markdown rendering)"
+);
+
+const codeSpans = mdSplitCodeSpans("run `a**b**c` now");
+expectTrue(
+  codeSpans.some((s) => s.isCode && s.text === "a**b**c"),
+  "the web markdown tokenizer protects inline code spans from emphasis markers, same as the terminal (#81 markdown rendering)"
+);
+
+expectTrue(mdHeaderLevel("# Section Title") === 1, "the web markdown tokenizer recognizes an h1 header (#81 markdown rendering)");
+expectTrue(mdHeaderLevel("### Sub heading") === 3, "the web markdown tokenizer recognizes an h3 header (#81 markdown rendering)");
+expectTrue(mdHeaderLevel("#no-space") === 0, "a hash with no following space is not a header, same as the terminal (#81 markdown rendering)");
+
+expectTrue(mdIsFenceLine("```"), "the web markdown tokenizer recognizes a fenced code block delimiter (#81 markdown rendering)");
+expectTrue(mdIsFenceLine("```ts"), "a fence line with a language tag still counts as a fence (#81 markdown rendering)");
+expectTrue(!mdIsFenceLine("plain text"), "a plain line is not mistaken for a fence (#81 markdown rendering)");
+
 console.log("");
 if (failures > 0) {
   console.error(failures + " assertion(s) failed");
   process.exit(1);
 }
-console.log("all assertions passed, the web renderer describes the #8 fixture script the same way the terminal renderer does");
+console.log("all assertions passed, the web renderer describes the #8 fixture script the same way the terminal renderer does, and the web markdown tokenizer (#81) parses the same structure the terminal's markdown.ts does");

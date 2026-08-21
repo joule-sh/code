@@ -18,8 +18,19 @@ var state = {
   outbound: [],
   currentTextEl: null,
   currentTurnId: null,
-  toolCards: {}
+  toolCards: {},
+  mdPending: "",
+  mdInCodeBlock: false
 };
+
+function flushMarkdown() {
+  if (state.mdPending !== "") {
+    if (!state.currentTextEl) { state.currentTextEl = appendLine("line-text", ""); }
+    mdRenderLineInto(state.currentTextEl, state.mdPending, state);
+  }
+  state.mdPending = "";
+  state.mdInCodeBlock = false;
+}
 
 function nextBackoffMs(currentMs) {
   var doubled = currentMs * 2;
@@ -134,6 +145,7 @@ function applyFrameToTranscript(frameJson) {
   var seqValue = typeof f.seq === "number" ? f.seq : -1;
   if (seqValue > state.lastSeq) { state.lastSeq = seqValue; }
   var kind = f.type;
+  if (kind !== TEXT_DELTA) { flushMarkdown(); }
 
   if (kind === TURN_START) {
     state.currentTextEl = null;

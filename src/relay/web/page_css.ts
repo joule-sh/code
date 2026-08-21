@@ -114,6 +114,22 @@ button:disabled {
 .line-result-fail { color: var(--fail); }
 .line-turn-end { color: var(--muted); font-style: italic; }
 .line-error { color: var(--fail); font-weight: 600; }
+.md-header { font-weight: 700; color: var(--accent); }
+.md-fence { display: none; }
+.md-code-line {
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-left: 2px solid var(--border);
+  padding-left: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+.md-inline-code {
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0 0.25rem;
+  border-radius: 0.2rem;
+}
 .card {
   border: 1px solid var(--warn);
   border-radius: 0.5rem;
