@@ -39,7 +39,7 @@ test("TOOL_RESULT round-trips", () => {
 });
 
 test("APPROVAL_REQUEST round-trips", () => {
-  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 6, type: APPROVAL_REQUEST, turnId: "t1", callId: "c1", tool: "run", summary: "run tests", detail: "npm test" };
+  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 6, type: APPROVAL_REQUEST, turnId: "t1", callId: "c1", tool: "run", summary: "run tests", detail: "npm test", args: "{\"command\":\"npm test\"}" };
   let back = decodeApprovalRequest(encodeApprovalRequest(f));
   expect(back != null);
   expect(back!.summary == "run tests");

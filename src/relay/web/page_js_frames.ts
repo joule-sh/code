@@ -223,7 +223,11 @@ function renderFrameText(frameJson, prevKind) {
     return "\\n     " + status + ": " + out;
   }
   if (kind === APPROVAL_REQUEST) {
-    return "\\n  ? " + f.summary + " [" + f.detail + "] (y/n/a)";
+    var approvalDiff = diffBlockForCallJs(f.tool, f.args);
+    if (approvalDiff === "") {
+      return "\\n  ? " + f.summary + " [" + f.detail + "] (y/n/a)";
+    }
+    return "\\n  ? " + f.summary + " [" + f.detail + "]" + approvalDiff + "\\n    (y/n/a)";
   }
   if (kind === TURN_END) {
     if (f.reason === REASON_CANCELLED) { return "\\n(cancelled)\\n"; }

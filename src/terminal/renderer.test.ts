@@ -1,10 +1,11 @@
 import { renderFrame } from "./renderer.ts";
 import { fixtureScript } from "./fixture.ts";
-import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, ToolCallFrame, encodeToolCall } from "../protocol/frames.ts";
+import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, APPROVAL_REQUEST, ToolCallFrame, ApprovalRequestFrame, encodeToolCall, encodeApprovalRequest } from "../protocol/frames.ts";
 import { GREEN, RED } from "./style.ts";
 
 type EditArgs = { path: string, old_text: string, new_text: string };
 type WriteArgs = { path: string, content: string };
+type RunArgs = { command: string };
 
 function editCallFrame(path: string, oldText: string, newText: string): string {
   let args: EditArgs = { path: path, old_text: oldText, new_text: newText };
@@ -16,6 +17,27 @@ function writeCallFrame(path: string, content: string): string {
   let args: WriteArgs = { path: path, content: content };
   let f: ToolCallFrame = { v: PROTOCOL_VERSION, seq: 1, type: TOOL_CALL, turnId: "t1", callId: "c1", tool: "write", args: JSON.stringify(args) };
   return encodeToolCall(f);
+}
+
+function editApprovalFrame(path: string, oldText: string, newText: string): string {
+  let args: EditArgs = { path: path, old_text: oldText, new_text: newText };
+  let argsJson = JSON.stringify(args);
+  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REQUEST, turnId: "t1", callId: "c1", tool: "edit", summary: "edit " + path, detail: argsJson, args: argsJson };
+  return encodeApprovalRequest(f);
+}
+
+function writeApprovalFrame(path: string, content: string): string {
+  let args: WriteArgs = { path: path, content: content };
+  let argsJson = JSON.stringify(args);
+  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REQUEST, turnId: "t1", callId: "c1", tool: "write", summary: "write " + path, detail: argsJson, args: argsJson };
+  return encodeApprovalRequest(f);
+}
+
+function runApprovalFrame(command: string): string {
+  let args: RunArgs = { command: command };
+  let argsJson = JSON.stringify(args);
+  let f: ApprovalRequestFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REQUEST, turnId: "t1", callId: "c1", tool: "run", summary: "run " + command, detail: argsJson, args: argsJson };
+  return encodeApprovalRequest(f);
 }
 
 test("the fixture script renders into an expected transcript", () => {
@@ -51,7 +73,7 @@ test("a truncated tool.result says so", () => {
 });
 
 test("approval.request renders the summary and detail", () => {
-  let f = "{\"v\":1,\"seq\":1,\"type\":\"approval.request\",\"turnId\":\"t1\",\"callId\":\"c1\",\"tool\":\"run\",\"summary\":\"run npm test\",\"detail\":\"npm test\"}";
+  let f = "{\"v\":1,\"seq\":1,\"type\":\"approval.request\",\"turnId\":\"t1\",\"callId\":\"c1\",\"tool\":\"run\",\"summary\":\"run npm test\",\"detail\":\"npm test\",\"args\":\"{\\\"command\\\":\\\"npm test\\\"}\"}";
   let out = renderFrame(f, "");
   expect(out.indexOf("run npm test") >= 0);
   expect(out.indexOf("(y/n/a)") >= 0);
@@ -128,4 +150,42 @@ test("a tool.call for a non-diffable tool still dumps its raw args, unchanged", 
   let f = "{\"v\":1,\"seq\":1,\"type\":\"tool.call\",\"turnId\":\"t1\",\"callId\":\"c1\",\"tool\":\"grep\",\"args\":\"{\\\"pattern\\\":\\\"TODO\\\"}\"}";
   let out = renderFrame(f, "");
   expect(out == "\n  -> grep {\"pattern\":\"TODO\"}");
+});
+
+test("an edit approval.request renders the diff above the y/n/a decision line, before any answer is given", () => {
+  let f = editApprovalFrame("src/a.ts", "const x = 1;", "const x = 2;");
+  let out = renderFrame(f, "");
+  let diffAt = out.indexOf(RED + "- const x = 1;");
+  let decisionAt = out.indexOf("(y/n/a)");
+  expect(diffAt >= 0);
+  expect(decisionAt >= 0);
+  expect(diffAt < decisionAt);
+  expect(out.indexOf(GREEN + "+ const x = 2;") >= 0);
+});
+
+test("a write approval.request renders the diff above the y/n/a decision line", () => {
+  let f = writeApprovalFrame("src/new.ts", "line one\nline two");
+  let out = renderFrame(f, "");
+  let diffAt = out.indexOf(GREEN + "+ line one");
+  let decisionAt = out.indexOf("(y/n/a)");
+  expect(diffAt >= 0);
+  expect(decisionAt >= 0);
+  expect(diffAt < decisionAt);
+});
+
+test("a run approval.request renders no diff, just the plain summary and decision line", () => {
+  let f = runApprovalFrame("npm test");
+  let out = renderFrame(f, "");
+  expect(out.indexOf("run npm test") >= 0);
+  expect(out.indexOf("(y/n/a)") >= 0);
+  expect(out.indexOf(GREEN) < 0);
+  expect(out.indexOf(RED) < 0);
+});
+
+test("an edit approval.request with unchanged text renders no diff body either", () => {
+  let f = editApprovalFrame("src/same.ts", "same", "same");
+  let out = renderFrame(f, "");
+  expect(out.indexOf(GREEN) < 0);
+  expect(out.indexOf(RED) < 0);
+  expect(out.indexOf("(y/n/a)") >= 0);
 });

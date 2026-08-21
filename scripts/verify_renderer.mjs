@@ -71,7 +71,7 @@ expectContains(
   "a truncated tool.result says so"
 );
 
-const approvalText = renderFrameText('{"v":1,"seq":1,"type":"approval.request","turnId":"t1","callId":"c1","tool":"run","summary":"run npm test","detail":"npm test"}', "");
+const approvalText = renderFrameText('{"v":1,"seq":1,"type":"approval.request","turnId":"t1","callId":"c1","tool":"run","summary":"run npm test","detail":"npm test","args":"{\\"command\\":\\"npm test\\"}"}', "");
 expectContains(approvalText, "run npm test", "approval.request renders the summary");
 expectContains(approvalText, "(y/n/a)", "approval.request renders the y/n/a marker (text-parity form; the live UI shows buttons instead)");
 
@@ -130,6 +130,30 @@ for (let i = 0; i < 500; i++) {
 }
 const bigDiffOut = renderFrameText(toolCallFrame("write", { path: "src/big.ts", content: bigContent }), "");
 expectTrue(bigDiffOut === "\n  -> write src/big.ts", "a diff larger than the terminal display cap falls back to the plain summary line (#68 diff rendering)");
+
+function approvalRequestFrame(tool, summary, args) {
+  const argsJson = JSON.stringify(args);
+  return JSON.stringify({ v: 1, seq: 1, type: "approval.request", turnId: "t1", callId: "c1", tool: tool, summary: summary, detail: argsJson, args: argsJson });
+}
+
+const editApprovalOut = renderFrameText(approvalRequestFrame("edit", "edit src/a.ts", { path: "src/a.ts", old_text: "const x = 1;", new_text: "const x = 2;" }), "");
+expectContains(editApprovalOut, ANSI_RED + "- const x = 1;", "an edit approval.request renders a red removed line before the decision (#69 approval diff)");
+expectContains(editApprovalOut, ANSI_GREEN + "+ const x = 2;", "an edit approval.request renders a green added line before the decision (#69 approval diff)");
+expectTrue(
+  editApprovalOut.indexOf(ANSI_RED + "- const x = 1;") < editApprovalOut.indexOf("(y/n/a)"),
+  "an edit approval.request shows the diff above the y/n/a decision line (#69 approval diff)"
+);
+
+const writeApprovalOut = renderFrameText(approvalRequestFrame("write", "write src/new.ts", { path: "src/new.ts", content: "line one\nline two" }), "");
+expectContains(writeApprovalOut, ANSI_GREEN + "+ line one", "a write approval.request renders a green added line before the decision (#69 approval diff)");
+expectTrue(
+  writeApprovalOut.indexOf(ANSI_GREEN + "+ line one") < writeApprovalOut.indexOf("(y/n/a)"),
+  "a write approval.request shows the diff above the y/n/a decision line (#69 approval diff)"
+);
+
+const runApprovalOut = renderFrameText(approvalRequestFrame("run", "run npm test", { command: "npm test" }), "");
+expectTrue(runApprovalOut.indexOf(ANSI_GREEN) < 0 && runApprovalOut.indexOf(ANSI_RED) < 0, "a run approval.request renders no diff, scope stays write/edit only (#69 approval diff)");
+expectContains(runApprovalOut, "(y/n/a)", "a run approval.request still renders the plain decision line (#69 approval diff)");
 
 console.log("");
 if (failures > 0) {

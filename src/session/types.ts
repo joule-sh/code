@@ -17,6 +17,6 @@ export type ToolRegistry = { run: (tool: string, args: string) => ToolResult };
 
 export type ApprovalDecision = { allow: bool };
 
-export type ApprovalGate = { check: (callId: string, tool: string, summary: string) => ApprovalDecision };
+export type ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => ApprovalDecision };
 
 export type Subscriber = (frameJson: string) => void;
