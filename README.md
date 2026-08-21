@@ -81,6 +81,12 @@ the concurrency problem a blocking `receive()` creates for the terminal, is in
 
 ## Honest limits (v0)
 
-No hosted sandbox, the agent only ever runs on your own machine. No session
-persistence across restarts. No multi-agent, no subagents, no MCP. See
-[docs/00-plan.md](docs/00-plan.md) for the reasoning behind each.
+No hosted sandbox, the agent only ever runs on your own machine. No multi-agent,
+no subagents, no MCP. See [docs/00-plan.md](docs/00-plan.md) for the reasoning
+behind each.
+
+Conversation history is saved per workspace as you go and picked back up with
+`joule --continue`, which resumes the most recent session for the current
+directory. Model, mode and workspace are not part of what gets saved - they
+are re-resolved fresh from the normal config chain on every launch. There is
+no picker for older sessions yet, only the most recent one.

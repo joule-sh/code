@@ -558,6 +558,86 @@ def run_approval_number_key_scenario():
             stop_stub_session(work_dir, stub_proc, session)
 
 
+RESUME_HEADER = "resumed previous session"
+NO_PREVIOUS_SESSION = "no previous session found for this workspace"
+
+
+def run_resume_scenario():
+    """#85: --continue replays a prior turn's history into the transcript at startup."""
+    work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-resume-")
+    repo_dir = os.path.join(work_dir, "repo")
+    home_dir = os.path.join(work_dir, "home")
+    os.makedirs(home_dir, exist_ok=True)
+    seed_workspace(repo_dir)
+
+    stub_port = free_port()
+    stub_env = dict(os.environ)
+    stub_env["E2E_STUB_PORT"] = str(stub_port)
+    stub_env["E2E_STUB_LOG"] = os.path.join(work_dir, "stub_requests.log")
+    import subprocess
+    stub_proc = subprocess.Popen([STUB_BIN], env=stub_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    first = None
+    second = None
+    third = None
+    try:
+        if not wait_for_port(stub_port, 5.0):
+            raise Failure("stub model server did not start")
+
+        joule_env = dict(os.environ)
+        joule_env["HOME"] = home_dir
+        joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
+        joule_env["JOULE_CODE_MODEL"] = "stub"
+        joule_env["JOULE_CODE_API_KEY"] = "stub-key"
+        joule_env["TERM"] = "xterm-256color"
+
+        first = PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
+        first.wait_for(BANNER, timeout=10.0)
+        first.write("add a health note\r")
+        first.wait_for(APPROVAL_MARKER, timeout=10.0)
+        first.write("y")
+        first.wait_for("Done.", timeout=15.0)
+        first.settle(0.3, 2.0)
+        check_clean_exit_invariants(first, "resume: first session before exit")
+
+        second = PtySession([JOULE_BIN, "--continue"], joule_env, repo_dir, rows=24, cols=80)
+        second.wait_for(BANNER, timeout=10.0)
+        second.settle(0.3, 2.0)
+        resumed_text = text(bytes(second.raw))
+        ok(RESUME_HEADER in resumed_text, "--continue prints a resumed-session banner in the transcript on startup")
+        ok("add a health note" in resumed_text, "--continue replays the prior turn's user prompt into the transcript before any new input")
+        ok("Done." in resumed_text, "--continue replays the prior turn's assistant reply into the transcript")
+        check_clean_exit_invariants(second, "resume: second session after --continue")
+
+        empty_work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-resume-empty-")
+        empty_repo_dir = os.path.join(empty_work_dir, "repo")
+        seed_workspace(empty_repo_dir)
+        empty_env = dict(joule_env)
+        third = PtySession([JOULE_BIN, "--continue"], empty_env, empty_repo_dir, rows=24, cols=80)
+        third.wait_for(BANNER, timeout=10.0)
+        third.settle(0.3, 2.0)
+        no_prior_text = text(bytes(third.raw))
+        ok(NO_PREVIOUS_SESSION in no_prior_text, "--continue in a workspace with no saved session says so instead of silently starting fresh")
+        check_clean_exit_invariants(third, "resume: --continue with no prior session for this workspace")
+    finally:
+        for session in (first, second, third):
+            if session is not None:
+                session.close()
+        try:
+            stub_proc.terminate()
+            stub_proc.wait(timeout=3)
+        except Exception:
+            try:
+                stub_proc.kill()
+            except Exception:
+                pass
+        shutil.rmtree(work_dir, ignore_errors=True)
+        try:
+            shutil.rmtree(empty_work_dir, ignore_errors=True)
+        except NameError:
+            pass
+
+
 def run_scenario():
     self_test_color_bleed_detector()
 
@@ -751,6 +831,11 @@ def main():
         failures.append(str(e))
     try:
         run_approval_number_key_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_resume_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))
