@@ -3,8 +3,9 @@ import { BOLD, UNDERLINE, DIM, VIOLET, RESET, wrap } from "./style.ts";
 const CODE_FENCE: string = "```";
 const CODE_BORDER: string = DIM + "| " + RESET;
 const MAX_HEADER_LEVEL: int = 6;
+const BOLD_MARKER: string = "**";
 
-export type LineSegment = { text: string, isCode: bool };
+export type CodeSpan = { open: int, close: int };
 export type MarkdownLineResult = { text: string, inCodeBlock: bool };
 
 export class MarkdownState {
@@ -61,90 +62,110 @@ function charAtOr(text: string, index: int): string {
   return text.charAt(index);
 }
 
-function styleMarker(text: string, marker: string, color: string): string {
-  let out = "";
-  let i = 0;
-  let n = text.length;
-  let m = marker.length;
-  while (i < n) {
-    if (i + m <= n && text.slice(i, i + m) == marker) {
-      let close = text.indexOf(marker, i + m);
-      if (close >= 0) {
-        out = out + color + text.slice(i + m, close) + RESET;
-        i = close + m;
-        continue;
-      }
-    }
-    out = out + text.charAt(i);
-    i = i + 1;
-  }
-  return out;
-}
-
-function styleItalic(text: string): string {
-  let out = "";
-  let i = 0;
-  let n = text.length;
-  while (i < n) {
-    if (text.charAt(i) == "_" && !isWordByte(charAtOr(text, i - 1))) {
-      let close = -1;
-      let j = i + 1;
-      while (j < n) {
-        if (text.charAt(j) == "_" && !isWordByte(charAtOr(text, j + 1))) {
-          close = j;
-          break;
-        }
-        j = j + 1;
-      }
-      if (close > i + 1) {
-        out = out + UNDERLINE + text.slice(i + 1, close) + RESET;
-        i = close + 1;
-        continue;
-      }
-    }
-    out = out + text.charAt(i);
-    i = i + 1;
-  }
-  return out;
-}
-
-function splitCodeSpans(line: string): LineSegment[] {
-  let out: LineSegment[] = [];
+function findCodeSpans(line: string): CodeSpan[] {
+  let out: CodeSpan[] = [];
   let i = 0;
   let n = line.length;
-  let plainStart = 0;
   while (i < n) {
     if (line.charAt(i) == "`") {
       let close = line.indexOf("`", i + 1);
       if (close >= 0) {
-        if (i > plainStart) {
-          out.push({ text: line.slice(plainStart, i), isCode: false });
-        }
-        out.push({ text: line.slice(i + 1, close), isCode: true });
+        out.push({ open: i, close: close });
         i = close + 1;
-        plainStart = i;
         continue;
       }
     }
     i = i + 1;
   }
-  if (plainStart < n) {
-    out.push({ text: line.slice(plainStart, n), isCode: false });
+  return out;
+}
+
+function codeSpanCloseAt(spans: CodeSpan[], index: int): int {
+  for (const span of spans) {
+    if (span.open == index) {
+      return span.close;
+    }
+  }
+  return -1;
+}
+
+function insideCodeSpan(spans: CodeSpan[], index: int): bool {
+  for (const span of spans) {
+    if (index >= span.open && index <= span.close) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function boldCloseAt(text: string, spans: CodeSpan[], start: int): int {
+  let n = text.length;
+  let m = BOLD_MARKER.length;
+  if (start + m > n || text.slice(start, start + m) != BOLD_MARKER) {
+    return -1;
+  }
+  let i = start + m;
+  while (i + m <= n) {
+    if (!insideCodeSpan(spans, i) && text.slice(i, i + m) == BOLD_MARKER) {
+      return i;
+    }
+    i = i + 1;
+  }
+  return -1;
+}
+
+function italicCloseAt(text: string, spans: CodeSpan[], start: int): int {
+  if (text.charAt(start) != "_" || isWordByte(charAtOr(text, start - 1))) {
+    return -1;
+  }
+  let n = text.length;
+  let i = start + 1;
+  while (i < n) {
+    if (!insideCodeSpan(spans, i) && text.charAt(i) == "_" && !isWordByte(charAtOr(text, i + 1))) {
+      if (i > start + 1) {
+        return i;
+      }
+      return -1;
+    }
+    i = i + 1;
+  }
+  return -1;
+}
+
+function styleSpans(text: string, active: string): string {
+  let spans = findCodeSpans(text);
+  let out = "";
+  let i = 0;
+  let n = text.length;
+  while (i < n) {
+    let codeClose = codeSpanCloseAt(spans, i);
+    if (codeClose >= 0) {
+      out = out + DIM + text.slice(i + 1, codeClose) + RESET + active;
+      i = codeClose + 1;
+      continue;
+    }
+    let boldClose = boldCloseAt(text, spans, i);
+    if (boldClose >= 0) {
+      let inner = text.slice(i + BOLD_MARKER.length, boldClose);
+      out = out + BOLD + styleSpans(inner, active + BOLD) + RESET + active;
+      i = boldClose + BOLD_MARKER.length;
+      continue;
+    }
+    let italicClose = italicCloseAt(text, spans, i);
+    if (italicClose >= 0) {
+      let innerItalic = text.slice(i + 1, italicClose);
+      out = out + UNDERLINE + styleSpans(innerItalic, active + UNDERLINE) + RESET + active;
+      i = italicClose + 1;
+      continue;
+    }
+    out = out + text.charAt(i);
+    i = i + 1;
   }
   return out;
 }
 
 function styleInline(line: string): string {
-  let segments = splitCodeSpans(line);
-  let out = "";
-  for (const seg of segments) {
-    if (seg.isCode) {
-      out = out + DIM + seg.text + RESET;
-    } else {
-      out = out + styleItalic(styleMarker(seg.text, "**", BOLD));
-    }
-  }
-  return out;
+  return styleSpans(line, "");
 }
 
 export function styleMarkdownLine(line: string, inCodeBlock: bool): MarkdownLineResult {

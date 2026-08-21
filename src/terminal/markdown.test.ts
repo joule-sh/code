@@ -104,3 +104,99 @@ test("a multi-line chunk delivered in one call styles every completed line", () 
   expect(lines[1] == UNDERLINE + "two" + RESET);
   expect(lines[2] == "three");
 });
+
+test("bold that wraps inline code renders the code dimmed with no literal markers left behind", () => {
+  let result = styleMarkdownLine("- **`.githooks`, `.github`** — CI / git hook tooling", false);
+  expect(result.text.indexOf("**") < 0);
+  expect(result.text.indexOf(BOLD) >= 0);
+  expect(result.text.indexOf(DIM + ".githooks" + RESET) >= 0);
+  expect(result.text.indexOf(DIM + ".github" + RESET) >= 0);
+  expect(result.text.indexOf("— CI / git hook tooling") >= 0);
+  expect(result.text.slice(0, 2 + BOLD.length) == "- " + BOLD);
+});
+
+test("bold enclosing a single inline code span keeps the bold and dims the code", () => {
+  let result = styleMarkdownLine("the **`--force`** flag", false);
+  expect(result.text.indexOf("**") < 0);
+  expect(result.text.indexOf(BOLD + DIM + "--force" + RESET) >= 0);
+});
+
+test("italic enclosing an inline code span keeps the underline and dims the code", () => {
+  let result = styleMarkdownLine("see _the `flag` here_ please", false);
+  expect(result.text.indexOf(UNDERLINE) >= 0);
+  expect(result.text.indexOf(DIM + "flag" + RESET) >= 0);
+  expect(result.text.indexOf("_the") < 0);
+  expect(result.text.indexOf("here_") < 0);
+});
+
+test("emphasis markers inside an inline code span stay literal and are never styled", () => {
+  let result = styleMarkdownLine("write `**x**` verbatim", false);
+  expect(result.text.indexOf(DIM + "**x**" + RESET) >= 0);
+  expect(result.text.indexOf(BOLD) < 0);
+});
+
+test("a bold marker whose partner only exists inside a code span is left literal", () => {
+  let result = styleMarkdownLine("**start `**` end", false);
+  expect(result.text.indexOf("**start") >= 0);
+  expect(result.text.indexOf(DIM + "**" + RESET) >= 0);
+  expect(result.text.indexOf(BOLD) < 0);
+});
+
+test("bold nested inside italic and italic nested inside bold both render", () => {
+  let boldOuter = styleMarkdownLine("**bold with _italic_ inside**", false);
+  expect(boldOuter.text.indexOf(BOLD) >= 0);
+  expect(boldOuter.text.indexOf(UNDERLINE + "italic" + RESET) >= 0);
+  expect(boldOuter.text.indexOf("**") < 0);
+  let italicOuter = styleMarkdownLine("_italic with **bold** inside_", false);
+  expect(italicOuter.text.indexOf(UNDERLINE) >= 0);
+  expect(italicOuter.text.indexOf(BOLD + "bold" + RESET) >= 0);
+  expect(italicOuter.text.indexOf("**") < 0);
+});
+
+test("adjacent bold spans and a code span between them each style independently", () => {
+  let result = styleMarkdownLine("**one**`mid`**two**", false);
+  expect(result.text.indexOf("**") < 0);
+  expect(result.text.indexOf(BOLD + "one" + RESET) >= 0);
+  expect(result.text.indexOf(DIM + "mid" + RESET) >= 0);
+  expect(result.text.indexOf("two") >= 0);
+});
+
+test("an unmatched bold marker passes through as literal text", () => {
+  let result = styleMarkdownLine("2 ** 3 is not bold", false);
+  expect(result.text == "2 ** 3 is not bold");
+});
+
+test("an unmatched bold marker around a code span still leaves the code span dimmed", () => {
+  let result = styleMarkdownLine("**unclosed `code` here", false);
+  expect(result.text.indexOf("**unclosed ") >= 0);
+  expect(result.text.indexOf(DIM + "code" + RESET) >= 0);
+  expect(result.text.indexOf(BOLD) < 0);
+});
+
+test("an unmatched backtick passes through as literal text", () => {
+  let result = styleMarkdownLine("a lone ` backtick", false);
+  expect(result.text == "a lone ` backtick");
+});
+
+test("snake_case survives inside bold, inside a code span, and inside a code block", () => {
+  let inBold = styleMarkdownLine("**call my_function_name now**", false);
+  expect(inBold.text.indexOf("my_function_name") >= 0);
+  expect(inBold.text.indexOf(UNDERLINE) < 0);
+  let inCode = styleMarkdownLine("**`my_function_name`**", false);
+  expect(inCode.text.indexOf(DIM + "my_function_name" + RESET) >= 0);
+  expect(inCode.text.indexOf(UNDERLINE) < 0);
+  let state = new MarkdownState();
+  let out = appendMarkdownDelta(state, "```\nmy_function_name = 1\n```\n");
+  let lines = out.split("\n");
+  expect(lines[1] == DIM + "| " + RESET + "my_function_name = 1");
+  expect(out.indexOf(UNDERLINE) < 0);
+});
+
+test("a bold span wrapping code split across two delta chunks still renders once the line completes", () => {
+  let state = new MarkdownState();
+  let first = appendMarkdownDelta(state, "run **`make ");
+  let second = appendMarkdownDelta(state, "build`** first\n");
+  expect(first == "");
+  expect(second.indexOf("**") < 0);
+  expect(second.indexOf(BOLD + DIM + "make build" + RESET) >= 0);
+});
