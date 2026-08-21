@@ -26,7 +26,7 @@ export type TurnStartFrame = { v: int, seq: int, type: string, turnId: string, p
 export type TextDeltaFrame = { v: int, seq: int, type: string, turnId: string, text: string };
 export type ToolCallFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, args: string };
 export type ToolResultFrame = { v: int, seq: int, type: string, turnId: string, callId: string, ok: bool, output: string, truncated: bool };
-export type ApprovalRequestFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, summary: string, detail: string };
+export type ApprovalRequestFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, summary: string, detail: string, args: string };
 export type TurnEndFrame = { v: int, seq: int, type: string, turnId: string, reason: string };
 export type ErrorFrame = { v: int, seq: int, type: string, code: string, message: string };
 

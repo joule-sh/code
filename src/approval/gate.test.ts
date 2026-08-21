@@ -2,13 +2,16 @@ import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO, REPLY_ALLOW, REPL
 
 class Recorder {
   requests: string[];
+  argsSeen: string[];
   polls: int;
   constructor() {
     this.requests = [];
+    this.argsSeen = [];
     this.polls = 0;
   }
-  onRequest(callId: string, tool: string, summary: string): void {
+  onRequest(callId: string, tool: string, summary: string, args: string): void {
     this.requests.push(callId + ":" + tool);
+    this.argsSeen.push(args);
   }
   onPoll(): void {
     this.polls = this.polls + 1;
@@ -40,25 +43,25 @@ class PollInjector {
 
 test("read-only: read tools auto, write/edit/run refused without ever asking", () => {
   let rec = new Recorder();
-  let g = new Gate(MODE_READ_ONLY, 1000, (c: string, t: string, s: string) => { rec.onRequest(c, t, s); }, () => { rec.onPoll(); });
-  expect(g.check("c1", "read", "").allow);
-  expect(g.check("c2", "list", "").allow);
-  expect(g.check("c3", "grep", "").allow);
-  expect(!g.check("c4", "write", "").allow);
-  expect(!g.check("c5", "edit", "").allow);
-  expect(!g.check("c6", "run", "").allow);
+  let g = new Gate(MODE_READ_ONLY, 1000, (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(g.check("c1", "read", "", "").allow);
+  expect(g.check("c2", "list", "", "").allow);
+  expect(g.check("c3", "grep", "", "").allow);
+  expect(!g.check("c4", "write", "", "").allow);
+  expect(!g.check("c5", "edit", "", "").allow);
+  expect(!g.check("c6", "run", "", "").allow);
   expect(rec.requests.length == 0);
 });
 
 test("auto-edit: read/write/edit auto, run asks", () => {
   let rec = new Recorder();
-  let g = new Gate(MODE_AUTO_EDIT, 300, (c: string, t: string, s: string) => { rec.onRequest(c, t, s); }, () => { rec.onPoll(); });
-  expect(g.check("c1", "read", "").allow);
-  expect(g.check("c2", "write", "").allow);
-  expect(g.check("c3", "edit", "").allow);
+  let g = new Gate(MODE_AUTO_EDIT, 300, (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(g.check("c1", "read", "", "").allow);
+  expect(g.check("c2", "write", "", "").allow);
+  expect(g.check("c3", "edit", "", "").allow);
   expect(rec.requests.length == 0);
 
-  let denied = g.check("c4", "run", "npm test");
+  let denied = g.check("c4", "run", "npm test", "{\"command\":\"npm test\"}");
   expect(!denied.allow);
   expect(rec.requests.length == 1);
   expect(rec.requests[0] == "c4:run");
@@ -66,53 +69,53 @@ test("auto-edit: read/write/edit auto, run asks", () => {
 
 test("full-auto: everything auto, nothing asked", () => {
   let rec = new Recorder();
-  let g = new Gate(MODE_FULL_AUTO, 1000, (c: string, t: string, s: string) => { rec.onRequest(c, t, s); }, () => { rec.onPoll(); });
-  expect(g.check("c1", "read", "").allow);
-  expect(g.check("c2", "write", "").allow);
-  expect(g.check("c3", "edit", "").allow);
-  expect(g.check("c4", "run", "").allow);
+  let g = new Gate(MODE_FULL_AUTO, 1000, (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(g.check("c1", "read", "", "").allow);
+  expect(g.check("c2", "write", "", "").allow);
+  expect(g.check("c3", "edit", "", "").allow);
+  expect(g.check("c4", "run", "", "").allow);
   expect(rec.requests.length == 0);
 });
 
 test("a reply arriving during the wait is honored before timeout", () => {
-  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string) => {}, () => {});
+  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string, a: string) => {}, () => {});
   let injector = new PollInjector("c1", REPLY_ALLOW, 2, (c: string, d: string) => { g.reply(c, d); });
   g.setOnPoll(() => { injector.onPoll(); });
-  let d = g.check("c1", "run", "run tests");
+  let d = g.check("c1", "run", "run tests", "{\"command\":\"npm test\"}");
   expect(d.allow);
 });
 
 test("a deny reply is honored", () => {
-  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string) => {}, () => {});
+  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string, a: string) => {}, () => {});
   let injector = new PollInjector("c1", REPLY_DENY, 2, (c: string, d: string) => { g.reply(c, d); });
   g.setOnPoll(() => { injector.onPoll(); });
-  let d = g.check("c1", "run", "run tests");
+  let d = g.check("c1", "run", "run tests", "{\"command\":\"npm test\"}");
   expect(!d.allow);
 });
 
 test("always is remembered for the rest of the session, per tool, not re-asked", () => {
   let rec = new Recorder();
-  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string) => { rec.onRequest(c, t, s); }, () => {});
+  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => {});
   let injector = new PollInjector("c1", REPLY_ALWAYS, 1, (c: string, d: string) => { g.reply(c, d); });
   g.setOnPoll(() => { injector.onPoll(); });
 
-  let d1 = g.check("c1", "run", "run tests");
+  let d1 = g.check("c1", "run", "run tests", "{\"command\":\"npm test\"}");
   expect(d1.allow);
   expect(rec.requests.length == 1);
 
-  let d2 = g.check("c2", "run", "run tests again");
+  let d2 = g.check("c2", "run", "run tests again", "{\"command\":\"npm test\"}");
   expect(d2.allow);
   expect(rec.requests.length == 1);
 });
 
 test("an unanswered request times out into a denial", () => {
-  let g = new Gate(MODE_AUTO_EDIT, 250, (c: string, t: string, s: string) => {}, () => {});
-  let d = g.check("c1", "run", "npm test");
+  let g = new Gate(MODE_AUTO_EDIT, 250, (c: string, t: string, s: string, a: string) => {}, () => {});
+  let d = g.check("c1", "run", "npm test", "{\"command\":\"npm test\"}");
   expect(!d.allow);
 });
 
 test("a reply for an unknown or already-decided callId is ignored", () => {
-  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string) => {}, () => {});
+  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string, a: string) => {}, () => {});
   g.reply("never-asked", REPLY_ALLOW);
   expect(g.findReply("never-asked") == REPLY_ALLOW);
 
@@ -121,8 +124,20 @@ test("a reply for an unknown or already-decided callId is ignored", () => {
 });
 
 test("two replies for one call take the first", () => {
-  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string) => {}, () => {});
+  let g = new Gate(MODE_AUTO_EDIT, 5000, (c: string, t: string, s: string, a: string) => {}, () => {});
   g.reply("c1", REPLY_ALLOW);
   g.reply("c1", REPLY_DENY);
   expect(g.findReply("c1") == REPLY_ALLOW);
+});
+
+test("the raw tool call args flow through check() into the onRequest callback unchanged", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_AUTO_EDIT, 1000, (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let injector = new PollInjector("c1", REPLY_ALLOW, 1, (c: string, d: string) => { g.reply(c, d); });
+  g.setOnPoll(() => { injector.onPoll(); });
+
+  let rawArgs = "{\"command\":\"rm -rf build\"}";
+  g.check("c1", "run", "run rm -rf build", rawArgs);
+  expect(rec.argsSeen.length == 1);
+  expect(rec.argsSeen[0] == rawArgs);
 });

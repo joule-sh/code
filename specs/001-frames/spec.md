@@ -47,9 +47,16 @@ Terminal to everyone:
 | `text.delta` | `turnId`, `text` |
 | `tool.call` | `turnId`, `callId`, `tool`, `args` |
 | `tool.result` | `turnId`, `callId`, `ok`, `output`, `truncated` |
-| `approval.request` | `turnId`, `callId`, `tool`, `summary`, `detail` |
+| `approval.request` | `turnId`, `callId`, `tool`, `summary`, `detail`, `args` |
 | `turn.end` | `turnId`, `reason`: `done` \| `cancelled` \| `error` |
 | `error` | `code`, `message` |
+
+`approval.request.args` carries the same JSON the matching `tool.call` would
+carry, verbatim, so a renderer can show what a write or edit actually proposes
+before anyone decides, not just after. It is not a new kind of payload; a
+`write` or `edit` call was always going to put its full content in `args`
+somewhere on the wire, this just makes it visible at the one frame where the
+decision still matters.
 
 Browser to terminal, and this list is exhaustive, which is the point:
 

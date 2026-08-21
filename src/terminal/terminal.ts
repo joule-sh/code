@@ -90,13 +90,13 @@ export function runTerminal(argv: string[]): void {
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
 
-  let onApprovalRequest = (callId: string, tool: string, summary: string) => {
+  let onApprovalRequest = (callId: string, tool: string, summary: string, args: string) => {
     pendingApproval.set(callId);
     if (live.sessionSlot.length > 0) {
       let s = live.sessionSlot[0];
       let frame: ApprovalRequestFrame = {
         v: PROTOCOL_VERSION, seq: s.takeSeq(), type: APPROVAL_REQUEST,
-        turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: summary,
+        turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: summary, args: args,
       };
       s.emit(encodeApprovalRequest(frame));
     }
@@ -129,7 +129,7 @@ export function runTerminal(argv: string[]): void {
 
   let gate = new Gate(MODE_AUTO_EDIT, 120000, onApprovalRequest, onApprovalPoll);
   gateBox.set(gate);
-  let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string) => gate.check(callId, tool, summary) };
+  let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
   live.setSession(session);

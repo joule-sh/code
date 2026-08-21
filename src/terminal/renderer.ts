@@ -18,17 +18,17 @@ function toolCallSummary(f: ToolCallFrame): string {
   return "\n  -> " + f.tool + " " + f.args;
 }
 
-function diffBlockForCall(f: ToolCallFrame): string {
-  let path = diffableToolPath(f.tool, f.args);
+function diffBlockFor(tool: string, args: string): string {
+  let path = diffableToolPath(tool, args);
   if (path == "") { return ""; }
 
   let oldText = "";
   let newText = "";
-  if (f.tool == TOOL_EDIT) {
-    oldText = jsonStringMemberAt(f.args, 0, "old_text");
-    newText = jsonStringMemberAt(f.args, 0, "new_text");
+  if (tool == TOOL_EDIT) {
+    oldText = jsonStringMemberAt(args, 0, "old_text");
+    newText = jsonStringMemberAt(args, 0, "new_text");
   } else {
-    newText = jsonStringMemberAt(f.args, 0, "content");
+    newText = jsonStringMemberAt(args, 0, "content");
   }
 
   let rows = diffLines(oldText, newText);
@@ -39,6 +39,14 @@ function diffBlockForCall(f: ToolCallFrame): string {
   let body = renderDiffRows(rows);
   if (body == "") { return ""; }
   return "\n" + body;
+}
+
+function approvalPrompt(summary: string, detail: string, tool: string, args: string): string {
+  let diff = diffBlockFor(tool, args);
+  if (diff == "") {
+    return "\n  ? " + summary + " [" + detail + "] (y/n/a)";
+  }
+  return "\n  ? " + summary + " [" + detail + "]" + diff + "\n    (y/n/a)";
 }
 
 export function renderFrame(frameJson: string, prevKind: string): string {
@@ -56,7 +64,7 @@ export function renderFrame(frameJson: string, prevKind: string): string {
   if (kind == TOOL_CALL) {
     let f = decodeToolCall(frameJson);
     if (f == null) { return ""; }
-    return toolCallSummary(f) + diffBlockForCall(f);
+    return toolCallSummary(f) + diffBlockFor(f.tool, f.args);
   }
 
   if (kind == TOOL_RESULT) {
@@ -74,7 +82,7 @@ export function renderFrame(frameJson: string, prevKind: string): string {
   if (kind == APPROVAL_REQUEST) {
     let f = decodeApprovalRequest(frameJson);
     if (f == null) { return ""; }
-    return "\n  ? " + f.summary + " [" + f.detail + "] (y/n/a)";
+    return approvalPrompt(f.summary, f.detail, f.tool, f.args);
   }
 
   if (kind == TURN_END) {

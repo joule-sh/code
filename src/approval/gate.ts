@@ -21,10 +21,10 @@ export class Gate {
   alwaysAllowed: string[];
   repliedCallIds: string[];
   repliedDecisions: string[];
-  onRequest: (callId: string, tool: string, summary: string) => void;
+  onRequest: (callId: string, tool: string, summary: string, args: string) => void;
   onPoll: () => void;
 
-  constructor(mode: string, timeoutMs: int, onRequest: (callId: string, tool: string, summary: string) => void, onPoll: () => void) {
+  constructor(mode: string, timeoutMs: int, onRequest: (callId: string, tool: string, summary: string, args: string) => void, onPoll: () => void) {
     this.mode = mode;
     this.timeoutMs = timeoutMs;
     this.pollMs = DEFAULT_POLL_MS;
@@ -84,7 +84,7 @@ export class Gate {
     return true;
   }
 
-  check(callId: string, tool: string, summary: string): ApprovalDecision {
+  check(callId: string, tool: string, summary: string, args: string): ApprovalDecision {
     if (isReadTool(tool)) {
       return { allow: true };
     }
@@ -101,7 +101,7 @@ export class Gate {
       return { allow: true };
     }
 
-    this.onRequest(callId, tool, summary);
+    this.onRequest(callId, tool, summary, args);
 
     let waited = 0;
     while (waited < this.timeoutMs) {
