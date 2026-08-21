@@ -90,3 +90,19 @@ test("findMailboxEntry on a nonexistent file returns empty string rather than th
   let r = findMailboxEntry("/tmp/mailbox-test-does-not-exist-2.log", "anything");
   expect(r == "");
 });
+
+test("drainNew holds its position when a read comes back short, instead of replaying the mailbox", () => {
+  let p = freshPath("short-read");
+  appendMailbox(p, "DELTA", "one");
+  appendMailbox(p, "DELTA", "two");
+  let r = new MailboxReader(p);
+  expect(r.drainNew().length == 2);
+  fs.writeFileSync(p, "");
+  expect(r.drainNew().length == 0);
+  appendMailbox(p, "DELTA", "one");
+  appendMailbox(p, "DELTA", "two");
+  appendMailbox(p, "DELTA", "three");
+  let again = r.drainNew();
+  expect(again.length == 1);
+  expect(again[0].payload == "three");
+});
