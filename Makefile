@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -44,6 +44,9 @@ terminal-harness: build bin/stub_model
 
 layout-harness: build bin/stub_model
 	python3 scripts/verify_layout.py
+
+onboarding-harness: build bin/stub_model
+	python3 scripts/verify_onboarding.py
 
 clean:
 	rm -rf bin code relay src/vendor/tty/tty_shim.o

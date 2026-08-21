@@ -1,6 +1,6 @@
 import { ProviderConfig } from "./openai.ts";
 
-type ConfigFile = { baseUrl: string, model: string, apiKey: string };
+export type ConfigFile = { baseUrl: string, model: string, apiKey: string };
 
 function firstNonEmpty(a: string, b: string): string {
   if (a != "") { return a; }
@@ -43,11 +43,24 @@ function flagValue(argv: string[], name: string): string {
   return "";
 }
 
+export function configFilePath(): string {
+  let home = process.env("HOME") ?? "";
+  return home + "/.config/joule-code/config.json";
+}
+
 export function loadConfigFile(path: string): ConfigFile {
   if (!fs.existsSync(path)) {
     return emptyConfigFile();
   }
   return parseConfigFile(fs.readFileSync(path));
+}
+
+export function saveConfigFile(filePath: string, file: ConfigFile): void {
+  let dir = path.dirname(filePath);
+  if (dir != "" && !fs.existsSync(dir)) {
+    fs.mkdirSync(dir, true);
+  }
+  fs.writeFileSync(filePath, JSON.stringify(file));
 }
 
 export function loadConfig(argv: string[]): ProviderConfig {
@@ -56,7 +69,6 @@ export function loadConfig(argv: string[]): ProviderConfig {
   let envBaseUrl = process.env("JOULE_CODE_BASE_URL") ?? "";
   let envModel = process.env("JOULE_CODE_MODEL") ?? "";
   let envApiKey = process.env("JOULE_CODE_API_KEY") ?? "";
-  let home = process.env("HOME") ?? "";
-  let file = loadConfigFile(home + "/.config/joule-code/config.json");
+  let file = loadConfigFile(configFilePath());
   return resolveConfig(flagModel, flagBaseUrl, envBaseUrl, envModel, envApiKey, file.baseUrl, file.model, file.apiKey);
 }

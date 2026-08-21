@@ -358,7 +358,7 @@ def run_scenario():
         joule_env["HOME"] = home_dir
         joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
         joule_env["JOULE_CODE_MODEL"] = "stub"
-        joule_env["JOULE_CODE_API_KEY"] = ""
+        joule_env["JOULE_CODE_API_KEY"] = "stub-key"  # non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
         joule_env["TERM"] = "xterm-256color"
 
         session = PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)

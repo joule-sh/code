@@ -1,5 +1,6 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, readByteTimeout, rows, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig } from "../providers/config.ts";
+import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { readFile } from "../tools/files.ts";
@@ -71,6 +72,10 @@ export function runTerminal(argv: string[]): void {
   }
 
   let cfg = loadConfig(argv);
+  if (cfg.apiKey == "") {
+    let onboarded = runOnboarding();
+    cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
+  }
   let workspaceRoot = process.cwd();
 
   let registry = new ToolsRegistry(workspaceRoot);
