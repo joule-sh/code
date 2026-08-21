@@ -152,6 +152,13 @@ function isSgrTerminator(c: string): bool {
   return (c >= "A" && c <= "Z") || (c >= "a" && c <= "z");
 }
 
+function utf8ByteCount(first: int): int {
+  if (first >= 240) { return 4; }
+  if (first >= 224) { return 3; }
+  if (first >= 192) { return 2; }
+  return 1;
+}
+
 export function clip(line: string, width: int): string {
   if (width <= 0) {
     return line;
@@ -183,9 +190,14 @@ export function clip(line: string, width: int): string {
     if (visible >= width) {
       break;
     }
-    out = out + line.charAt(i);
+    let charBytes = utf8ByteCount(line.charCodeAt(i));
+    let end = i + charBytes;
+    if (end > line.length) {
+      end = line.length;
+    }
+    out = out + line.slice(i, end);
     visible = visible + 1;
-    i = i + 1;
+    i = end;
   }
 
   if (hadEscape) {
