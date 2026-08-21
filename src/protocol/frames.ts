@@ -143,6 +143,10 @@ export function frameSeq(text: string): int {
   return parseNonNegativeInt(rawFieldValue(text, "seq"), -1);
 }
 
+export function frameTurnId(text: string): string {
+  return rawFieldValue(text, "turnId");
+}
+
 export function isSupportedVersion(v: int): bool {
   return v == PROTOCOL_VERSION;
 }

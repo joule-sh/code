@@ -3,6 +3,7 @@ export const CMD_MODEL: string = "model";
 export const CMD_MODE: string = "mode";
 export const CMD_SHARE: string = "share";
 export const CMD_CAT: string = "cat";
+export const CMD_TASKS: string = "tasks";
 export const CMD_CLEAR: string = "clear";
 export const CMD_EXIT: string = "exit";
 export const CMD_UNKNOWN: string = "unknown";
@@ -35,6 +36,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "mode") { return withKind(CMD_MODE, arg); }
   if (name == "share") { return withKind(CMD_SHARE, arg); }
   if (name == "cat") { return withKind(CMD_CAT, arg); }
+  if (name == "tasks") { return withKind(CMD_TASKS, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
   if (name == "exit") { return withKind(CMD_EXIT, arg); }
   return withKind(CMD_UNKNOWN, name);
@@ -47,6 +49,8 @@ export function helpText(): string {
     "/mode [mode]   show or set the approval mode (read-only, auto-edit, full-auto)",
     "/share         print the pairing URL for this session",
     "/cat <path>    show a file's contents without asking the model",
+    "/tasks         list running and finished background tasks and subagents",
+    "/tasks cancel <id>  ask a subagent to stop, or detach from a background task",
     "/clear         clear the scrollback",
     "PageUp/PageDown  scroll the transcript",
     "/exit          quit",

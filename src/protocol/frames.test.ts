@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, frameType, frameVersion, frameSeq, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
 
 test("SESSION_HELLO round-trips", () => {
   let f: SessionHelloFrame = { v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO, sessionId: "s1", workspace: "/repo", model: "gpt", mode: "agent", protocol: 1 };
@@ -115,4 +115,11 @@ test("seq gaps are detectable", () => {
 test("frameSeq reads the envelope seq generically", () => {
   let text = "{\"v\":1,\"seq\":42,\"type\":\"input\",\"text\":\"hi\"}";
   expect(frameSeq(text) == 42);
+});
+
+test("frameTurnId reads the turnId field generically, empty when absent", () => {
+  let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: 6, type: TEXT_DELTA, turnId: "bg:bgrun-1", text: "hi" };
+  expect(frameTurnId(encodeTextDelta(f)) == "bg:bgrun-1");
+  let noTurn = "{\"v\":1,\"seq\":1,\"type\":\"error\",\"code\":\"E\",\"message\":\"m\"}";
+  expect(frameTurnId(noTurn) == "");
 });
