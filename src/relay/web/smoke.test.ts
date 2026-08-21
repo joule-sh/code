@@ -1,12 +1,19 @@
 import { PAGE_CSS } from "./page_css.ts";
 import { PAGE_HTML_BODY } from "./page_html.ts";
 import { PAGE_JS_FRAMES } from "./page_js_frames.ts";
+import { PAGE_JS_MARKDOWN } from "./page_js_markdown.ts";
 import { PAGE_JS_CLIENT } from "./page_js_client.ts";
 import { renderWebPage, WEB_PAGE_PATH } from "./web_page.ts";
 
 test("PAGE_CSS is non-empty and mentions the transcript", () => {
   expect(PAGE_CSS.length > 0);
   expect(PAGE_CSS.indexOf("#transcript") >= 0);
+});
+
+test("PAGE_CSS styles the markdown header, fence, and code classes", () => {
+  expect(PAGE_CSS.indexOf(".md-header") >= 0);
+  expect(PAGE_CSS.indexOf(".md-code-line") >= 0);
+  expect(PAGE_CSS.indexOf(".md-inline-code") >= 0);
 });
 
 test("PAGE_HTML_BODY is non-empty and has the pair screen", () => {
@@ -19,9 +26,15 @@ test("PAGE_JS_FRAMES defines the fixture and renderer functions", () => {
   expect(PAGE_JS_FRAMES.indexOf("function renderFrameText") >= 0);
 });
 
-test("PAGE_JS_CLIENT defines pairing and websocket wiring", () => {
+test("PAGE_JS_MARKDOWN defines the streaming markdown line renderer", () => {
+  expect(PAGE_JS_MARKDOWN.indexOf("function mdRenderLineInto") >= 0);
+  expect(PAGE_JS_MARKDOWN.indexOf("function mdTokenizeBold") >= 0);
+});
+
+test("PAGE_JS_CLIENT defines pairing, websocket wiring, and the markdown flush", () => {
   expect(PAGE_JS_CLIENT.indexOf("function submitPair") >= 0);
   expect(PAGE_JS_CLIENT.indexOf("function connectWs") >= 0);
+  expect(PAGE_JS_CLIENT.indexOf("function flushMarkdown") >= 0);
 });
 
 test("renderWebPage assembles a self-contained document with no external references", () => {
