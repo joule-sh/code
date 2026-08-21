@@ -9,30 +9,85 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: [self-hosted, diff]
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux
+            runs_on: [self-hosted, diff]
+            lumen_dist: lumen-x86_64-linux
+          - target: aarch64-macos
+            runs_on: macos-14
+            lumen_dist: lumen-aarch64-macos
+          - target: x86_64-macos
+            runs_on: macos-15-intel
+            lumen_dist: lumen-x86_64-macos
+    runs-on: ${{ matrix.runs_on }}
     env:
-      LUMEN_VERSION: v0.5.0
+      LUMEN_VERSION: v0.6.0
     steps:
       - uses: actions/checkout@v4
+      # Lumen's allocator links the Boehm collector as a system library. The
+      # Linux runner has one; macOS has none, so Homebrew provides it.
+      - if: runner.os == 'macOS'
+        run: brew install bdw-gc
       - run: |
-          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.tar.gz"
           tar -xzf lumen.tar.gz
-          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
-          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}/zig" >> "$GITHUB_PATH"
       - run: |
           version="${GITHUB_REF_NAME#v}"
           echo "export const VERSION: string = \"$version\";" > src/version.ts
           cat src/version.ts
+      # Link the collector statically so a released macOS binary depends on
+      # nothing but libSystem. Two things make that work. The backend prefers a
+      # dylib whenever it can see one, so the static archive is staged alone in
+      # its own directory and Homebrew's dylib symlinks are unlinked. And Zig
+      # ignores LIBRARY_PATH on macOS while knowing only Apple Silicon's
+      # /opt/homebrew, so the directory is passed as an explicit -L, which
+      # lumen forwards to the backend ahead of its own -lgc.
+      - if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$PWD/gcstatic"
+          cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
+          brew unlink bdw-gc
+          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
       - run: make release
       - run: ./bin/joule --version
+      # Guard the property the archives depend on: if a future toolchain change
+      # reintroduces a dynamic libgc, the release should fail here rather than
+      # ship binaries that die on a machine without Homebrew.
+      - if: runner.os == 'macOS'
+        run: |
+          otool -L bin/joule bin/relay
+          if otool -L bin/joule bin/relay | grep -q libgc; then
+            echo "a macOS binary still links libgc dynamically" >&2
+            exit 1
+          fi
       - run: |
-          dir="code-x86_64-linux"
+          dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
           cp bin/joule bin/relay README.md "$dir/"
           tar -czf "$dir.tar.gz" "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-${{ matrix.target }}
+          path: code-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: [self-hosted, diff]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: code-*
+          merge-multiple: true
+      - run: ls -l code-*.tar.gz
       - run: |
-          gh release create "$GITHUB_REF_NAME" "code-x86_64-linux.tar.gz" \
+          gh release create "$GITHUB_REF_NAME" code-*.tar.gz \
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

@@ -37,17 +37,33 @@ curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 
 Installs as `joule`, not `code` - `code` is already taken by VS Code's CLI on
 most machines, and this project would silently shadow or lose to it depending
-on `PATH` order. x86_64 Linux only for now, matching the one self-hosted CI
-runner this project builds on; other platforms fail with a clear message and
-point at building from source below.
+on `PATH` order. Prebuilt for x86_64 Linux, Apple Silicon macOS
+(`aarch64-macos`) and Intel macOS (`x86_64-macos`); other platforms fail with a
+clear message and point at building from source below.
 
 ## Build from source
 
 Requires the [Lumen](https://lumen-lang.org) toolchain (`lumen`, and `zig`
 alongside it on `PATH`, as the release archive ships them). Lumen publishes
 macOS builds too (`lumen-aarch64-macos.tar.gz`, `lumen-x86_64-macos.tar.gz`),
-so this works natively on a Mac even though the release pipeline here does not
-package for it yet.
+so this works natively on a Mac.
+
+Lumen's allocator links the Boehm collector as a system library. Linux distros
+ship it as `libgc` and nothing extra is needed. macOS has no system copy, so a
+Mac build needs Homebrew's and has to point the compiler at it:
+
+```sh
+brew install bdw-gc
+make build LUMEN_FLAGS="--link -L$(brew --prefix bdw-gc)/lib"
+```
+
+The `-L` is not optional on Intel Macs. Zig ignores `LIBRARY_PATH` on macOS and
+only has Apple Silicon's `/opt/homebrew` in its built-in search paths, so an
+Intel build fails without it.
+
+The macOS release archives link that library statically, so an installed
+release depends on nothing but the system's own libSystem and needs no
+Homebrew.
 
 ```sh
 git clone https://github.com/joule-sh/code.git

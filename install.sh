@@ -10,8 +10,11 @@ os="$(uname -s)"
 arch="$(uname -m)"
 case "$os-$arch" in
   Linux-x86_64) platform="x86_64-linux" ;;
+  Darwin-arm64) platform="aarch64-macos" ;;
+  Darwin-x86_64) platform="x86_64-macos" ;;
   *)
-    echo "joule: no release built for $os-$arch yet (only x86_64-linux so far)." >&2
+    echo "joule: no release built for $os-$arch yet." >&2
+    echo "       built platforms: x86_64-linux, aarch64-macos, x86_64-macos." >&2
     echo "       build from source instead: https://github.com/$repo#build-from-source" >&2
     exit 1
     ;;
