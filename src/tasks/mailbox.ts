@@ -15,11 +15,16 @@ function parseI64(s: string): i64 {
 
 export function appendMailbox(path: string, tag: string, payload: string): void {
   let recvAt: i64 = Date.now();
-  try { fs.appendFileSync(path, `${recvAt}` + "|" + tag + "|" + payload + "\n"); } catch { }
+  let fd = fs.openSync(path, "a");
+  if (fd < 0) { return; }
+  fs.writeSync(fd, `${recvAt}` + "|" + tag + "|" + payload + "\n");
+  fs.closeSync(fd);
 }
 
-function nonEmptyLines(content: string): string[] {
-  let raw = content.split("\n");
+function completeLines(content: string): string[] {
+  let end = content.lastIndexOf("\n");
+  if (end < 0) { return []; }
+  let raw = content.slice(0, end).split("\n");
   let out: string[] = [];
   let i: int = 0;
   while (i < raw.length) {
@@ -43,7 +48,7 @@ export function parseMailboxLine(line: string): MailboxEntry {
 export function findMailboxEntry(path: string, tag: string): string {
   let content = "";
   try { content = fs.readFileSync(path); } catch { return ""; }
-  let lines = nonEmptyLines(content);
+  let lines = completeLines(content);
   let i = 0;
   while (i < lines.length) {
     let entry = parseMailboxLine(lines[i]);
@@ -65,7 +70,7 @@ export class MailboxReader {
   drainNew(): MailboxEntry[] {
     let content = "";
     try { content = fs.readFileSync(this.path); } catch { return []; }
-    let lines = nonEmptyLines(content);
+    let lines = completeLines(content);
     if (lines.length <= this.seen) { return []; }
     let out: MailboxEntry[] = [];
     let i = this.seen;

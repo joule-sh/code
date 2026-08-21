@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -8,6 +8,10 @@ TEST_TS := $(shell find src -name '*.test.ts')
 # Apple Silicon's Homebrew prefix, so the release workflow passes the keg's lib
 # directory here as `--link -L<dir>`.
 LUMEN_FLAGS ?=
+
+# How many mailbox entries `make bench-mailbox` writes per mode. The rewrite
+# modes are quadratic, so raising this costs time faster than it looks.
+BENCH_ENTRIES ?= 2000
 
 build: bin/joule bin/relay
 
@@ -53,6 +57,18 @@ layout-harness: build bin/stub_model
 
 onboarding-harness: build bin/stub_model
 	python3 scripts/verify_onboarding.py
+
+bin/mailbox_bench: $(ALL_TS)
+	mkdir -p bin
+	lumen compile $(LUMEN_FLAGS) src/bench/mailbox_bench.ts
+	mv mailbox_bench bin/mailbox_bench
+
+bench-mailbox: bin/mailbox_bench
+	BENCH_MODE=rewrite BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
+	BENCH_MODE=mailbox BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
+	BENCH_MODE=poll-rewrite BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
+	BENCH_MODE=poll-mailbox BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
+	BENCH_MODE=concurrent BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
 
 clean:
 	rm -rf bin code relay src/vendor/tty/tty_shim.o
