@@ -59,7 +59,7 @@ test("parseConfigFile on empty or malformed text returns empty, not a crash", ()
 test("saveConfigFile writes a config that loadConfigFile reads back exactly", () => {
   let root = freshRoot("roundtrip");
   let target = root + "/nested/config.json";
-  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123", server: "" };
+  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123", server: "", updateCheck: "" };
 
   saveConfigFile(target, file);
   let loaded = loadConfigFile(target);
@@ -72,8 +72,8 @@ test("saveConfigFile writes a config that loadConfigFile reads back exactly", ()
 test("saveConfigFile overwrites a previously written config", () => {
   let root = freshRoot("overwrite");
   let target = root + "/config.json";
-  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key", server: "" };
-  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key", server: "" };
+  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key", server: "", updateCheck: "" };
+  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key", server: "", updateCheck: "" };
 
   saveConfigFile(target, first);
   saveConfigFile(target, second);
@@ -82,4 +82,15 @@ test("saveConfigFile overwrites a previously written config", () => {
   expect(loaded.baseUrl == "https://second.example.com");
   expect(loaded.model == "second-model");
   expect(loaded.apiKey == "second-key");
+});
+
+test("saveConfigFile round-trips the updateCheck toggle", () => {
+  let root = freshRoot("update-check-toggle");
+  let target = root + "/config.json";
+  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "off" };
+
+  saveConfigFile(target, file);
+  let loaded = loadConfigFile(target);
+
+  expect(loaded.updateCheck == "off");
 });

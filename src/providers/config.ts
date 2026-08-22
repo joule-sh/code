@@ -2,7 +2,7 @@ import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/a
 import { ProviderConfig } from "./openai.ts";
 import { resolveServer, SERVER_ENV } from "../auth/server.ts";
 
-export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string };
+export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string, updateCheck: string };
 
 function firstNonEmpty(a: string, b: string): string {
   if (a != "") { return a; }
@@ -19,7 +19,7 @@ export function resolveConfig(flagModel: string, flagBaseUrl: string, envBaseUrl
 }
 
 function emptyConfigFile(): ConfigFile {
-  let f: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "" };
+  let f: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "" };
   return f;
 }
 
@@ -33,6 +33,7 @@ export function parseConfigFile(text: string): ConfigFile {
     model: jsonStringMemberAt(trimmed, 0, "model"),
     apiKey: jsonStringMemberAt(trimmed, 0, "apiKey"),
     server: jsonStringMemberAt(trimmed, 0, "server"),
+    updateCheck: jsonStringMemberAt(trimmed, 0, "updateCheck"),
   };
   return f;
 }
@@ -48,9 +49,13 @@ function flagValue(argv: string[], name: string): string {
   return "";
 }
 
-export function configFilePath(): string {
+export function configDirPath(): string {
   let home = process.env("HOME") ?? "";
-  return home + "/.config/joule-code/config.json";
+  return home + "/.config/joule-code";
+}
+
+export function configFilePath(): string {
+  return configDirPath() + "/config.json";
 }
 
 export function loadConfigFile(path: string): ConfigFile {

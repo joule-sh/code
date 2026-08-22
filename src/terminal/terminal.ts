@@ -25,6 +25,7 @@ import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
 import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode, nextMode } from "./slots.ts";
+import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -45,6 +46,7 @@ export function runTerminal(argv: string[]): void {
   let serverBase = loadServerBase(argv);
   let workspaceRoot = process.cwd();
   let resume = resolveResume(argv, workspaceRoot);
+  let updateNotifier = startUpdateNotifier();
 
   let registry = new ToolsRegistry(workspaceRoot);
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
@@ -216,6 +218,7 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_TIMEOUT) {
       runRelayTick(relay, session, gate, bridge, sb, input, rk);
       tasks.poll(session);
+      pollUpdateNotice(updateNotifier, sb, input, gate.mode, rk);
       continue;
     }
 
