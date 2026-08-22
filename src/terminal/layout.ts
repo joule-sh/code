@@ -16,43 +16,74 @@ function repeatChar(ch: string, n: int): string {
   return out;
 }
 
+function utf8ByteCount(first: int): int {
+  if (first >= 240) { return 4; }
+  if (first >= 224) { return 3; }
+  if (first >= 192) { return 2; }
+  return 1;
+}
+
+export function visualWidth(plain: string): int {
+  let count = 0;
+  let i = 0;
+  while (i < plain.length) {
+    i = i + utf8ByteCount(plain.charCodeAt(i));
+    count = count + 1;
+  }
+  return count;
+}
+
+function truncateToWidth(text: string, width: int): string {
+  if (width <= 0) { return ""; }
+  let count = 0;
+  let i = 0;
+  while (i < text.length && count < width) {
+    i = i + utf8ByteCount(text.charCodeAt(i));
+    count = count + 1;
+  }
+  return text.slice(0, i);
+}
+
 function padTo(text: string, width: int): string {
+  let vw = visualWidth(text);
   let t = text;
-  if (t.length > width) {
+  if (vw > width) {
     if (width > 3) {
-      t = t.slice(0, width - 3) + "...";
+      t = truncateToWidth(text, width - 3) + "...";
     } else {
-      t = t.slice(0, width);
+      t = truncateToWidth(text, width);
     }
   }
-  return t + repeatChar(" ", width - t.length);
+  let pad = width - visualWidth(t);
+  if (pad < 0) { pad = 0; }
+  return t + repeatChar(" ", pad);
 }
 
 function field(label: string, value: string): string {
   return " " + padTo(label, LABEL_WIDTH) + padTo(value, CONTENT_WIDTH - LABEL_WIDTH - 1);
 }
 
-function borderLine(left: string, right: string): string {
-  return left + repeatChar("─", BOX_WIDTH - 2) + right;
+export function borderLine(left: string, right: string, width: int): string {
+  return left + repeatChar("─", width - 2) + right;
 }
 
-function contentLine(text: string): string {
-  return "│" + padTo(text, CONTENT_WIDTH) + "│";
+export function contentLine(text: string, width: int): string {
+  return "│" + padTo(text, width - 2) + "│";
 }
 
 export function buildWelcomeBox(model: string, workspace: string, mode: string, server: string): string {
-  let out = wrap(VIOLET, borderLine("┌", "┐"));
-  out = out + "\n" + wrap(VIOLET, contentLine(" joule " + VERSION));
-  out = out + "\n" + wrap(VIOLET, contentLine(""));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("model", model)));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace)));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("mode", mode)));
+  let out = wrap(VIOLET, borderLine("┌", "┐", BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(" joule " + VERSION, BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine("", BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(field("model", model), BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace), BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(field("mode", mode), BOX_WIDTH));
   if (server != "" && !isDefaultServer(server)) {
-    out = out + "\n" + wrap(VIOLET, contentLine(field("server", server)));
+    out = out + "\n" + wrap(VIOLET, contentLine(field("server", server), BOX_WIDTH));
   }
-  out = out + "\n" + wrap(VIOLET, contentLine(""));
-  out = out + "\n" + wrap(VIOLET, contentLine(" agentic coding, on your machine"));
-  out = out + "\n" + wrap(VIOLET, borderLine("└", "┘"));
+  out = out + "\n" + wrap(VIOLET, contentLine("", BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(" agentic coding, on your machine", BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, borderLine("└", "┘", BOX_WIDTH));
   return out;
 }
 
@@ -73,23 +104,6 @@ const PRIO_MODE: int = 5;
 
 export function idleStatus(mode: string): StatusInfo {
   return { mode: mode, elapsedMs: NO_TURN, tokens: 0, runningTasks: 0, turnLive: false };
-}
-
-function utf8ByteCount(first: int): int {
-  if (first >= 240) { return 4; }
-  if (first >= 224) { return 3; }
-  if (first >= 192) { return 2; }
-  return 1;
-}
-
-export function visualWidth(plain: string): int {
-  let count = 0;
-  let i = 0;
-  while (i < plain.length) {
-    i = i + utf8ByteCount(plain.charCodeAt(i));
-    count = count + 1;
-  }
-  return count;
 }
 
 function pad2(n: i64): string {

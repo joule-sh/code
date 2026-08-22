@@ -319,10 +319,69 @@ def rule_rows(full_text):
     return out
 
 
+BOX_CORNER_TL = "┌".encode("utf-8").decode("latin1")
+BOX_CORNER_TR = "┐".encode("utf-8").decode("latin1")
+
+
+def box_top_border_rows(full_text):
+    """Rows that are the input box's own top border (#113): a top-left
+    corner, a run of the rule glyph, and a top-right corner, nothing else."""
+    out = []
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        bare = strip_sgr(cell).rstrip()
+        if bare.startswith(BOX_CORNER_TL) and bare.endswith(BOX_CORNER_TR):
+            middle = bare[len(BOX_CORNER_TL):len(bare) - len(BOX_CORNER_TR)]
+            if middle.replace(RULE_CHAR, "") == "":
+                out.append(bare)
+    return out
+
+
+# A CSI escape sequence in general, not just the SGR (`m`) ones strip_sgr
+# handles: the real terminal cursor (#113) is repositioned with a trailing
+# `ESC [ row ; col H` plus a show-cursor sequence after the last row of
+# every redraw, at a column other than 1, so it does not register as a row
+# boundary to parse_redraw_rows and instead reads as trailing bytes glued
+# onto whatever the last-drawn row was. strip_sgr alone leaves those bytes
+# behind; stripping every CSI sequence removes them too.
+ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def strip_ansi(s):
+    return ANSI_CSI_RE.sub("", s)
+
+
+# #113: the prompt is either the bare "> " row it has always been, or a
+# three-row bordered box (top, content, bottom) once the terminal is tall
+# enough. Either way, the row carrying the marker, the typed text and the
+# cursor sits at or just above the terminal's last row - scanning down from
+# the bottom for the first row that is not pure box-drawing border finds it
+# without the caller needing to know which shape is on screen, and stripping
+# the border and its padding leaves the same "> ..." shape callers already
+# match on either way.
+#
+# The captured stream is decoded latin1 (one byte in, one character out, see
+# text() above), so each of these glyphs - multi-byte in UTF-8 - has to be
+# encoded and re-decoded the same way, or it will never match a byte of it.
+def _u(glyph):
+    return glyph.encode("utf-8").decode("latin1")
+
+
+BOX_BORDER_CHARS = _u("┌") + _u("┐") + _u("└") + _u("┘") + _u("─") + _u("│")
+
+
 def input_row(full_text, height):
+    by_row = {}
     for (row, cell) in parse_redraw_rows(last_redraw_block(full_text)):
-        if row == height:
-            return strip_sgr(cell).rstrip()
+        by_row[row] = cell
+    row = height
+    while row > 0 and row > height - 3:
+        cell = by_row.get(row)
+        if cell is not None:
+            bare = strip_ansi(cell).rstrip()
+            inner = bare.strip(BOX_BORDER_CHARS + " ")
+            if inner != "":
+                return inner
+        row -= 1
     return ""
 
 
@@ -719,7 +778,12 @@ def run_completion_panel_scenario():
         ok(len(names) >= 8, "a bare slash opens the panel listing every command, got %d rows" % len(names))
         for expected in ("/help", "/model", "/mode", "/share", "/cat", "/tasks", "/clear", "/exit"):
             ok(expected in names, "the panel lists %s when the buffer is a bare slash" % expected)
-        ok(len(rule_rows(opened)) == 1, "a single horizontal rule separates the panel from the rows below it")
+        # #113: at this session's default 24 rows the input box is in play,
+        # and its own top border sits directly under the panel, so the panel
+        # leaves out the rule it would otherwise draw there itself (#101)
+        # rather than stacking two horizontal lines back to back.
+        ok(len(rule_rows(opened)) == 0, "the panel leaves out its own rule once the input box's top border is the separator underneath it")
+        ok(len(box_top_border_rows(opened)) == 1, "the input box's top border is the single separator between the panel and the box, in place of a second rule")
         ok(marked_completion(opened) == "/help", "the first match carries the marker cursor when the panel opens")
         ok(input_row(opened, session.rows).endswith("> /"), "the typed slash is still on the input row under the panel")
 
@@ -983,10 +1047,7 @@ def run_scenario():
         session.settle(0.2, 1.0)
         session.write("q")
         session.settle(0.2, 1.5)
-        screen_after_click = last_redraw_block(text(bytes(session.raw)))
-        rows_after_click = parse_redraw_rows(screen_after_click)
-        input_rows = [strip_sgr(c) for (_, c) in rows_after_click if "> " in strip_sgr(c)]
-        ok(any(r.endswith("> q") for r in input_rows), "a mouse click press+release pair is consumed silently, the next typed character lands alone on the input row (ticket #82)")
+        ok(input_row(text(bytes(session.raw)), session.rows).endswith("> q"), "a mouse click press+release pair is consumed silently, the next typed character lands alone on the input row (ticket #82)")
         session.write("\x7f")
         session.settle(0.2, 1.0)
 
