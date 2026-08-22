@@ -10,6 +10,7 @@ const RULE_ROWS: int = 1;
 const MIN_DESCRIPTION_WIDTH: int = 8;
 const MIN_TRANSCRIPT_ROWS: int = 1;
 const RULE_CHAR: string = "─";
+const STATUS_ROWS: int = 1;
 
 function repeatChar(ch: string, n: int): string {
   let out = "";
@@ -151,8 +152,8 @@ export function firstVisibleEntry(matches: CommandInfo[], descWidth: int, select
   return selected;
 }
 
-export function panelBudget(termRows: int, indicatorRows: int): int {
-  let avail = termRows - 2 - indicatorRows - MIN_TRANSCRIPT_ROWS;
+export function panelBudget(termRows: int, indicatorRows: int, promptRows: int): int {
+  let avail = termRows - STATUS_ROWS - promptRows - indicatorRows - MIN_TRANSCRIPT_ROWS;
   let cap = COMPLETION_MAX_LIST_ROWS + RULE_ROWS;
   if (avail > cap) { avail = cap; }
   if (avail < 2) { return 0; }
@@ -184,7 +185,7 @@ export function entryRows(cmd: CommandInfo, selected: bool, descWidth: int): str
   return out;
 }
 
-export function completionRows(c: Completion, width: int, budget: int): string[] {
+export function completionRows(c: Completion, width: int, budget: int, drawRule: bool): string[] {
   let out: string[] = [];
   if (!c.isOpen()) { return out; }
   if (budget < 2) { return out; }
@@ -192,7 +193,8 @@ export function completionRows(c: Completion, width: int, budget: int): string[]
   let ruleWidth = width;
   if (ruleWidth < 1) { ruleWidth = 1; }
   let descWidth = descriptionWidth(width);
-  let listBudget = budget - RULE_ROWS;
+  let listBudget = budget;
+  if (drawRule) { listBudget = budget - RULE_ROWS; }
   let start = firstVisibleEntry(c.matches, descWidth, c.selected, listBudget);
 
   let used = 0;
@@ -211,6 +213,8 @@ export function completionRows(c: Completion, width: int, budget: int): string[]
   }
 
   if (out.length == 0) { return out; }
-  out.push(wrap(DIM, repeatChar(RULE_CHAR, ruleWidth)));
+  if (drawRule) {
+    out.push(wrap(DIM, repeatChar(RULE_CHAR, ruleWidth)));
+  }
   return out;
 }

@@ -227,7 +227,7 @@ test("a wrapped description indents its continuation rows under the description 
 test("the panel renders one row per match, a marker on the highlight, and a rule last", () => {
   let c = new Completion();
   c.refresh("/m");
-  let rows = completionRows(c, 80, panelBudget(24, 0));
+  let rows = completionRows(c, 80, panelBudget(24, 0, 1), true);
   expect(rows.length == 3);
   expect(rows[0].indexOf(COMPLETION_MARKER) == 0);
   expect(rows[0].indexOf("/model") >= 0);
@@ -241,7 +241,7 @@ test("the marker follows the highlight down the list", () => {
   let c = new Completion();
   c.refresh("/m");
   c.move(1);
-  let rows = completionRows(c, 80, panelBudget(24, 0));
+  let rows = completionRows(c, 80, panelBudget(24, 0, 1), true);
   expect(rows[0].indexOf(COMPLETION_MARKER) != 0);
   expect(rows[1].indexOf(COMPLETION_MARKER) == 0);
 });
@@ -249,38 +249,45 @@ test("the marker follows the highlight down the list", () => {
 test("a closed panel renders no rows at all", () => {
   let c = new Completion();
   c.refresh("nope");
-  expect(completionRows(c, 80, panelBudget(24, 0)).length == 0);
+  expect(completionRows(c, 80, panelBudget(24, 0, 1), true).length == 0);
 });
 
 test("the panel never renders more rows than its budget", () => {
   let c = new Completion();
   c.refresh("/");
-  let budget = panelBudget(24, 0);
-  expect(completionRows(c, 80, budget).length <= budget);
-  expect(completionRows(c, 80, budget).length <= COMPLETION_MAX_LIST_ROWS + 1);
+  let budget = panelBudget(24, 0, 1);
+  expect(completionRows(c, 80, budget, true).length <= budget);
+  expect(completionRows(c, 80, budget, true).length <= COMPLETION_MAX_LIST_ROWS + 1);
 });
 
 test("the panel budget leaves the status bar, the input row and a transcript row alone", () => {
-  expect(panelBudget(24, 0) == COMPLETION_MAX_LIST_ROWS + 1);
-  expect(panelBudget(10, 0) == 7);
-  expect(panelBudget(10, 2) == 5);
-  expect(panelBudget(12, 0) == 9);
+  expect(panelBudget(24, 0, 1) == COMPLETION_MAX_LIST_ROWS + 1);
+  expect(panelBudget(10, 0, 1) == 7);
+  expect(panelBudget(10, 2, 1) == 5);
+  expect(panelBudget(12, 0, 1) == 9);
 });
 
 test("a terminal too short for a useful panel gets no panel at all", () => {
-  expect(panelBudget(4, 0) == 0);
-  expect(panelBudget(3, 0) == 0);
-  expect(panelBudget(5, 2) == 0);
+  expect(panelBudget(4, 0, 1) == 0);
+  expect(panelBudget(3, 0, 1) == 0);
+  expect(panelBudget(5, 2, 1) == 0);
   let c = new Completion();
   c.refresh("/");
-  expect(completionRows(c, 80, panelBudget(4, 0)).length == 0);
+  expect(completionRows(c, 80, panelBudget(4, 0, 1), true).length == 0);
+});
+
+test("a bordered input box (#113) costs the panel two more rows than the plain prompt did", () => {
+  expect(panelBudget(12, 0, 3) == panelBudget(12, 0, 1) - 2);
+  expect(panelBudget(10, 0, 3) == panelBudget(10, 0, 1) - 2);
+  expect(panelBudget(24, 0, 3) == COMPLETION_MAX_LIST_ROWS + 1);
+  expect(panelBudget(24, 0, 1) == COMPLETION_MAX_LIST_ROWS + 1);
 });
 
 test("a short terminal scrolls the match list to keep the highlight visible", () => {
   let c = new Completion();
   c.refresh("/");
-  let budget = panelBudget(10, 0);
-  let top = completionRows(c, 80, budget);
+  let budget = panelBudget(10, 0, 1);
+  let top = completionRows(c, 80, budget, true);
   expect(top.length <= budget);
   expect(top[0].indexOf("/help") >= 0);
 
@@ -291,7 +298,7 @@ test("a short terminal scrolls the match list to keep the highlight visible", ()
   }
   expect(c.selectedName() == "/exit");
 
-  let bottom = completionRows(c, 80, budget);
+  let bottom = completionRows(c, 80, budget, true);
   expect(bottom.length <= budget);
   let sawExit = false;
   let sawHelp = false;
@@ -315,7 +322,7 @@ test("the first visible entry only scrolls once the highlight runs past the budg
 test("a narrow terminal drops the description column instead of overflowing", () => {
   let c = new Completion();
   c.refresh("/mode");
-  let rows = completionRows(c, 12, panelBudget(24, 0));
+  let rows = completionRows(c, 12, panelBudget(24, 0, 1), true);
   expect(rows.length == 3);
   expect(rows[0].indexOf("/model") >= 0);
   expect(rows[1].indexOf("/mode") >= 0);
@@ -325,8 +332,48 @@ test("a narrow terminal drops the description column instead of overflowing", ()
 test("every rendered panel row survives clipping to the terminal width", () => {
   let c = new Completion();
   c.refresh("/");
-  let rows = completionRows(c, 40, panelBudget(24, 0));
+  let rows = completionRows(c, 40, panelBudget(24, 0, 1), true);
   expect(rows.length > 1);
   let rule = clip(rows[rows.length - 1], 40);
   expect(rule.indexOf("─") >= 0);
+});
+
+test("with the box in play the panel leaves its own rule out, since the box's top border is the separator", () => {
+  let c = new Completion();
+  c.refresh("/m");
+  let rows = completionRows(c, 80, panelBudget(24, 0, 3), false);
+  expect(rows.length == 2);
+  expect(rows[0].indexOf("/model") >= 0);
+  expect(rows[1].indexOf("/mode") >= 0);
+  let i = 0;
+  while (i < rows.length) {
+    expect(rows[i].indexOf("─") < 0);
+    i = i + 1;
+  }
+});
+
+test("without the box the panel still draws its own rule as the separator", () => {
+  let c = new Completion();
+  c.refresh("/m");
+  let rows = completionRows(c, 80, panelBudget(24, 0, 1), true);
+  expect(rows[rows.length - 1].indexOf("─") >= 0);
+});
+
+function anyRowHas(rowsList: string[], needle: string): bool {
+  let i = 0;
+  while (i < rowsList.length) {
+    if (rowsList[i].indexOf(needle) >= 0) { return true; }
+    i = i + 1;
+  }
+  return false;
+}
+
+test("dropping the rule lets one more match row fit in the same budget", () => {
+  let c = new Completion();
+  c.refresh("/");
+  let budget = panelBudget(13, 0, 1);
+  let withRule = completionRows(c, 80, budget, true);
+  let withoutRule = completionRows(c, 80, budget, false);
+  expect(!anyRowHas(withRule, "/exit"));
+  expect(anyRowHas(withoutRule, "/exit"));
 });

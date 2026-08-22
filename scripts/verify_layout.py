@@ -32,6 +32,28 @@ def u(s):
 CORNER_TL = u("┌")
 CORNER_BL = u("└")
 SCROLLED_UP_SHORT = "scrolled up"
+
+# #113: mirrors input_box.ts's own rule (see MIN_ROWS_FOR_BOX there) so this
+# script's row math for the panel and the welcome-box viewport check stays
+# correct instead of hardcoding the old one-row-prompt assumption. Below the
+# threshold the prompt degrades to the plain "> " row it has always been; at
+# or above it, it is a three-row bordered box. The two short cases below,
+# 80x10 and 45x12, land one on each side of this line on purpose so both
+# branches of the rule get exercised here too.
+MIN_ROWS_FOR_BOX = 12
+
+def prompt_rows_for(term_rows):
+    return 3 if term_rows >= MIN_ROWS_FOR_BOX else 1
+
+def bottom_rows_text(full_text, height, n=3):
+    """The stripped content of the last `n` rows of the latest redraw, in
+    top-to-bottom order, keyed by position rather than content - unlike
+    input_row() this does not skip border rows, so it can tell a box border
+    apart from the plain prompt by where each row sits."""
+    by_row = {}
+    for (row, cell) in harness.parse_redraw_rows(harness.last_redraw_block(full_text)):
+        by_row[row] = harness.strip_sgr(cell).rstrip()
+    return [by_row.get(row, "") for row in range(max(1, height - n + 1), height + 1)]
 # #94: long tool output collapses to a head plus a marker, and ctrl-o expands
 # it in place. A large expansion is the hard case for row accounting on a short
 # terminal, so every size here drives it while the approval prompt is up, which
@@ -76,12 +98,27 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         ok("stub-model-xyz" in full, "welcome box shows the configured model" + label_suffix)
         ok("auto-edit" in full, "welcome box shows the current approval mode" + label_suffix)
 
-        box_fits_in_viewport = (rows - 2) >= 11
+        prompt_rows = prompt_rows_for(rows)
+        box_fits_in_viewport = (rows - 1 - prompt_rows) >= 11
         if box_fits_in_viewport:
             ok(CORNER_TL in full, "a top-left box corner was drawn" + label_suffix)
         else:
             print("skip: terminal too short for the whole box to be in view at once, checking the bottom edge only" + label_suffix)
         ok(CORNER_BL in full, "a bottom-left box corner was drawn" + label_suffix)
+
+        # #113: state and test the row-budget degrade rule directly - the
+        # input box is three rows at or above MIN_ROWS_FOR_BOX, and the
+        # plain single "> " row below it. Looked at by position (the exact
+        # last three rows of the terminal) rather than by content, so this
+        # cannot be satisfied by the welcome box's own border, which sits
+        # higher up in the transcript.
+        bottom3 = bottom_rows_text(full, rows)
+        if prompt_rows == 3:
+            ok(bottom3[0].startswith(CORNER_TL), "at %d rows (at or above the %d row box threshold) the input box's top border is the row right above its content row" % (rows, MIN_ROWS_FOR_BOX) + label_suffix)
+            ok(bottom3[2].startswith(CORNER_BL), "the input box's bottom border is the terminal's very last row" + label_suffix)
+        else:
+            ok(not bottom3[2].startswith(CORNER_TL) and not bottom3[2].startswith(CORNER_BL), "at %d rows (below the %d row box threshold) the prompt degrades to the plain row, not a box border" % (rows, MIN_ROWS_FOR_BOX) + label_suffix)
+        ok(harness.input_row(full, rows) == ">", "the prompt carries just the bare marker right after startup, box or plain" + label_suffix)
 
         screen1 = harness.last_redraw_block(full)
         rows1 = harness.parse_redraw_rows(screen1)
@@ -104,10 +141,23 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         max_row_panel = max((r for (r, _) in rows_panel), default=0)
         ok(max_row_panel <= rows, "no row of the completion-panel redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_panel, rows)))
         ok(len(panel_names) > 0, "the completion panel opens on a bare slash" + label_suffix + (" (got %d rows)" % len(panel_names)))
-        ok(len(harness.rule_rows(full_panel)) == 1, "the completion panel draws exactly one horizontal rule" + label_suffix)
+        # #113: with the box present, its own top border is the separator
+        # directly under the panel, so the panel leaves out the rule it
+        # would otherwise draw there itself - two horizontal lines back to
+        # back would be a redundant, competing border.
+        if prompt_rows == 3:
+            ok(len(harness.rule_rows(full_panel)) == 0, "the completion panel leaves out its own rule once the input box's top border is the separator underneath it" + label_suffix)
+            ok(len(harness.box_top_border_rows(full_panel)) == 1, "the input box's top border is drawn as the single separator between the panel and the box" + label_suffix)
+            # the box's top border is one of the box's own three rows,
+            # already subtracted out via prompt_rows below - the panel is
+            # not spending a row of its own budget on it.
+            separator_rows = 0
+        else:
+            ok(len(harness.rule_rows(full_panel)) == 1, "the completion panel draws exactly one horizontal rule" + label_suffix)
+            separator_rows = 1
         status_rows_panel = [c for (_, c) in rows_panel if "mode:" in harness.strip_sgr(c)]
         ok(len(status_rows_panel) == 1, "exactly one status-bar row is present while the completion panel is open" + label_suffix)
-        ok(len(panel_names) + 1 <= rows - 2, "the panel leaves the status bar, the input row and at least one transcript row alone" + label_suffix + (" (%d panel rows, height %d)" % (len(panel_names) + 1, rows)))
+        ok(len(panel_names) + separator_rows <= rows - 1 - prompt_rows, "the panel leaves the status bar, the input row(s) and at least one transcript row alone" + label_suffix + (" (%d panel rows, height %d, prompt rows %d)" % (len(panel_names) + separator_rows, rows, prompt_rows)))
 
         session.resize(4, cols)
         session.write("x")

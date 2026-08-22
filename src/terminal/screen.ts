@@ -1,4 +1,4 @@
-import { cols, rows, cursorTo, CLEAR_LINE } from "../vendor/tty/tty.ts";
+import { cols, rows, cursorTo, CLEAR_LINE, HIDE_CURSOR, SHOW_CURSOR } from "../vendor/tty/tty.ts";
 import { RelayClient } from "../relay/client.ts";
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
@@ -6,16 +6,18 @@ import { TurnTracker } from "../providers/live.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
 import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END } from "../protocol/frames.ts";
 import { renderFrame } from "./renderer.ts";
-import { styleFrame, stylePrompt, styleScrollIndicator } from "./style.ts";
+import { styleFrame, styleScrollIndicator } from "./style.ts";
 import { StatusInfo, NO_TURN, buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
 import { InputLine, clip } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { planToolOutputCollapse } from "./collapse.ts";
 import { completionRows, panelBudget } from "./completion.ts";
+import { promptRowCount, usesBox, buildPrompt } from "./input_box.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 
 const STDIN: int = 0;
+const STATUS_ROWS: int = 1;
 
 export class TurnStatusTracker {
   prevKind: string;
@@ -121,21 +123,24 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
   if (c <= 0) { c = 80; }
   if (r <= 1) { r = 24; }
 
+  let promptRows = promptRowCount(r);
+  let panelDrawsRule = !usesBox(r);
+
   let quantaText = rk.quantaText();
   let atBottom = sb.isAtBottom();
   let indicatorRows = 0;
   if (!atBottom) { indicatorRows = indicatorRows + 1; }
   if (quantaText != "") { indicatorRows = indicatorRows + 1; }
 
-  let panel = completionRows(input.completion, c, panelBudget(r, indicatorRows));
+  let panel = completionRows(input.completion, c, panelBudget(r, indicatorRows, promptRows), panelDrawsRule);
 
-  let visible = r - 2 - indicatorRows - panel.length;
+  let visible = r - STATUS_ROWS - promptRows - indicatorRows - panel.length;
   if (visible < 0) { visible = 0; }
   let tail = sb.tailFrom(visible, sb.offset);
   let blanks = visible - tail.length;
   if (blanks < 0) { blanks = 0; }
 
-  let out = "";
+  let out = HIDE_CURSOR;
   let row = 1;
   while (row <= blanks) {
     out = out + cursorTo(row, 1) + CLEAR_LINE;
@@ -161,8 +166,16 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
     row = row + 1;
     pr = pr + 1;
   }
-  out = out + cursorTo(r - 1, 1) + CLEAR_LINE + clip(buildStatusLine(rk.statusInfo(mode), c), c);
-  out = out + cursorTo(r, 1) + CLEAR_LINE + stylePrompt("> ") + input.buf;
+  out = out + cursorTo(r - promptRows, 1) + CLEAR_LINE + clip(buildStatusLine(rk.statusInfo(mode), c), c);
+
+  let prompt = buildPrompt(input.buf, c, r);
+  let promptTop = r - promptRows + 1;
+  let pl = 0;
+  while (pl < prompt.lines.length) {
+    out = out + cursorTo(promptTop + pl, 1) + CLEAR_LINE + prompt.lines[pl];
+    pl = pl + 1;
+  }
+  out = out + cursorTo(promptTop + prompt.cursorLine, prompt.cursorCol) + SHOW_CURSOR;
   process.stdout().write(out);
 }
 
