@@ -106,3 +106,13 @@ Conversation history is saved per workspace as you go and picked back up with
 directory. Model, mode and workspace are not part of what gets saved - they
 are re-resolved fresh from the normal config chain on every launch. There is
 no picker for older sessions yet, only the most recent one.
+
+The terminal enables mouse reporting so the wheel can scroll the transcript.
+That hands mouse events to joule, which is why click-drag no longer selects
+text on its own - the terminal emulator is no longer the one handling the
+click. Hold Shift while dragging to select natively; this bypasses mouse
+reporting in GNOME Terminal and Windows Terminal. iTerm2 uses Option instead
+of Shift for this. Terminal.app has no modifier-key bypass at all - turn off
+View > Allow Mouse Reporting (Cmd-R), select and copy, then turn it back on.
+Copying from a collapsed tool-output group only copies what is visible; the
+rows hidden by the collapse are not part of the selection.
