@@ -82,6 +82,14 @@ test("helpText documents the PageUp/PageDown scroll keys", () => {
   expect(h.indexOf("scroll") >= 0);
 });
 
+test("helpText documents the Shift+drag selection workaround", () => {
+  let h = helpText();
+  expect(h.indexOf("Shift+drag") >= 0);
+  expect(h.indexOf("GNOME Terminal") >= 0);
+  expect(h.indexOf("iTerm2") >= 0);
+  expect(h.indexOf("Terminal.app") >= 0);
+});
+
 test("/tasks parses with no arg", () => {
   let p = parseCommand("/tasks");
   expect(p.kind == CMD_TASKS);

@@ -93,5 +93,6 @@ export function helpText(): string {
   }
   out = out + "\n" + padColumn("PageUp/PageDown", HELP_COLUMN) + "scroll the transcript";
   out = out + "\n" + padColumn("ctrl-o", HELP_COLUMN) + "expand or collapse the last long tool output";
+  out = out + "\n" + padColumn("Shift+drag", HELP_COLUMN) + "select text natively (GNOME Terminal, Windows Terminal); iTerm2 uses Option instead; Terminal.app needs View > Allow Mouse Reporting off";
   return out;
 }
