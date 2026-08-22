@@ -148,7 +148,7 @@ function verdict(autoRun: bool, reason: string): CommandVerdict {
   return { autoRun: autoRun, reason: reason };
 }
 
-export function classifyCommand(command: string, workspaceRoot: string): CommandVerdict {
+function judgeCommand(command: string, workspaceRoot: string, allowFn: (tokens: string[], root: string) => bool): CommandVerdict {
   let trimmed = command.trim();
   if (trimmed == "") {
     return verdict(false, "empty command");
@@ -167,8 +167,26 @@ export function classifyCommand(command: string, workspaceRoot: string): Command
   if (head.indexOf("/") >= 0) {
     return verdict(false, "path-qualified command");
   }
-  if (classifyByAllowList(tok.tokens, workspaceRoot)) {
+  if (allowFn(tok.tokens, workspaceRoot)) {
     return verdict(true, "matches the auto-run allow list");
   }
   return verdict(false, "not on the auto-run allow list");
+}
+
+export function classifyCommand(command: string, workspaceRoot: string): CommandVerdict {
+  return judgeCommand(command, workspaceRoot, classifyByAllowList);
+}
+
+function classifyByPlanAllowList(tokens: string[], root: string): bool {
+  let head = tokens[0];
+  let rest = tokens.slice(1);
+  if (head == "ls") { return nonFlagArgsSafe(rest, root); }
+  if (head == "pwd") { return rest.length == 0; }
+  if (head == "cat") { return rest.length >= 1 && nonFlagArgsSafe(rest, root); }
+  if (head == "git") { return gitSubcommandSafe(rest, root); }
+  return false;
+}
+
+export function classifyPlanCommand(command: string, workspaceRoot: string): CommandVerdict {
+  return judgeCommand(command, workspaceRoot, classifyByPlanAllowList);
 }

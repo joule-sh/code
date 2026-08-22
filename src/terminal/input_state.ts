@@ -1,4 +1,4 @@
-import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "../approval/gate.ts";
+import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS, MODE_AUTO_EDIT } from "../approval/gate.ts";
 import { Completion } from "./completion.ts";
 
 export class InputLine {
@@ -240,6 +240,71 @@ export class PendingUpdateOffer {
   close(): void {
     this.active = false;
     this.toVersion = "";
+    this.firstOptionRow = -1;
+  }
+
+  isPending(): bool {
+    return this.active;
+  }
+}
+
+export const PLAN_DECISION_ACCEPT: int = 0;
+export const PLAN_DECISION_REJECT: int = 1;
+export const PLAN_DECISION_OPTION_COUNT: int = 2;
+
+export function planDecisionOptionForChar(ch: string): int {
+  if (ch == "y" || ch == "1") { return PLAN_DECISION_ACCEPT; }
+  if (ch == "n" || ch == "2") { return PLAN_DECISION_REJECT; }
+  return -1;
+}
+
+export class PendingPlanDecision {
+  active: bool;
+  previousMode: string;
+  selected: int;
+  firstOptionRow: int;
+
+  constructor() {
+    this.active = false;
+    this.previousMode = MODE_AUTO_EDIT;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setPreviousMode(mode: string): void {
+    this.previousMode = mode;
+  }
+
+  open(): void {
+    this.active = true;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) { next = 0; }
+    if (next > PLAN_DECISION_OPTION_COUNT - 1) { next = PLAN_DECISION_OPTION_COUNT - 1; }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+
+  select(index: int): void {
+    if (index < 0 || index >= PLAN_DECISION_OPTION_COUNT) { return; }
+    this.selected = index;
+  }
+
+  close(): void {
+    this.active = false;
     this.firstOptionRow = -1;
   }
 

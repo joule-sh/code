@@ -1,4 +1,4 @@
-import { classifyCommand, tokenizeSimpleCommand } from "./command_safety.ts";
+import { classifyCommand, classifyPlanCommand, tokenizeSimpleCommand } from "./command_safety.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/command-safety-test-" + name;
@@ -207,4 +207,120 @@ test("cat with no file argument prompts instead of auto-running against stdin", 
   let root = freshRoot("cat-no-args");
   let v = classifyCommand("cat", root);
   expect(!v.autoRun);
+});
+
+test("plan: ls, pwd, cat, and read-only git commands all auto-run", () => {
+  let root = freshRoot("plan-readonly");
+  fs.writeFileSync(root + "/note.txt", "hi");
+  expect(classifyPlanCommand("ls", root).autoRun);
+  expect(classifyPlanCommand("pwd", root).autoRun);
+  expect(classifyPlanCommand("cat note.txt", root).autoRun);
+  expect(classifyPlanCommand("git status", root).autoRun);
+  expect(classifyPlanCommand("git diff", root).autoRun);
+  expect(classifyPlanCommand("git log", root).autoRun);
+  expect(classifyPlanCommand("git rev-parse HEAD", root).autoRun);
+  expect(classifyPlanCommand("git remote -v", root).autoRun);
+});
+
+test("plan: npm test and make test do not auto-run, unlike safe-auto - plan is stricter, derived from the same allow list", () => {
+  let root = freshRoot("plan-stricter-tests");
+  expect(!classifyPlanCommand("npm test", root).autoRun);
+  expect(!classifyPlanCommand("make test", root).autoRun);
+  expect(classifyCommand("npm test", root).autoRun);
+  expect(classifyCommand("make test", root).autoRun);
+});
+
+test("plan: echo does not auto-run - it is not a read, search, or listing command", () => {
+  let root = freshRoot("plan-no-echo");
+  expect(!classifyPlanCommand("echo hi", root).autoRun);
+});
+
+test("plan: a command absent from the plan allow list prompts, even a harmless-looking one", () => {
+  let root = freshRoot("plan-unknown-cmd");
+  expect(!classifyPlanCommand("npm install", root).autoRun);
+  expect(!classifyPlanCommand("mkdir foo", root).autoRun);
+});
+
+test("plan: a semicolon-joined compound command is rejected outright, not partially matched", () => {
+  let root = freshRoot("plan-compound-semi");
+  let v = classifyPlanCommand("ls; rm -rf x", root);
+  expect(!v.autoRun);
+});
+
+test("plan: an && chained compound command is rejected outright", () => {
+  let root = freshRoot("plan-compound-and");
+  let v = classifyPlanCommand("git status && rm -rf x", root);
+  expect(!v.autoRun);
+});
+
+test("plan: a pipe into another command is rejected outright", () => {
+  let root = freshRoot("plan-compound-pipe");
+  let v = classifyPlanCommand("git status | rm -rf x", root);
+  expect(!v.autoRun);
+});
+
+test("plan: backtick command substitution is rejected outright", () => {
+  let root = freshRoot("plan-backtick");
+  let v = classifyPlanCommand("cat `rm -rf x`", root);
+  expect(!v.autoRun);
+});
+
+test("plan: a path-qualified binary bypasses name matching and prompts", () => {
+  let root = freshRoot("plan-path-qualified");
+  let v = classifyPlanCommand("/bin/ls", root);
+  expect(!v.autoRun);
+  expect(v.reason == "path-qualified command");
+});
+
+test("plan: an absolute path argument still prompts, even though it looks like a plain cat", () => {
+  let root = freshRoot("plan-absolute-path");
+  expect(!classifyPlanCommand("cat /etc/passwd", root).autoRun);
+  expect(!classifyPlanCommand("ls /etc", root).autoRun);
+});
+
+test("plan: a relative path that escapes the workspace via .. still prompts", () => {
+  let root = freshRoot("plan-dotdot-escape");
+  let v = classifyPlanCommand("cat ../../etc/passwd", root);
+  expect(!v.autoRun);
+});
+
+test("plan: a deny-list entry still prompts even though the command name is otherwise allow-listed: cat of an ssh key", () => {
+  let root = freshRoot("plan-deny-wins-cat");
+  fs.mkdirSync(root + "/build", true);
+  fs.writeFileSync(root + "/build/id_rsa", "not a real key");
+  let v = classifyPlanCommand("cat build/id_rsa", root);
+  expect(!v.autoRun);
+  expect(v.reason == "matches the hard deny list");
+});
+
+test("plan: git push --force matches the deny list even though git status alone is allowed", () => {
+  let root = freshRoot("plan-deny-git-push");
+  let v = classifyPlanCommand("git push --force", root);
+  expect(!v.autoRun);
+  expect(v.reason == "matches the hard deny list");
+});
+
+test("plan: rm -rf matches the deny list", () => {
+  let root = freshRoot("plan-deny-rm-rf");
+  let v = classifyPlanCommand("rm -rf build", root);
+  expect(!v.autoRun);
+  expect(v.reason == "matches the hard deny list");
+});
+
+test("plan: a safe-looking command with a dangerous argument still prompts: git branch -D", () => {
+  let root = freshRoot("plan-git-branch-delete");
+  let v = classifyPlanCommand("git branch -D main", root);
+  expect(!v.autoRun);
+});
+
+test("plan: a safe-looking command with a dangerous argument still prompts: git remote add", () => {
+  let root = freshRoot("plan-git-remote-add");
+  let v = classifyPlanCommand("git remote add evil https://example.com/x.git", root);
+  expect(!v.autoRun);
+});
+
+test("plan: an empty or whitespace-only command prompts rather than crashing", () => {
+  let root = freshRoot("plan-empty-cmd");
+  expect(!classifyPlanCommand("", root).autoRun);
+  expect(!classifyPlanCommand("   ", root).autoRun);
 });

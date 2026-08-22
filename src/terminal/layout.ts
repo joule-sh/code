@@ -1,7 +1,7 @@
 import { VIOLET, DIM, wrap } from "./style.ts";
 import { isDefaultServer } from "../auth/server.ts";
 import { VERSION } from "../version.ts";
-import { MODE_SAFE_AUTO } from "../approval/gate.ts";
+import { MODE_SAFE_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
 const BOX_WIDTH: int = 54;
 const CONTENT_WIDTH: int = BOX_WIDTH - 2;
@@ -62,6 +62,7 @@ function padTo(text: string, width: int): string {
 
 function modeDisplay(mode: string): string {
   if (mode == MODE_SAFE_AUTO) { return mode + " (commands run unattended)"; }
+  if (mode == MODE_PLAN) { return mode + " (read-only, propose then approve)"; }
   return mode;
 }
 
