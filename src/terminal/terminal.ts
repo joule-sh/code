@@ -141,6 +141,7 @@ export function runTerminal(argv: string[]): void {
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
     startSubagent: (task: string) => tasks.startSubagent(task),
+    taskStatus: (id: string) => tasks.taskStatus(id),
   };
   registry.setTaskRunner(taskRunner);
   rk.bind(tracker, () => tasks.runningTaskCount());

@@ -5,6 +5,7 @@ import { appendMailbox } from "./mailbox.ts";
 import { BackgroundRunTask, SubagentTask, PendingAgentApproval } from "./state.ts";
 import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, decodeSubagentApprovalPayload, decodeSubagentErrorPayload } from "./subagent_protocol.ts";
 import { emitAgentToolCall, emitAgentToolResult, emitAgentApprovalRequest } from "./agent_frames.ts";
+import { buildRunTaskStatus, buildAgentTaskStatus } from "./task_status.ts";
 
 const BG_TURN_PREFIX: string = "bg:";
 const AGENT_TURN_PREFIX: string = "agent:";
@@ -78,6 +79,14 @@ export class TaskBoard {
       rt.detached = true;
       return "detached from background task " + id + " - its process keeps running and cannot be killed (lumen-lang-org/lumen#6); nothing further from it will be shown here";
     }
+    return "no task or subagent with id " + id;
+  }
+
+  taskStatusText(id: string): string {
+    let run = this.findRunTask(id);
+    if (run.length > 0) { return buildRunTaskStatus(run[0]); }
+    let agent = this.findAgentTask(id);
+    if (agent.length > 0) { return buildAgentTaskStatus(agent[0]); }
     return "no task or subagent with id " + id;
   }
 
@@ -190,6 +199,7 @@ export class TaskBoard {
           session.emit(encodeToolResult(rf));
           let ef: TurnEndFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TURN_END, turnId: backgroundTurnId(t.id), reason: REASON_DONE };
           session.emit(encodeTurnEnd(ef));
+          session.history.push({ role: ROLE_USER, text: "[background task " + t.id + " (" + t.command + ") finished: " + summary + " - call task_status with id \"" + t.id + "\" for its recent output]", toolCallId: "", toolCalls: [] });
         }
       }
     }

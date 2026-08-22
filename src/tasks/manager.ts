@@ -50,6 +50,11 @@ export class TaskManager {
     return this.board.cancel(id);
   }
 
+  taskStatus(id: string): string {
+    if (id == "") { return this.board.listText(); }
+    return this.board.taskStatusText(id);
+  }
+
   listText(): string {
     return this.board.listText();
   }

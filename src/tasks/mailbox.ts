@@ -58,6 +58,19 @@ export function findMailboxEntry(path: string, tag: string): string {
   return "";
 }
 
+export function readAllMailboxEntries(path: string): MailboxEntry[] {
+  let content = "";
+  try { content = fs.readFileSync(path); } catch { return []; }
+  let lines = completeLines(content);
+  let out: MailboxEntry[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    out.push(parseMailboxLine(lines[i]));
+    i = i + 1;
+  }
+  return out;
+}
+
 export class MailboxReader {
   path: string;
   seen: int;
