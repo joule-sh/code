@@ -25,7 +25,7 @@ jobs:
             lumen_dist: lumen-x86_64-macos
     runs-on: ${{ matrix.runs_on }}
     env:
-      LUMEN_VERSION: v0.6.2
+      LUMEN_VERSION: v0.6.3
     steps:
       - uses: actions/checkout@v4
       # Lumen's allocator links the Boehm collector as a system library. The
