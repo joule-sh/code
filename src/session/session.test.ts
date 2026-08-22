@@ -96,6 +96,50 @@ test("the system message is not duplicated across multiple turns", () => {
   expect(session.history[0].role == ROLE_SYSTEM);
 });
 
+test("injectSystemContext appends a second system message right after the base prompt", () => {
+  let sp = new StepProvider([okReply("hi", [])]);
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  let session = new Session("/repo", "agent", provider, tools, allowAll());
+
+  session.injectSystemContext("project instructions: build with make build");
+
+  expect(session.history.length == 2);
+  expect(session.history[0].text == SYSTEM_PROMPT);
+  expect(session.history[1].role == ROLE_SYSTEM);
+  expect(session.history[1].text == "project instructions: build with make build");
+});
+
+test("injectSystemContext called twice keeps project instructions ahead of user memory, both ahead of the conversation", () => {
+  let sp = new StepProvider([okReply("hi", [])]);
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  let session = new Session("/repo", "agent", provider, tools, allowAll());
+
+  session.injectSystemContext("project instructions here");
+  session.injectSystemContext("user memory here");
+  session.submit("hello");
+
+  expect(session.history[0].text == SYSTEM_PROMPT);
+  expect(session.history[1].text == "project instructions here");
+  expect(session.history[2].text == "user memory here");
+  expect(session.history[3].role == "user");
+});
+
+test("injectSystemContext is silent (a no-op) when given empty text, matching an absent JOULE.md or empty memory", () => {
+  let sp = new StepProvider([okReply("hi", [])]);
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  let session = new Session("/repo", "agent", provider, tools, allowAll());
+
+  session.injectSystemContext("");
+
+  expect(session.history.length == 1);
+});
+
 test("a plain answer: turn.start, text.delta, turn.end done", () => {
   let sp = new StepProvider([okReply("hi there", [])]);
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };

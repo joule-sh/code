@@ -1,4 +1,4 @@
-import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -100,6 +100,24 @@ test("/tasks cancel <id> keeps the whole remainder as one arg", () => {
   let p = parseCommand("/tasks cancel agent-1");
   expect(p.kind == CMD_TASKS);
   expect(p.arg == "cancel agent-1");
+});
+
+test("/memory parses with no arg", () => {
+  let p = parseCommand("/memory");
+  expect(p.kind == CMD_MEMORY);
+  expect(p.arg == "");
+});
+
+test("/memory add <text> keeps the whole remainder as one arg", () => {
+  let p = parseCommand("/memory add prefers tabs over spaces");
+  expect(p.kind == CMD_MEMORY);
+  expect(p.arg == "add prefers tabs over spaces");
+});
+
+test("/memory forget <n> keeps the whole remainder as one arg", () => {
+  let p = parseCommand("/memory forget 3");
+  expect(p.kind == CMD_MEMORY);
+  expect(p.arg == "forget 3");
 });
 
 test("/update parses with no arg", () => {

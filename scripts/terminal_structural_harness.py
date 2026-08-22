@@ -787,10 +787,10 @@ def run_completion_panel_scenario():
         ok(marked_completion(opened) == "/help", "the first match carries the marker cursor when the panel opens")
         ok(input_row(opened, session.rows).endswith("> /"), "the typed slash is still on the input row under the panel")
 
-        session.write("m")
+        session.write("mo")
         session.settle(0.2, 1.5)
         narrowed = text(bytes(session.raw))
-        ok(completion_names(narrowed) == ["/model", "/mode"], "typing m narrows the panel to the commands starting with /m, got %r" % completion_names(narrowed))
+        ok(completion_names(narrowed) == ["/model", "/mode"], "typing mo narrows the panel to the commands starting with /mo, got %r" % completion_names(narrowed))
         ok(marked_completion(narrowed) == "/model", "the marker resets to the first match as the list narrows")
 
         session.write(ARROW_DOWN)

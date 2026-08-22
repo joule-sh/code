@@ -21,10 +21,18 @@ test("a bare slash matches every command", () => {
 });
 
 test("a prefix matching several commands returns all of them in registry order", () => {
-  let m = matchCommands("/m");
+  let m = matchCommands("/mo");
   expect(m.length == 2);
   expect(m[0].name == "/model");
   expect(m[1].name == "/mode");
+});
+
+test("a shorter prefix picks up every command that starts with it, including one added later", () => {
+  let m = matchCommands("/m");
+  expect(m.length == 3);
+  expect(m[0].name == "/model");
+  expect(m[1].name == "/mode");
+  expect(m[2].name == "/memory");
 });
 
 test("a longer prefix narrows the match set", () => {
@@ -84,7 +92,7 @@ test("refreshing per keystroke narrows the match set live", () => {
   let c = new Completion();
   c.refresh("/");
   expect(c.matches.length == commandList().length);
-  c.refresh("/m");
+  c.refresh("/mo");
   expect(c.matches.length == 2);
   expect(c.matches[0].name == "/model");
   c.refresh("/model");
@@ -96,7 +104,7 @@ test("refreshing per keystroke narrows the match set live", () => {
 
 test("the highlight moves down and clamps at the last match", () => {
   let c = new Completion();
-  c.refresh("/m");
+  c.refresh("/mo");
   expect(c.selected == 0);
   c.move(1);
   expect(c.selected == 1);
@@ -226,7 +234,7 @@ test("a wrapped description indents its continuation rows under the description 
 
 test("the panel renders one row per match, a marker on the highlight, and a rule last", () => {
   let c = new Completion();
-  c.refresh("/m");
+  c.refresh("/mo");
   let rows = completionRows(c, 80, panelBudget(24, 0, 1), true);
   expect(rows.length == 3);
   expect(rows[0].indexOf(COMPLETION_MARKER) == 0);
@@ -340,7 +348,7 @@ test("every rendered panel row survives clipping to the terminal width", () => {
 
 test("with the box in play the panel leaves its own rule out, since the box's top border is the separator", () => {
   let c = new Completion();
-  c.refresh("/m");
+  c.refresh("/mo");
   let rows = completionRows(c, 80, panelBudget(24, 0, 3), false);
   expect(rows.length == 2);
   expect(rows[0].indexOf("/model") >= 0);
@@ -371,7 +379,7 @@ function anyRowHas(rowsList: string[], needle: string): bool {
 test("dropping the rule lets one more match row fit in the same budget", () => {
   let c = new Completion();
   c.refresh("/");
-  let budget = panelBudget(14, 0, 1);
+  let budget = panelBudget(15, 0, 1);
   let withRule = completionRows(c, 80, budget, true);
   let withoutRule = completionRows(c, 80, budget, false);
   expect(!anyRowHas(withRule, "/exit"));

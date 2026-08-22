@@ -8,9 +8,11 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { runLogin, logoutText } from "./login_ui.ts";
+import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
+import { loadProjectInstructions } from "../session/project_instructions.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
@@ -133,6 +135,8 @@ export function runTerminal(argv: string[]): void {
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
+  session.injectSystemContext(loadProjectInstructions(workspaceRoot));
+  session.injectSystemContext(startupMemoryText());
   if (resume.history != null) { session.history = resume.history; }
   live.setSession(session);
 
@@ -404,6 +408,8 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (cmd.kind == CMD_UPDATE) { beginUpdateInstall(updateInstall, VERSION, sb); drawScreen(sb, input, gate.mode, rk); continue; }
+
+    if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_TASKS) {
       if (cmd.arg == "") {
