@@ -1,7 +1,10 @@
 import { ApprovalDecision } from "../session/types.ts";
+import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
+import { classifyCommand } from "./command_safety.ts";
 
 export const MODE_READ_ONLY: string = "read-only";
 export const MODE_AUTO_EDIT: string = "auto-edit";
+export const MODE_SAFE_AUTO: string = "safe-auto";
 export const MODE_FULL_AUTO: string = "full-auto";
 
 export const REPLY_ALLOW: string = "allow";
@@ -17,6 +20,7 @@ function isReadTool(tool: string): bool {
 export class Gate {
   mode: string;
   timeoutMs: int;
+  workspaceRoot: string;
   pollMs: int;
   alwaysAllowed: string[];
   repliedCallIds: string[];
@@ -24,9 +28,10 @@ export class Gate {
   onRequest: (callId: string, tool: string, summary: string, args: string) => void;
   onPoll: () => void;
 
-  constructor(mode: string, timeoutMs: int, onRequest: (callId: string, tool: string, summary: string, args: string) => void, onPoll: () => void) {
+  constructor(mode: string, timeoutMs: int, workspaceRoot: string, onRequest: (callId: string, tool: string, summary: string, args: string) => void, onPoll: () => void) {
     this.mode = mode;
     this.timeoutMs = timeoutMs;
+    this.workspaceRoot = workspaceRoot;
     this.pollMs = DEFAULT_POLL_MS;
     this.alwaysAllowed = [];
     this.repliedCallIds = [];
@@ -78,10 +83,21 @@ export class Gate {
     if (this.mode == MODE_FULL_AUTO) {
       return false;
     }
+    if (this.mode == MODE_SAFE_AUTO) {
+      return tool == "run";
+    }
     if (this.mode == MODE_AUTO_EDIT) {
       return tool == "run";
     }
     return true;
+  }
+
+  autoRunByCommandSafety(tool: string, args: string): bool {
+    if (this.mode != MODE_SAFE_AUTO || tool != "run") {
+      return false;
+    }
+    let command = jsonStringMemberAt(args, 0, "command");
+    return classifyCommand(command, this.workspaceRoot).autoRun;
   }
 
   check(callId: string, tool: string, summary: string, args: string): ApprovalDecision {
@@ -98,6 +114,10 @@ export class Gate {
     }
 
     if (this.isAlwaysAllowed(tool)) {
+      return { allow: true };
+    }
+
+    if (this.autoRunByCommandSafety(tool, args)) {
       return { allow: true };
     }
 

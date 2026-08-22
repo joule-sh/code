@@ -1,5 +1,5 @@
 import { rows } from "../vendor/tty/tty.ts";
-import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO } from "../approval/gate.ts";
+import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { RelayClient } from "../relay/client.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
@@ -23,12 +23,13 @@ export function hasFlag(argv: string[], name: string): bool {
 }
 
 export function isValidMode(mode: string): bool {
-  return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_FULL_AUTO;
+  return mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_SAFE_AUTO || mode == MODE_FULL_AUTO;
 }
 
 export function nextMode(mode: string): string {
   if (mode == MODE_READ_ONLY) { return MODE_AUTO_EDIT; }
-  if (mode == MODE_AUTO_EDIT) { return MODE_FULL_AUTO; }
+  if (mode == MODE_AUTO_EDIT) { return MODE_SAFE_AUTO; }
+  if (mode == MODE_SAFE_AUTO) { return MODE_FULL_AUTO; }
   return MODE_READ_ONLY;
 }
 

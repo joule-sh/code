@@ -128,7 +128,7 @@ export function runTerminal(argv: string[]): void {
     }
   };
 
-  let gate = new Gate(MODE_AUTO_EDIT, 120000, onApprovalRequest, onApprovalPoll);
+  let gate = new Gate(MODE_AUTO_EDIT, 120000, workspaceRoot, onApprovalRequest, onApprovalPoll);
   gateBox.set(gate);
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
@@ -373,7 +373,7 @@ export function runTerminal(argv: string[]): void {
         gate.mode = cmd.arg;
         sb.append("\nmode set to " + cmd.arg);
       } else {
-        sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, or full-auto)");
+        sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, safe-auto, or full-auto)");
       }
       drawScreen(sb, input, gate.mode, rk);
       continue;

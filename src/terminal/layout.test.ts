@@ -266,3 +266,27 @@ test("the welcome box names the server only when it is not the default", () => {
   expect(staging.indexOf("server") >= 0);
   expect(staging.indexOf("100.89.7.80:8090") >= 0);
 });
+
+test("safe-auto states plainly in the welcome box that commands run unattended", () => {
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "safe-auto", "");
+  expect(box.indexOf("safe-auto") >= 0);
+  expect(box.indexOf("commands run unattended") >= 0);
+});
+
+test("safe-auto states plainly in the status bar that commands run unattended", () => {
+  let line = statusText(idleStatus("safe-auto"), 120);
+  expect(line.indexOf("safe-auto") >= 0);
+  expect(line.indexOf("commands run unattended") >= 0);
+});
+
+test("the other three modes show no unattended notice, unchanged from before", () => {
+  expect(statusText(idleStatus("read-only"), 120).indexOf("unattended") < 0);
+  expect(statusText(idleStatus("auto-edit"), 120).indexOf("unattended") < 0);
+  expect(statusText(idleStatus("full-auto"), 120).indexOf("unattended") < 0);
+});
+
+test("safe-auto still keeps the mode readable at 45 columns even though its label is longer", () => {
+  let line = statusText(idleStatus("safe-auto"), 45);
+  expect(visualWidth(line) <= 45);
+  expect(line.indexOf("mode:") == 0);
+});

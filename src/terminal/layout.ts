@@ -1,6 +1,7 @@
 import { VIOLET, DIM, wrap } from "./style.ts";
 import { isDefaultServer } from "../auth/server.ts";
 import { VERSION } from "../version.ts";
+import { MODE_SAFE_AUTO } from "../approval/gate.ts";
 
 const BOX_WIDTH: int = 54;
 const CONTENT_WIDTH: int = BOX_WIDTH - 2;
@@ -59,6 +60,11 @@ function padTo(text: string, width: int): string {
   return t + repeatChar(" ", pad);
 }
 
+function modeDisplay(mode: string): string {
+  if (mode == MODE_SAFE_AUTO) { return mode + " (commands run unattended)"; }
+  return mode;
+}
+
 function field(label: string, value: string): string {
   return " " + padTo(label, LABEL_WIDTH) + padTo(value, CONTENT_WIDTH - LABEL_WIDTH - 1);
 }
@@ -77,7 +83,7 @@ export function buildWelcomeBox(model: string, workspace: string, mode: string, 
   out = out + "\n" + wrap(VIOLET, contentLine("", BOX_WIDTH));
   out = out + "\n" + wrap(VIOLET, contentLine(field("model", model), BOX_WIDTH));
   out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace), BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("mode", mode), BOX_WIDTH));
+  out = out + "\n" + wrap(VIOLET, contentLine(field("mode", modeDisplay(mode)), BOX_WIDTH));
   if (server != "" && !isDefaultServer(server)) {
     out = out + "\n" + wrap(VIOLET, contentLine(field("server", server), BOX_WIDTH));
   }
@@ -150,7 +156,7 @@ type StatusFields = { texts: string[], priorities: int[] };
 function collectFields(info: StatusInfo): StatusFields {
   let texts: string[] = [];
   let priorities: int[] = [];
-  texts.push("mode: " + info.mode);
+  texts.push("mode: " + modeDisplay(info.mode));
   priorities.push(PRIO_MODE);
   if (info.elapsedMs >= 0) {
     texts.push(formatElapsed(info.elapsedMs));
