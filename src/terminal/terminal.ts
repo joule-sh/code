@@ -3,7 +3,7 @@ import { loadConfig, loadServerBase } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
-import { Gate, MODE_AUTO_EDIT, REPLY_DENY } from "../approval/gate.ts";
+import { Gate, MODE_AUTO_EDIT, MODE_PLAN, REPLY_DENY } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
@@ -13,7 +13,7 @@ import { catText } from "./cat.ts";
 import { runLogin, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadProjectInstructions } from "../session/project_instructions.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
@@ -30,6 +30,7 @@ import { resolveResume, persistTurnEnd } from "./resume.ts";
 import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode, nextMode } from "./slots.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
+import { enterPlanMode, offerPlanDecision, tryHandlePlanDecisionArrow, tryHandlePlanDecisionEnter, tryHandlePlanDecisionChar } from "./plan_mode.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
 
@@ -69,6 +70,7 @@ export function runTerminal(argv: string[]): void {
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => live.ask(h, d) };
 
   let pendingApproval = new PendingApproval();
+  let planDecision = new PendingPlanDecision();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
   let tasksBox = new TasksBox();
@@ -204,7 +206,7 @@ export function runTerminal(argv: string[]): void {
     } else {
       appendFrame(sb, rk, frameJson);
     }
-    if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, session.history); }
+    if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, session.history); offerPlanDecision(planDecision, gate, session, sb, frameJson); }
     drawScreen(sb, input, gate.mode, rk);
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
@@ -261,6 +263,7 @@ export function runTerminal(argv: string[]): void {
         continue;
       }
       if (tryHandleUpdateOfferChar(updateOffer, updateInstall, VERSION, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandlePlanDecisionChar(planDecision, gate, session, bridge, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
       input.push(k.char);
       history.cancelNavigation();
       drawScreen(sb, input, gate.mode, rk);
@@ -286,6 +289,7 @@ export function runTerminal(argv: string[]): void {
         continue;
       }
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(-1);
         drawScreen(sb, input, gate.mode, rk);
@@ -302,6 +306,7 @@ export function runTerminal(argv: string[]): void {
         continue;
       }
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(1);
         drawScreen(sb, input, gate.mode, rk);
@@ -337,6 +342,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (tryHandleUpdateOfferEnter(updateOffer, updateInstall, VERSION, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
+    if (tryHandlePlanDecisionEnter(planDecision, gate, session, bridge, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
 
     let line = input.takeAndClear();
     drawScreen(sb, input, gate.mode, rk);
@@ -356,11 +362,7 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
-    if (cmd.kind == CMD_HELP) {
-      sb.append("\n" + helpText());
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (cmd.kind == CMD_HELP) { sb.append("\n" + helpText()); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_MODEL) {
       if (cmd.arg == "") {
@@ -377,10 +379,11 @@ export function runTerminal(argv: string[]): void {
       if (cmd.arg == "") {
         sb.append("\nmode: " + gate.mode);
       } else if (isValidMode(cmd.arg)) {
+        if (cmd.arg == MODE_PLAN && gate.mode != MODE_PLAN) { enterPlanMode(planDecision, session, gate.mode); }
         gate.mode = cmd.arg;
         sb.append("\nmode set to " + cmd.arg);
       } else {
-        sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, safe-auto, or full-auto)");
+        sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, safe-auto, full-auto, or plan)");
       }
       drawScreen(sb, input, gate.mode, rk);
       continue;
@@ -397,11 +400,7 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
-    if (cmd.kind == CMD_LOGOUT) {
-      sb.append(logoutText(serverBase));
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(serverBase)); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_CAT) {
       sb.append(catText(workspaceRoot, cmd.arg));
@@ -428,16 +427,9 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
-    if (cmd.kind == CMD_CLEAR) {
-      sb.clear();
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (cmd.kind == CMD_CLEAR) { sb.clear(); drawScreen(sb, input, gate.mode, rk); continue; }
 
-    if (cmd.kind == CMD_EXIT) {
-      running = false;
-      continue;
-    }
+    if (cmd.kind == CMD_EXIT) { running = false; continue; }
 
     sb.append("\nunknown command: /" + cmd.arg);
     drawScreen(sb, input, gate.mode, rk);

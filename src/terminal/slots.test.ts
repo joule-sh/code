@@ -1,5 +1,5 @@
 import { nextMode, isValidMode } from "./slots.ts";
-import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO } from "../approval/gate.ts";
+import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
 test("the mode cycle steps read-only to auto-edit to safe-auto to full-auto and round again", () => {
   expect(nextMode(MODE_READ_ONLY) == MODE_AUTO_EDIT);
@@ -32,4 +32,19 @@ test("a mode string the cycle does not recognise lands on read-only rather than 
 
 test("safe-auto is a valid mode on its own", () => {
   expect(isValidMode(MODE_SAFE_AUTO));
+});
+
+test("plan is a valid mode on its own, reachable through /mode, not the shift+tab cycle", () => {
+  expect(isValidMode(MODE_PLAN));
+});
+
+test("the shift+tab cycle never lands on plan - a fifth stop would cost every mode extra keypresses", () => {
+  expect(nextMode(MODE_READ_ONLY) != MODE_PLAN);
+  expect(nextMode(MODE_AUTO_EDIT) != MODE_PLAN);
+  expect(nextMode(MODE_SAFE_AUTO) != MODE_PLAN);
+  expect(nextMode(MODE_FULL_AUTO) != MODE_PLAN);
+});
+
+test("cycling out of plan with shift+tab lands on read-only, the same fallback an unrecognized mode gets", () => {
+  expect(nextMode(MODE_PLAN) == MODE_READ_ONLY);
 });

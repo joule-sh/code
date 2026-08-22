@@ -1,11 +1,12 @@
 import { ApprovalDecision } from "../session/types.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
-import { classifyCommand } from "./command_safety.ts";
+import { classifyCommand, classifyPlanCommand } from "./command_safety.ts";
 
 export const MODE_READ_ONLY: string = "read-only";
 export const MODE_AUTO_EDIT: string = "auto-edit";
 export const MODE_SAFE_AUTO: string = "safe-auto";
 export const MODE_FULL_AUTO: string = "full-auto";
+export const MODE_PLAN: string = "plan";
 
 export const REPLY_ALLOW: string = "allow";
 export const REPLY_DENY: string = "deny";
@@ -100,12 +101,27 @@ export class Gate {
     return classifyCommand(command, this.workspaceRoot).autoRun;
   }
 
+  autoRunByPlanSafety(tool: string, args: string): bool {
+    if (tool != "run") {
+      return false;
+    }
+    let command = jsonStringMemberAt(args, 0, "command");
+    return classifyPlanCommand(command, this.workspaceRoot).autoRun;
+  }
+
   check(callId: string, tool: string, summary: string, args: string): ApprovalDecision {
     if (isReadTool(tool)) {
       return { allow: true };
     }
 
     if (this.mode == MODE_READ_ONLY) {
+      return { allow: false };
+    }
+
+    if (this.mode == MODE_PLAN) {
+      if (this.autoRunByPlanSafety(tool, args)) {
+        return { allow: true };
+      }
       return { allow: false };
     }
 

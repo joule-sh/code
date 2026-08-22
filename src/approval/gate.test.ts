@@ -1,4 +1,4 @@
-import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "./gate.ts";
+import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, MODE_PLAN, REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS } from "./gate.ts";
 
 class Recorder {
   requests: string[];
@@ -200,4 +200,82 @@ test("safe-auto: an always reply for run stops future run calls from being asked
   let d2 = g.check("c2", "run", "npm install", runCmd("npm install"));
   expect(d2.allow);
   expect(rec.requests.length == 1);
+});
+
+test("plan: read tools auto, never asked", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(g.check("c1", "read", "", "").allow);
+  expect(g.check("c2", "list", "", "").allow);
+  expect(g.check("c3", "grep", "", "").allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: write and edit are refused outright, never asked", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(!g.check("c1", "write", "", "").allow);
+  expect(!g.check("c2", "edit", "", "").allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: a side-effecting run is refused outright, never asked", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = g.check("c1", "run", "npm install", runCmd("npm install"));
+  expect(!d.allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: spawn_agent and task_status are refused outright, plan mode is not just about run", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(!g.check("c1", "spawn_agent", "", "").allow);
+  expect(!g.check("c2", "task_status", "", "").allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: an investigative run command auto-runs without ever asking", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = g.check("c1", "run", "git status", runCmd("git status"));
+  expect(d.allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: npm test does not auto-run even though safe-auto allows it - plan is stricter", () => {
+  let rec = new Recorder();
+  let planGate = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = planGate.check("c1", "run", "npm test", runCmd("npm test"));
+  expect(!d.allow);
+  expect(rec.requests.length == 0);
+
+  let rec2 = new Recorder();
+  let safeAutoGate = new Gate(MODE_SAFE_AUTO, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec2.onRequest(c, t, s, a); }, () => { rec2.onPoll(); });
+  let d2 = safeAutoGate.check("c1", "run", "npm test", runCmd("npm test"));
+  expect(d2.allow);
+});
+
+test("plan: a compound command is refused outright, not partially matched", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = g.check("c1", "run", "git status; rm -rf x", runCmd("git status; rm -rf x"));
+  expect(!d.allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: a path-qualified command is refused outright", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = g.check("c1", "run", "/bin/ls", runCmd("/bin/ls"));
+  expect(!d.allow);
+  expect(rec.requests.length == 0);
+});
+
+test("plan: the deny list wins over an allow-listed reading of the same command", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_PLAN, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  let d = g.check("c1", "run", "cat build/id_rsa", runCmd("cat build/id_rsa"));
+  expect(!d.allow);
+  expect(rec.requests.length == 0);
 });
