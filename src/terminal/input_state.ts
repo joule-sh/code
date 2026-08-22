@@ -183,6 +183,71 @@ export class PendingApproval {
   }
 }
 
+export const UPDATE_OFFER_ACCEPT: int = 0;
+export const UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING: int = 1;
+export const UPDATE_OFFER_NOT_NOW: int = 2;
+export const UPDATE_OFFER_OPTION_COUNT: int = 3;
+
+export function updateOfferOptionForChar(ch: string): int {
+  if (ch == "y" || ch == "1") { return UPDATE_OFFER_ACCEPT; }
+  if (ch == "a" || ch == "2") { return UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING; }
+  if (ch == "n" || ch == "3") { return UPDATE_OFFER_NOT_NOW; }
+  return -1;
+}
+
+export class PendingUpdateOffer {
+  active: bool;
+  toVersion: string;
+  selected: int;
+  firstOptionRow: int;
+
+  constructor() {
+    this.active = false;
+    this.toVersion = "";
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  open(toVersion: string): void {
+    this.active = true;
+    this.toVersion = toVersion;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) { next = 0; }
+    if (next > UPDATE_OFFER_OPTION_COUNT - 1) { next = UPDATE_OFFER_OPTION_COUNT - 1; }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+
+  select(index: int): void {
+    if (index < 0 || index >= UPDATE_OFFER_OPTION_COUNT) { return; }
+    this.selected = index;
+  }
+
+  close(): void {
+    this.active = false;
+    this.toVersion = "";
+    this.firstOptionRow = -1;
+  }
+
+  isPending(): bool {
+    return this.active;
+  }
+}
+
 const ESC_CODE: int = 27;
 
 function isSgrTerminator(c: string): bool {

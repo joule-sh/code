@@ -371,7 +371,7 @@ function anyRowHas(rowsList: string[], needle: string): bool {
 test("dropping the rule lets one more match row fit in the same budget", () => {
   let c = new Completion();
   c.refresh("/");
-  let budget = panelBudget(13, 0, 1);
+  let budget = panelBudget(14, 0, 1);
   let withRule = completionRows(c, 80, budget, true);
   let withoutRule = completionRows(c, 80, budget, false);
   expect(!anyRowHas(withRule, "/exit"));

@@ -68,6 +68,7 @@ test("poll surfaces the notice once a newer release arrives, then goes inactive"
   let notice = n.poll();
   expect(notice.indexOf("0.6.0") >= 0);
   expect(!n.active);
+  expect(n.latestVersion == "0.6.0");
 
   expect(n.poll() == "");
 });

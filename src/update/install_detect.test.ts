@@ -1,4 +1,4 @@
-import { resolveInstallRoot, resolveBinDir, defaultInstallRoot, defaultBinDir, isUnderInstallRoot, isManagedInstall } from "./install_detect.ts";
+import { resolveInstallRoot, resolveBinDir, defaultInstallRoot, defaultBinDir, isUnderInstallRoot, isManagedInstall, resolveArgv0Path, isUpdateTmpName } from "./install_detect.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/install-detect-test-" + name;
@@ -55,4 +55,62 @@ test("a path that merely shares the install root as a text prefix, not a real su
   let root = freshRoot("prefix-trap");
   let sneaky = root + "-evil/joule";
   expect(!isUnderInstallRoot(sneaky, root));
+});
+
+function fakeFs(present: string[]): (path: string) => bool {
+  return (p: string) => {
+    let i = 0;
+    while (i < present.length) {
+      if (present[i] == p) { return true; }
+      i = i + 1;
+    }
+    return false;
+  };
+}
+
+test("resolveArgv0Path finds a bare command name on PATH, macOS-style (no /proc)", () => {
+  let exists = fakeFs(["/opt/homebrew/bin/joule"]);
+  let found = resolveArgv0Path("joule", "/usr/bin:/opt/homebrew/bin", "/Users/x", exists);
+  expect(found == "/opt/homebrew/bin/joule");
+});
+
+test("resolveArgv0Path stops at the first PATH entry that has the command", () => {
+  let exists = fakeFs(["/usr/bin/joule", "/opt/homebrew/bin/joule"]);
+  let found = resolveArgv0Path("joule", "/usr/bin:/opt/homebrew/bin", "/Users/x", exists);
+  expect(found == "/usr/bin/joule");
+});
+
+test("resolveArgv0Path returns empty when the command is on no PATH entry", () => {
+  let exists = fakeFs(["/opt/homebrew/bin/joule"]);
+  let found = resolveArgv0Path("joule", "/usr/bin:/usr/local/bin", "/Users/x", exists);
+  expect(found == "");
+});
+
+test("resolveArgv0Path skips empty PATH entries without matching them", () => {
+  let exists = fakeFs(["/opt/homebrew/bin/joule"]);
+  let found = resolveArgv0Path("joule", "::/opt/homebrew/bin:", "/Users/x", exists);
+  expect(found == "/opt/homebrew/bin/joule");
+});
+
+test("resolveArgv0Path resolves a relative argv0 against cwd", () => {
+  let exists = fakeFs(["/Users/x/bin/joule"]);
+  let found = resolveArgv0Path("bin/joule", "/usr/bin", "/Users/x", exists);
+  expect(found == "/Users/x/bin/joule");
+});
+
+test("resolveArgv0Path uses an absolute argv0 directly, without consulting PATH", () => {
+  let exists = fakeFs(["/Users/x/.joule-code/0.6.1/joule"]);
+  let found = resolveArgv0Path("/Users/x/.joule-code/0.6.1/joule", "/usr/bin", "/Users/x", exists);
+  expect(found == "/Users/x/.joule-code/0.6.1/joule");
+});
+
+test("resolveArgv0Path reports empty for an empty argv0", () => {
+  let exists = fakeFs(["/opt/homebrew/bin/joule"]);
+  expect(resolveArgv0Path("", "/opt/homebrew/bin", "/Users/x", exists) == "");
+});
+
+test("isUpdateTmpName recognizes the scratch-directory naming convention", () => {
+  expect(isUpdateTmpName(".update-tmp-1700000000000"));
+  expect(!isUpdateTmpName("0.6.1"));
+  expect(!isUpdateTmpName("latest"));
 });

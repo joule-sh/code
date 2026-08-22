@@ -8,10 +8,10 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { runLogin, logoutText } from "./login_ui.ts";
-import { InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
@@ -26,6 +26,9 @@ import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalCha
 import { resolveResume, persistTurnEnd } from "./resume.ts";
 import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode, nextMode } from "./slots.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
+import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
+import { pollUpdateInstall } from "./update_install_poll.ts";
+import { VERSION } from "../version.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -46,7 +49,7 @@ export function runTerminal(argv: string[]): void {
   let serverBase = loadServerBase(argv);
   let workspaceRoot = process.cwd();
   let resume = resolveResume(argv, workspaceRoot);
-  let updateNotifier = startUpdateNotifier();
+  let updateNotifier = startUpdateNotifier(); let updateOffer = new PendingUpdateOffer(); let updateInstall = new PendingUpdateInstall();
 
   let registry = new ToolsRegistry(workspaceRoot);
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
@@ -218,7 +221,8 @@ export function runTerminal(argv: string[]): void {
     if (k.kind == KEY_TIMEOUT) {
       runRelayTick(relay, session, gate, bridge, sb, input, rk);
       tasks.poll(session);
-      pollUpdateNotice(updateNotifier, sb, input, gate.mode, rk);
+      pollUpdateNotice(updateNotifier, updateOffer, sb, input, gate.mode, rk);
+      pollUpdateInstall(updateInstall, sb, input, gate.mode, rk);
       continue;
     }
 
@@ -249,6 +253,7 @@ export function runTerminal(argv: string[]): void {
         drawScreen(sb, input, gate.mode, rk);
         continue;
       }
+      if (tryHandleUpdateOfferChar(updateOffer, updateInstall, VERSION, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
       input.push(k.char);
       history.cancelNavigation();
       drawScreen(sb, input, gate.mode, rk);
@@ -273,6 +278,7 @@ export function runTerminal(argv: string[]): void {
         drawScreen(sb, input, gate.mode, rk);
         continue;
       }
+      if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(-1);
         drawScreen(sb, input, gate.mode, rk);
@@ -288,6 +294,7 @@ export function runTerminal(argv: string[]): void {
         drawScreen(sb, input, gate.mode, rk);
         continue;
       }
+      if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(1);
         drawScreen(sb, input, gate.mode, rk);
@@ -305,33 +312,13 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
-    if (k.kind == KEY_PAGE_UP) {
-      let r = screenRows();
-      sb.scrollUp(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (k.kind == KEY_PAGE_UP) { let r = screenRows(); sb.scrollUp(r - 1, r - 1); drawScreen(sb, input, gate.mode, rk); continue; }
 
-    if (k.kind == KEY_PAGE_DOWN) {
-      let r = screenRows();
-      sb.scrollDown(r - 1, r - 1);
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (k.kind == KEY_PAGE_DOWN) { let r = screenRows(); sb.scrollDown(r - 1, r - 1); drawScreen(sb, input, gate.mode, rk); continue; }
 
-    if (k.kind == KEY_SCROLL_UP) {
-      let r = screenRows();
-      sb.scrollUp(r - 1, WHEEL_SCROLL_LINES);
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (k.kind == KEY_SCROLL_UP) { let r = screenRows(); sb.scrollUp(r - 1, WHEEL_SCROLL_LINES); drawScreen(sb, input, gate.mode, rk); continue; }
 
-    if (k.kind == KEY_SCROLL_DOWN) {
-      let r = screenRows();
-      sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
-      drawScreen(sb, input, gate.mode, rk);
-      continue;
-    }
+    if (k.kind == KEY_SCROLL_DOWN) { let r = screenRows(); sb.scrollDown(r - 1, WHEEL_SCROLL_LINES); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (k.kind != KEY_ENTER) {
       continue;
@@ -341,6 +328,8 @@ export function runTerminal(argv: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
+
+    if (tryHandleUpdateOfferEnter(updateOffer, updateInstall, VERSION, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
 
     let line = input.takeAndClear();
     drawScreen(sb, input, gate.mode, rk);
@@ -412,6 +401,8 @@ export function runTerminal(argv: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
+
+    if (cmd.kind == CMD_UPDATE) { beginUpdateInstall(updateInstall, VERSION, sb); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_TASKS) {
       if (cmd.arg == "") {

@@ -6,6 +6,7 @@ export const CMD_LOGIN: string = "login";
 export const CMD_LOGOUT: string = "logout";
 export const CMD_CAT: string = "cat";
 export const CMD_TASKS: string = "tasks";
+export const CMD_UPDATE: string = "update";
 export const CMD_CLEAR: string = "clear";
 export const CMD_EXIT: string = "exit";
 export const CMD_UNKNOWN: string = "unknown";
@@ -45,6 +46,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "logout") { return withKind(CMD_LOGOUT, arg); }
   if (name == "cat") { return withKind(CMD_CAT, arg); }
   if (name == "tasks") { return withKind(CMD_TASKS, arg); }
+  if (name == "update") { return withKind(CMD_UPDATE, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
   if (name == "exit") { return withKind(CMD_EXIT, arg); }
   return withKind(CMD_UNKNOWN, name);
@@ -60,6 +62,7 @@ export function commandList(): CommandInfo[] {
     { name: "/logout", args: "", description: "forget the stored credential for the configured Joule server" },
     { name: "/cat", args: "<path>", description: "show a file's contents without asking the model" },
     { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
+    { name: "/update", args: "", description: "download and install the latest release" },
     { name: "/clear", args: "", description: "clear the scrollback" },
     { name: "/exit", args: "", description: "quit" },
   ];
