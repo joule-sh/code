@@ -1,8 +1,8 @@
 import { Session } from "../session/session.ts";
-import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
+import { Gate, MODE_AUTO_EDIT, REPLY_ALLOW, REPLY_DENY } from "../approval/gate.ts";
 import { Message, ProviderReply, Provider, ToolResult, ToolRegistry, ApprovalGate, ApprovalDecision } from "../session/types.ts";
 import { RelayInputBridge, dispatchInboundFrame } from "./relay_bridge.ts";
-import { PROTOCOL_VERSION, CANCEL, CancelFrame, encodeCancel, APPROVAL_REPLY, ApprovalReplyFrame, encodeApprovalReply } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, CANCEL, CancelFrame, encodeCancel, APPROVAL_REPLY, ApprovalReplyFrame, encodeApprovalReply, APPROVAL_REPLY_RESULT, decodeApprovalReplyResult, frameType } from "../protocol/frames.ts";
 
 function okReply(text: string): ProviderReply {
   return { text: text, calls: [], failed: false, errorCode: "", errorMessage: "", tokens: 0 };
@@ -33,6 +33,12 @@ function newSession(provider: Provider): Session {
   let echoer = new Echoer();
   let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
   return new Session("/repo", "agent", provider, tools, allowAll());
+}
+
+class FrameCapture {
+  frames: string[];
+  constructor() { this.frames = []; }
+  add(frameJson: string): void { this.frames.push(frameJson); }
 }
 
 test("dispatchInboundFrame calls session.cancel for a cancel frame", () => {
@@ -67,6 +73,56 @@ test("dispatchInboundFrame ignores an unrecognized frame type without throwing",
   let bridge = new RelayInputBridge();
   dispatchInboundFrame(session, gate, bridge, "{\"v\":1,\"seq\":1,\"type\":\"text.delta\"}");
   expect(bridge.pending.length == 0);
+});
+
+test("when the keyboard already answered, a late browser approval.reply for the same call id is refused and the refusal is broadcast", () => {
+  let ep = new EchoProvider();
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
+  let session = newSession(provider);
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let bridge = new RelayInputBridge();
+
+  let cap = new FrameCapture();
+  session.subscribe((frameJson: string) => { cap.add(frameJson); });
+
+  let keyboardApplied = gate.reply("c1", REPLY_ALLOW);
+  expect(keyboardApplied);
+
+  let f: ApprovalReplyFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REPLY, callId: "c1", decision: REPLY_DENY };
+  dispatchInboundFrame(session, gate, bridge, encodeApprovalReply(f));
+
+  expect(gate.findReply("c1") == REPLY_ALLOW);
+
+  let resultFrames: string[] = [];
+  let i = 0;
+  while (i < cap.frames.length) {
+    if (frameType(cap.frames[i]) == APPROVAL_REPLY_RESULT) { resultFrames.push(cap.frames[i]); }
+    i = i + 1;
+  }
+  expect(resultFrames.length == 1);
+  let decoded = decodeApprovalReplyResult(resultFrames[0]);
+  expect(decoded != null);
+  if (decoded != null) {
+    expect(decoded.callId == "c1");
+    expect(!decoded.applied);
+    expect(decoded.decision == REPLY_ALLOW);
+  }
+});
+
+test("when the browser answers first, the terminal's own gate.reply for the same call id is refused, with no broadcast needed", () => {
+  let ep = new EchoProvider();
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
+  let session = newSession(provider);
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let bridge = new RelayInputBridge();
+
+  let f: ApprovalReplyFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REPLY, callId: "c1", decision: REPLY_DENY };
+  dispatchInboundFrame(session, gate, bridge, encodeApprovalReply(f));
+  expect(gate.findReply("c1") == REPLY_DENY);
+
+  let keyboardApplied = gate.reply("c1", REPLY_ALLOW);
+  expect(!keyboardApplied);
+  expect(gate.findReply("c1") == REPLY_DENY);
 });
 
 test("RelayInputBridge.offer submits immediately when idle", () => {

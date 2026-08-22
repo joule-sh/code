@@ -3,7 +3,7 @@ import { loadConfig, loadServerBase } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
-import { Gate, MODE_AUTO_EDIT, MODE_PLAN, REPLY_DENY } from "../approval/gate.ts";
+import { Gate, MODE_AUTO_EDIT, MODE_PLAN } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
@@ -15,7 +15,7 @@ import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadProjectInstructions } from "../session/project_instructions.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
-import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
+import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
@@ -92,6 +92,7 @@ export function runTerminal(argv: string[]): void {
   let onApprovalPoll = () => {
     if (relayBox.relaySlot.length > 0 && gateBox.slot.length > 0) {
       runRelayTick(relayBox.relaySlot[0], relayBox.sessionSlot[0], gateBox.slot[0], relayBox.bridgeSlot[0], sb, input, rk);
+      reportIfResolvedElsewhere(gateBox.slot[0], sb, input, rk, pendingApproval);
     }
     if (tasksBox.slot.length > 0 && relayBox.sessionSlot.length > 0) {
       tasksBox.slot[0].poll(relayBox.sessionSlot[0]);
@@ -114,9 +115,9 @@ export function runTerminal(argv: string[]): void {
         repaintApprovalOptions(sb, pendingApproval);
         drawScreen(sb, input, gateBox.slot[0].mode, rk);
       }
-    } else if (k.kind == KEY_ENTER && gateBox.slot.length > 0) {
+    } else if (k.kind == KEY_ENTER && gateBox.slot.length > 0 && pendingApproval.callId != "") {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, pendingApproval.selected);
-    } else if (k.kind == KEY_CHAR && approvalOptionForChar(k.char) >= 0 && gateBox.slot.length > 0) {
+    } else if (k.kind == KEY_CHAR && approvalOptionForChar(k.char) >= 0 && gateBox.slot.length > 0 && pendingApproval.callId != "") {
       answerApproval(gateBox.slot[0], sb, input, rk, pendingApproval, approvalOptionForChar(k.char));
     } else if (k.kind == KEY_CTRL_O && gateBox.slot.length > 0) {
       if (sb.toggleLastGroup()) {
@@ -124,9 +125,8 @@ export function runTerminal(argv: string[]): void {
       }
     } else if (k.kind == KEY_CTRL_C) {
       if (gateBox.slot.length > 0) {
-        gateBox.slot[0].reply(pendingApproval.callId, REPLY_DENY);
+        denyPendingApproval(gateBox.slot[0], sb, input, rk, pendingApproval);
       }
-      pendingApproval.clearIfMatches(pendingApproval.callId);
       if (live.sessionSlot.length > 0) {
         live.sessionSlot[0].cancel(tracker.current);
       }

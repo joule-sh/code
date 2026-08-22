@@ -45,16 +45,17 @@ export class Gate {
     this.onPoll = onPoll;
   }
 
-  reply(callId: string, decision: string): void {
+  reply(callId: string, decision: string): bool {
     let i = 0;
     while (i < this.repliedCallIds.length) {
       if (this.repliedCallIds[i] == callId) {
-        return;
+        return false;
       }
       i = i + 1;
     }
     this.repliedCallIds.push(callId);
     this.repliedDecisions.push(decision);
+    return true;
   }
 
   findReply(callId: string): string {

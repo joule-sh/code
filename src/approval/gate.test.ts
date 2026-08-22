@@ -120,18 +120,34 @@ test("an unanswered request times out into a denial", () => {
 
 test("a reply for an unknown or already-decided callId is ignored", () => {
   let g = new Gate(MODE_AUTO_EDIT, 5000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
-  g.reply("never-asked", REPLY_ALLOW);
+  expect(g.reply("never-asked", REPLY_ALLOW));
   expect(g.findReply("never-asked") == REPLY_ALLOW);
 
-  g.reply("never-asked", REPLY_DENY);
+  expect(!g.reply("never-asked", REPLY_DENY));
   expect(g.findReply("never-asked") == REPLY_ALLOW);
 });
 
-test("two replies for one call take the first", () => {
+test("two replies for one call take the first, and the second is reported as not applied", () => {
   let g = new Gate(MODE_AUTO_EDIT, 5000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
-  g.reply("c1", REPLY_ALLOW);
-  g.reply("c1", REPLY_DENY);
+  expect(g.reply("c1", REPLY_ALLOW));
+  expect(!g.reply("c1", REPLY_DENY));
   expect(g.findReply("c1") == REPLY_ALLOW);
+});
+
+test("the keyboard path and the browser path answering the same call id: the first sticks, the second is refused", () => {
+  let g = new Gate(MODE_AUTO_EDIT, 5000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let keyboardApplied = g.reply("c1", REPLY_ALLOW);
+  let browserApplied = g.reply("c1", REPLY_DENY);
+  expect(keyboardApplied);
+  expect(!browserApplied);
+  expect(g.findReply("c1") == REPLY_ALLOW);
+
+  let g2 = new Gate(MODE_AUTO_EDIT, 5000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let browserFirst = g2.reply("c2", REPLY_DENY);
+  let keyboardSecond = g2.reply("c2", REPLY_ALLOW);
+  expect(browserFirst);
+  expect(!keyboardSecond);
+  expect(g2.findReply("c2") == REPLY_DENY);
 });
 
 test("the raw tool call args flow through check() into the onRequest callback unchanged", () => {

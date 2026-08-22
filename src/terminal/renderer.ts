@@ -1,4 +1,4 @@
-import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
+import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, decodeApprovalReplyResult, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, APPROVAL_REPLY_RESULT, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
 import { diffLines, diffCounts, renderDiffRows, DIFF_DISPLAY_MAX_ROWS } from "./diff.ts";
 import { DIM, REVERSE, RESET } from "./style.ts";
 import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT, PLAN_DECISION_REJECT, PLAN_DECISION_OPTION_COUNT } from "./input_state.ts";
@@ -186,6 +186,12 @@ export function renderFrame(frameJson: string, prevKind: string): string {
     let f = decodeError(frameJson);
     if (f == null) { return ""; }
     return "\n! " + f.code + ": " + f.message;
+  }
+
+  if (kind == APPROVAL_REPLY_RESULT) {
+    let f = decodeApprovalReplyResult(frameJson);
+    if (f == null) { return ""; }
+    return "\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
   }
 
   return "";
