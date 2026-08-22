@@ -1,7 +1,7 @@
 import { CommandInfo, commandList } from "./commands.ts";
 import { VIOLET, DIM, BOLD, wrap } from "./style.ts";
 
-export const COMPLETION_MAX_LIST_ROWS: int = 10;
+export const COMPLETION_MAX_LIST_ROWS: int = 11;
 export const COMPLETION_MARKER: string = "> ";
 
 const NAME_COLUMN: int = 10;

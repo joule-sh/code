@@ -23,12 +23,14 @@ export class UpdateNotifier {
   reader: MailboxReader;
   active: bool;
   currentVersion: string;
+  latestVersion: string;
 
   constructor() {
     this.mailboxPath = "";
     this.reader = new MailboxReader("");
     this.active = false;
     this.currentVersion = "";
+    this.latestVersion = "";
   }
 
   start(nonce: string, currentVersion: string, cachePath: string): void {
@@ -59,6 +61,7 @@ export class UpdateNotifier {
     let tag = jsonStringMemberAt(body, 0, "tag_name");
     if (tag == "") { return ""; }
     if (!isNewerVersion(this.currentVersion, tag)) { return ""; }
+    this.latestVersion = stripLeadingV(tag);
     return noticeText(this.currentVersion, tag);
   }
 }

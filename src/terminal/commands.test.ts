@@ -1,4 +1,4 @@
-import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -92,6 +92,12 @@ test("/tasks cancel <id> keeps the whole remainder as one arg", () => {
   let p = parseCommand("/tasks cancel agent-1");
   expect(p.kind == CMD_TASKS);
   expect(p.arg == "cancel agent-1");
+});
+
+test("/update parses with no arg", () => {
+  let p = parseCommand("/update");
+  expect(p.kind == CMD_UPDATE);
+  expect(p.arg == "");
 });
 
 test("helpText renders every entry of the shared command list, so the two cannot drift", () => {

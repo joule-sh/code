@@ -1,4 +1,4 @@
-import { InputLine, InputHistory, PendingApproval, clip, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, clip, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, PendingUpdateOffer, updateOfferOptionForChar, UPDATE_OFFER_ACCEPT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT } from "./input_state.ts";
 
 test("InputLine push and backspace edit the buffer", () => {
   let line = new InputLine();
@@ -249,4 +249,75 @@ test("InputHistory record clears any stashed navigation state", () => {
   h.record("second");
   expect(h.back("") == "second");
   expect(h.back("") == "first");
+});
+
+test("updateOfferOptionForChar maps y/1, a/2, n/3 and rejects anything else", () => {
+  expect(updateOfferOptionForChar("y") == UPDATE_OFFER_ACCEPT);
+  expect(updateOfferOptionForChar("1") == UPDATE_OFFER_ACCEPT);
+  expect(updateOfferOptionForChar("a") == UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING);
+  expect(updateOfferOptionForChar("2") == UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING);
+  expect(updateOfferOptionForChar("n") == UPDATE_OFFER_NOT_NOW);
+  expect(updateOfferOptionForChar("3") == UPDATE_OFFER_NOT_NOW);
+  expect(updateOfferOptionForChar("z") < 0);
+});
+
+test("a fresh PendingUpdateOffer starts closed with no rows tracked", () => {
+  let o = new PendingUpdateOffer();
+  expect(!o.isPending());
+  expect(!o.hasOptionRows());
+  expect(o.selected == 0);
+});
+
+test("open marks the offer pending, records the target version, and resets selection", () => {
+  let o = new PendingUpdateOffer();
+  o.select(2);
+  o.open("0.6.2");
+  expect(o.isPending());
+  expect(o.toVersion == "0.6.2");
+  expect(o.selected == 0);
+});
+
+test("setOptionRows records where the option rows landed", () => {
+  let o = new PendingUpdateOffer();
+  o.open("0.6.2");
+  expect(!o.hasOptionRows());
+  o.setOptionRows(5);
+  expect(o.hasOptionRows());
+});
+
+test("moveSelection walks the highlight and clamps at both ends", () => {
+  let o = new PendingUpdateOffer();
+  o.open("0.6.2");
+  expect(o.moveSelection(1));
+  expect(o.selected == 1);
+  expect(o.moveSelection(1));
+  expect(o.selected == 2);
+  expect(!o.moveSelection(1));
+  expect(o.selected == UPDATE_OFFER_OPTION_COUNT - 1);
+  expect(o.moveSelection(-1));
+  expect(o.moveSelection(-1));
+  expect(!o.moveSelection(-1));
+  expect(o.selected == 0);
+});
+
+test("select jumps directly to a valid index and ignores an out-of-range one", () => {
+  let o = new PendingUpdateOffer();
+  o.open("0.6.2");
+  o.select(2);
+  expect(o.selected == 2);
+  o.select(99);
+  expect(o.selected == 2);
+  o.select(-1);
+  expect(o.selected == 2);
+});
+
+test("close resets the offer back to its fresh state", () => {
+  let o = new PendingUpdateOffer();
+  o.open("0.6.2");
+  o.setOptionRows(3);
+  o.select(1);
+  o.close();
+  expect(!o.isPending());
+  expect(!o.hasOptionRows());
+  expect(o.toVersion == "");
 });
