@@ -39,7 +39,7 @@ test("dispatchInboundFrame calls session.cancel for a cancel frame", () => {
   let ep = new EchoProvider();
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
   let session = newSession(provider);
-  let gate = new Gate(MODE_AUTO_EDIT, 1000, (c: string, t: string, s: string, a: string) => {}, () => {});
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
   let bridge = new RelayInputBridge();
 
   let f: CancelFrame = { v: PROTOCOL_VERSION, seq: 1, type: CANCEL, turnId: "t9" };
@@ -51,7 +51,7 @@ test("dispatchInboundFrame calls gate.reply for an approval.reply frame", () => 
   let ep = new EchoProvider();
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
   let session = newSession(provider);
-  let gate = new Gate(MODE_AUTO_EDIT, 1000, (c: string, t: string, s: string, a: string) => {}, () => {});
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
   let bridge = new RelayInputBridge();
 
   let f: ApprovalReplyFrame = { v: PROTOCOL_VERSION, seq: 1, type: APPROVAL_REPLY, callId: "c1", decision: "allow" };
@@ -63,7 +63,7 @@ test("dispatchInboundFrame ignores an unrecognized frame type without throwing",
   let ep = new EchoProvider();
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
   let session = newSession(provider);
-  let gate = new Gate(MODE_AUTO_EDIT, 1000, (c: string, t: string, s: string, a: string) => {}, () => {});
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
   let bridge = new RelayInputBridge();
   dispatchInboundFrame(session, gate, bridge, "{\"v\":1,\"seq\":1,\"type\":\"text.delta\"}");
   expect(bridge.pending.length == 0);
