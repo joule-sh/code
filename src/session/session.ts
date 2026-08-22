@@ -51,6 +51,11 @@ export class Session {
     this.cancelledTurnId = turnId;
   }
 
+  injectSystemContext(text: string): void {
+    if (text == "") { return; }
+    this.history.push({ role: ROLE_SYSTEM, text: text, toolCallId: "", toolCalls: [] });
+  }
+
   emitDelta(turnId: string, chunk: string): void {
     let frame: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TEXT_DELTA, turnId: turnId, text: chunk };
     this.emit(encodeTextDelta(frame));
