@@ -3,7 +3,7 @@ import { ToolResult } from "../session/types.ts";
 import { readFile, writeFile, editFile, listDir, grep } from "./files.ts";
 import { run } from "./run.ts";
 
-const DEFAULT_RUN_TIMEOUT_MS: int = 30000;
+export const DEFAULT_RUN_TIMEOUT_MS: int = 30000;
 
 function joinWith(parts: string[], sep: string): string {
   let out = "";
