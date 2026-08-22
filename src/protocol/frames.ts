@@ -12,6 +12,7 @@ export const INPUT: string = "input";
 export const CANCEL: string = "cancel";
 export const APPROVAL_REPLY: string = "approval.reply";
 export const RESUME: string = "resume";
+export const APPROVAL_REPLY_RESULT: string = "approval.reply.result";
 
 export const REASON_DONE: string = "done";
 export const REASON_CANCELLED: string = "cancelled";
@@ -34,6 +35,7 @@ export type InputFrame = { v: int, seq: int, type: string, text: string };
 export type CancelFrame = { v: int, seq: int, type: string, turnId: string };
 export type ApprovalReplyFrame = { v: int, seq: int, type: string, callId: string, decision: string };
 export type ResumeFrame = { v: int, seq: int, type: string, since: int };
+export type ApprovalReplyResultFrame = { v: int, seq: int, type: string, callId: string, applied: bool, decision: string };
 
 export function encodeSessionHello(f: SessionHelloFrame): string { return JSON.stringify(f); }
 export function encodeTurnStart(f: TurnStartFrame): string { return JSON.stringify(f); }
@@ -47,6 +49,7 @@ export function encodeInput(f: InputFrame): string { return JSON.stringify(f); }
 export function encodeCancel(f: CancelFrame): string { return JSON.stringify(f); }
 export function encodeApprovalReply(f: ApprovalReplyFrame): string { return JSON.stringify(f); }
 export function encodeResume(f: ResumeFrame): string { return JSON.stringify(f); }
+export function encodeApprovalReplyResult(f: ApprovalReplyResultFrame): string { return JSON.stringify(f); }
 
 export function decodeSessionHello(text: string): SessionHelloFrame | null {
   try { return JSON.parse<SessionHelloFrame>(text); } catch { return null; }
@@ -83,6 +86,9 @@ export function decodeApprovalReply(text: string): ApprovalReplyFrame | null {
 }
 export function decodeResume(text: string): ResumeFrame | null {
   try { return JSON.parse<ResumeFrame>(text); } catch { return null; }
+}
+export function decodeApprovalReplyResult(text: string): ApprovalReplyResultFrame | null {
+  try { return JSON.parse<ApprovalReplyResultFrame>(text); } catch { return null; }
 }
 
 function rawFieldValue(body: string, key: string): string {
@@ -155,6 +161,7 @@ export function isKnownType(t: string): bool {
   if (t == SESSION_HELLO || t == TURN_START || t == TEXT_DELTA || t == TOOL_CALL) { return true; }
   if (t == TOOL_RESULT || t == APPROVAL_REQUEST || t == TURN_END || t == ERROR) { return true; }
   if (t == INPUT || t == CANCEL || t == APPROVAL_REPLY || t == RESUME) { return true; }
+  if (t == APPROVAL_REPLY_RESULT) { return true; }
   return false;
 }
 

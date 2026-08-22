@@ -1,6 +1,6 @@
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
-import { frameType, decodeInput, decodeCancel, decodeApprovalReply, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
+import { frameType, decodeInput, decodeCancel, decodeApprovalReply, INPUT, CANCEL, APPROVAL_REPLY, PROTOCOL_VERSION, APPROVAL_REPLY_RESULT, ApprovalReplyResultFrame, encodeApprovalReplyResult } from "../protocol/frames.ts";
 import { RelayClient } from "../relay/client.ts";
 
 export class RelayInputBridge {
@@ -52,7 +52,13 @@ export function dispatchInboundFrame(session: Session, gate: Gate, bridge: Relay
   }
   if (t == APPROVAL_REPLY) {
     let f = decodeApprovalReply(frameJson);
-    if (f != null) { gate.reply(f.callId, f.decision); }
+    if (f != null) {
+      let applied = gate.reply(f.callId, f.decision);
+      if (!applied) {
+        let result: ApprovalReplyResultFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: APPROVAL_REPLY_RESULT, callId: f.callId, applied: false, decision: gate.findReply(f.callId) };
+        session.emit(encodeApprovalReplyResult(result));
+      }
+    }
     return;
   }
 }
