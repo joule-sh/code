@@ -23,6 +23,7 @@ export class TurnStatusTracker {
   md: MarkdownState;
   startedAt: i64;
   inTurn: bool;
+  finishedElapsedMs: i64;
   trackerSlot: TurnTracker[];
   runningTasksSlot: (() => int)[];
 
@@ -32,6 +33,7 @@ export class TurnStatusTracker {
     this.md = new MarkdownState();
     this.startedAt = 0;
     this.inTurn = false;
+    this.finishedElapsedMs = NO_TURN;
     this.trackerSlot = [];
     this.runningTasksSlot = [];
   }
@@ -46,8 +48,10 @@ export class TurnStatusTracker {
     if (kind == TURN_START) {
       this.startedAt = time.monotonic();
       this.inTurn = true;
+      this.finishedElapsedMs = NO_TURN;
     }
     if (kind == TURN_END) {
+      this.finishedElapsedMs = time.monotonic() - this.startedAt;
       this.inTurn = false;
     }
     if (kind == TOOL_CALL) {
@@ -64,12 +68,12 @@ export class TurnStatusTracker {
   }
 
   elapsedMs(): i64 {
-    if (!this.inTurn) { return NO_TURN; }
-    return time.monotonic() - this.startedAt;
+    if (this.inTurn) { return time.monotonic() - this.startedAt; }
+    return this.finishedElapsedMs;
   }
 
   turnTokens(): int {
-    if (!this.inTurn || this.trackerSlot.length == 0) { return 0; }
+    if (this.trackerSlot.length == 0) { return 0; }
     return this.trackerSlot[0].tokens;
   }
 
@@ -79,7 +83,7 @@ export class TurnStatusTracker {
   }
 
   statusInfo(mode: string): StatusInfo {
-    return { mode: mode, elapsedMs: this.elapsedMs(), tokens: this.turnTokens(), runningTasks: this.runningTasks() };
+    return { mode: mode, elapsedMs: this.elapsedMs(), tokens: this.turnTokens(), runningTasks: this.runningTasks(), turnLive: this.inTurn };
   }
 }
 

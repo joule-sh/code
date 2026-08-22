@@ -56,7 +56,7 @@ export function buildWelcomeBox(model: string, workspace: string, mode: string, 
   return out;
 }
 
-export type StatusInfo = { mode: string, elapsedMs: i64, tokens: int, runningTasks: int };
+export type StatusInfo = { mode: string, elapsedMs: i64, tokens: int, runningTasks: int, turnLive: bool };
 
 export const NO_TURN: i64 = -1;
 
@@ -72,7 +72,7 @@ const PRIO_ELAPSED: int = 4;
 const PRIO_MODE: int = 5;
 
 export function idleStatus(mode: string): StatusInfo {
-  return { mode: mode, elapsedMs: NO_TURN, tokens: 0, runningTasks: 0 };
+  return { mode: mode, elapsedMs: NO_TURN, tokens: 0, runningTasks: 0, turnLive: false };
 }
 
 function utf8ByteCount(first: int): int {
@@ -131,17 +131,9 @@ function joinFields(parts: string[]): string {
   return out;
 }
 
-function keepAbove(texts: string[], priorities: int[], floor: int): string {
-  let kept: string[] = [];
-  let i = 0;
-  while (i < texts.length) {
-    if (priorities[i] >= floor) { kept.push(texts[i]); }
-    i = i + 1;
-  }
-  return joinFields(kept);
-}
+type StatusFields = { texts: string[], priorities: int[] };
 
-export function statusText(info: StatusInfo, width: int): string {
+function collectFields(info: StatusInfo): StatusFields {
   let texts: string[] = [];
   let priorities: int[] = [];
   texts.push("mode: " + info.mode);
@@ -162,16 +154,53 @@ export function statusText(info: StatusInfo, width: int): string {
   priorities.push(PRIO_HELP_HINT);
   texts.push(SCROLL_HINT);
   priorities.push(PRIO_SCROLL_HINT);
+  return { texts: texts, priorities: priorities };
+}
 
-  let floor = PRIO_SCROLL_HINT;
-  let line = keepAbove(texts, priorities, floor);
-  while (width > 0 && floor < PRIO_MODE && visualWidth(line) > width) {
-    floor = floor + 1;
-    line = keepAbove(texts, priorities, floor);
+function keepAbove(fields: StatusFields, floor: int): StatusFields {
+  let texts: string[] = [];
+  let priorities: int[] = [];
+  let i = 0;
+  while (i < fields.texts.length) {
+    if (fields.priorities[i] >= floor) {
+      texts.push(fields.texts[i]);
+      priorities.push(fields.priorities[i]);
+    }
+    i = i + 1;
   }
-  return line;
+  return { texts: texts, priorities: priorities };
+}
+
+function narrowToWidth(info: StatusInfo, width: int): StatusFields {
+  let fields = collectFields(info);
+  let floor = PRIO_SCROLL_HINT;
+  let kept = keepAbove(fields, floor);
+  while (width > 0 && floor < PRIO_MODE && visualWidth(joinFields(kept.texts)) > width) {
+    floor = floor + 1;
+    kept = keepAbove(fields, floor);
+  }
+  return kept;
+}
+
+export function statusText(info: StatusInfo, width: int): string {
+  return joinFields(narrowToWidth(info, width).texts);
+}
+
+function styledField(text: string, priority: int, turnLive: bool): string {
+  if ((priority == PRIO_ELAPSED || priority == PRIO_TOKENS) && turnLive) {
+    return text;
+  }
+  return wrap(DIM, text);
 }
 
 export function buildStatusLine(info: StatusInfo, width: int): string {
-  return wrap(DIM, statusText(info, width));
+  let kept = narrowToWidth(info, width);
+  let out = "";
+  let i = 0;
+  while (i < kept.texts.length) {
+    if (i > 0) { out = out + wrap(DIM, SEPARATOR); }
+    out = out + styledField(kept.texts[i], kept.priorities[i], info.turnLive);
+    i = i + 1;
+  }
+  return out;
 }

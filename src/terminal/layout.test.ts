@@ -36,7 +36,11 @@ function plainLines(box: string): string[] {
 }
 
 function busy(): StatusInfo {
-  return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2 };
+  return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2, turnLive: true };
+}
+
+function settled(): StatusInfo {
+  return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2, turnLive: false };
 }
 
 test("the welcome box is nine rows: top border, title, blank, three fields, blank, tagline, bottom border", () => {
@@ -124,6 +128,33 @@ test("the status line names the current mode and the key hints, dim and reset", 
 test("the status line reflects a different mode when given one", () => {
   let line = buildStatusLine(idleStatus("full-auto"), 80);
   expect(line.indexOf("full-auto") >= 0);
+});
+
+test("elapsed and tokens render unstyled while the turn is live, standing out from the dim bar around them", () => {
+  let line = buildStatusLine(busy(), 120);
+  expect(line.indexOf(DIM + "9m 52s") < 0);
+  expect(line.indexOf(DIM + "18k tokens") < 0);
+  expect(line.indexOf(RESET + "9m 52s") >= 0);
+  expect(line.indexOf("9m 52s" + DIM) >= 0);
+  expect(line.indexOf(RESET + "18k tokens") >= 0);
+  expect(line.indexOf("18k tokens" + DIM) >= 0);
+});
+
+test("elapsed and tokens fall back to the same dim style as the rest of the bar once the turn is settled", () => {
+  let line = buildStatusLine(settled(), 120);
+  expect(line.indexOf(DIM + "9m 52s") >= 0);
+  expect(line.indexOf(DIM + "18k tokens") >= 0);
+});
+
+test("settling a turn changes only the styling, not the words or order of the status line", () => {
+  expect(statusText(busy(), 120) == statusText(settled(), 120));
+});
+
+test("the running task count is always dim, live or settled, since it does not belong to the turn totals", () => {
+  let live = buildStatusLine(busy(), 120);
+  let done = buildStatusLine(settled(), 120);
+  expect(live.indexOf(DIM + "2 running tasks") >= 0);
+  expect(done.indexOf(DIM + "2 running tasks") >= 0);
 });
 
 test("the welcome box shows the running version, so a released build is distinguishable from a source build", () => {
@@ -217,9 +248,9 @@ test("an idle 45-column terminal keeps the mode and the help hint the layout har
 });
 
 test("a field is left out entirely when its source has nothing to report", () => {
-  let noTokens: StatusInfo = { mode: "auto-edit", elapsedMs: 5000, tokens: 0, runningTasks: 0 };
+  let noTokens: StatusInfo = { mode: "auto-edit", elapsedMs: 5000, tokens: 0, runningTasks: 0, turnLive: true };
   expect(statusText(noTokens, 120) == "mode: auto-edit · 5s · /help for commands · PageUp/PageDown to scroll");
-  let tasksOnly: StatusInfo = { mode: "read-only", elapsedMs: NO_TURN, tokens: 0, runningTasks: 1 };
+  let tasksOnly: StatusInfo = { mode: "read-only", elapsedMs: NO_TURN, tokens: 0, runningTasks: 1, turnLive: false };
   expect(statusText(tasksOnly, 120) == "mode: read-only · 1 running task · /help for commands · PageUp/PageDown to scroll");
 });
 
