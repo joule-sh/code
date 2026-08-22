@@ -33,6 +33,11 @@ export class ToolsRegistry {
       let task = jsonStringMemberAt(args, 0, "task");
       return ok(this.tasksSlot[0].startSubagent(task), false);
     }
+    if (tool == "task_status") {
+      if (this.tasksSlot.length == 0) { return fail("background tasks are not available in this session"); }
+      let id = jsonStringMemberAt(args, 0, "id");
+      return ok(this.tasksSlot[0].taskStatus(id), false);
+    }
     return dispatchCoreTool(this.root, tool, args);
   }
 }

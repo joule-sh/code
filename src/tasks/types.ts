@@ -1,6 +1,7 @@
 export type TaskRunner = {
   startBackgroundRun: (command: string) => string,
   startSubagent: (task: string) => string,
+  taskStatus: (id: string) => string,
 };
 
 export type ApprovalResponder = {

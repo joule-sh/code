@@ -42,12 +42,18 @@ export const SPAWN_AGENT_SCHEMA: ToolSchema = {
   parametersJson: "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\",\"description\":\"a self-contained description of the sub-problem - the subagent starts with no other context\"}},\"required\":[\"task\"]}",
 };
 
+export const TASK_STATUS_SCHEMA: ToolSchema = {
+  name: "task_status",
+  description: "Check a task started by run with background:true or by spawn_agent: still running, exit status if finished, and recent output (tail only, bounded to 100 lines / 4000 bytes). Cannot stop or restart it. Omit id to list every task's id and short status.",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"task id such as bgrun-1 or agent-2, from the call that started it; omit to list all tasks\"}},\"required\":[]}",
+};
+
 export function allFileToolSchemas(): ToolSchema[] {
   return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA];
 }
 
 export function allToolSchemas(): ToolSchema[] {
-  return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA];
+  return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA, TASK_STATUS_SCHEMA];
 }
 
 export function subagentToolSchemas(): ToolSchema[] {

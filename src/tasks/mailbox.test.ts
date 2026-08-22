@@ -1,4 +1,4 @@
-import { appendMailbox, MailboxReader, findMailboxEntry } from "./mailbox.ts";
+import { appendMailbox, MailboxReader, findMailboxEntry, readAllMailboxEntries } from "./mailbox.ts";
 
 function freshPath(name: string): string {
   let p = "/tmp/mailbox-test-" + name + ".log";
@@ -26,6 +26,24 @@ test("drainNew returns entries in order with tag and payload split correctly", (
   expect(entries[1].payload == "second line");
   expect(entries[2].tag == "DONE");
   expect(entries[2].payload == "lines=2");
+});
+
+test("readAllMailboxEntries returns every entry on every call, independent of any reader cursor", () => {
+  let p = freshPath("read-all");
+  appendMailbox(p, "LINE", "one");
+  appendMailbox(p, "LINE", "two");
+  let first = readAllMailboxEntries(p);
+  expect(first.length == 2);
+  let second = readAllMailboxEntries(p);
+  expect(second.length == 2);
+  expect(second[0].payload == "one");
+  expect(second[1].payload == "two");
+});
+
+test("readAllMailboxEntries returns nothing on an empty mailbox", () => {
+  let p = freshPath("read-all-empty");
+  let entries = readAllMailboxEntries(p);
+  expect(entries.length == 0);
 });
 
 test("drainNew only returns entries not already seen, across repeated calls", () => {
