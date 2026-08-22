@@ -188,6 +188,14 @@ export function cursorToColumn(col: int): string {
   return ESC + "[" + `${col}` + "G";
 }
 
+export function openTestPipe(): int {
+  return tty_open_test_pipe();
+}
+
+export function writeByteToTestPipe(byte: int): void {
+  tty_write_byte_to_test_pipe(byte);
+}
+
 test("isatty is false for a non-terminal fd", () => {
   let fd = tty_open_devnull_for_test();
   expect(!isatty(fd));

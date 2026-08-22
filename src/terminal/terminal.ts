@@ -21,6 +21,7 @@ import { loadRelayConfig } from "../relay/client_logic.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
 import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
 import { TaskManager } from "../tasks/manager.ts";
+import { wireForegroundRunner } from "../tools/run_foreground.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
@@ -144,6 +145,7 @@ export function runTerminal(argv: string[]): void {
     taskStatus: (id: string) => tasks.taskStatus(id),
   };
   registry.setTaskRunner(taskRunner);
+  wireForegroundRunner(registry);
   rk.bind(tracker, () => tasks.runningTaskCount());
   let approvalResponder: ApprovalResponder = {
     hasPendingApproval: () => tasks.hasPendingApproval(),
