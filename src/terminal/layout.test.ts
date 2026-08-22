@@ -40,13 +40,13 @@ function busy(): StatusInfo {
 }
 
 test("the welcome box is nine rows: top border, title, blank, three fields, blank, tagline, bottom border", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   let lines = box.split("\n");
   expect(lines.length == 9);
 });
 
 test("every row of the welcome box is styled violet and reset on its own row, with no bleed to the next", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   let raw = box.split("\n");
   let i = 0;
   while (i < raw.length) {
@@ -57,7 +57,7 @@ test("every row of the welcome box is styled violet and reset on its own row, wi
 });
 
 test("every row of the welcome box has the same true visible width", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   let lines = plainLines(box);
   let widths: int[] = [];
   let j = 0;
@@ -69,7 +69,7 @@ test("every row of the welcome box has the same true visible width", () => {
 });
 
 test("the welcome box has square single-line corners", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   let lines = plainLines(box);
   let top = lines[0];
   let bottom = lines[lines.length - 1];
@@ -80,7 +80,7 @@ test("the welcome box has square single-line corners", () => {
 });
 
 test("every content row is bordered by single vertical bars", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   let lines = plainLines(box);
   let i = 1;
   while (i < lines.length - 1) {
@@ -91,7 +91,7 @@ test("every content row is bordered by single vertical bars", () => {
 });
 
 test("the welcome box shows the model, workspace and mode it was given", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit");
+  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
   expect(box.indexOf("gpt-4") >= 0);
   expect(box.indexOf("/home/aymen/project") >= 0);
   expect(box.indexOf("auto-edit") >= 0);
@@ -99,7 +99,7 @@ test("the welcome box shows the model, workspace and mode it was given", () => {
 
 test("a workspace path too long for the box is truncated rather than breaking row width", () => {
   let longPath = "/home/aymen/some/really/long/path/that/does/not/fit/in/the/box/at/all/seriously";
-  let box = buildWelcomeBox("gpt-4", longPath, "auto-edit");
+  let box = buildWelcomeBox("gpt-4", longPath, "auto-edit", "");
   let lines = plainLines(box);
   let widths: int[] = [];
   let i = 0;
@@ -127,7 +127,7 @@ test("the status line reflects a different mode when given one", () => {
 });
 
 test("the welcome box shows the running version, so a released build is distinguishable from a source build", () => {
-  let box = buildWelcomeBox("m", "/w", "auto-edit");
+  let box = buildWelcomeBox("m", "/w", "auto-edit", "");
   expect(box.indexOf(" joule " + VERSION) >= 0);
 });
 
@@ -225,4 +225,13 @@ test("a field is left out entirely when its source has nothing to report", () =>
 
 test("a width of zero leaves the line uncut, so the caller's own clip stays in charge", () => {
   expect(statusText(busy(), 0) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands · PageUp/PageDown to scroll");
+});
+
+test("the welcome box names the server only when it is not the default", () => {
+  let hosted = buildWelcomeBox("m", "/w", "auto-edit", "https://joule.sh");
+  expect(hosted.indexOf("server") < 0);
+
+  let staging = buildWelcomeBox("m", "/w", "auto-edit", "http://100.89.7.80:8090");
+  expect(staging.indexOf("server") >= 0);
+  expect(staging.indexOf("100.89.7.80:8090") >= 0);
 });

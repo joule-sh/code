@@ -1,5 +1,5 @@
 import { rawEnable, rawDisable, readKey, CLEAR_LINE, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "../vendor/tty/tty.ts";
-import { ConfigFile, saveConfigFile, configFilePath } from "../providers/config.ts";
+import { ConfigFile, saveConfigFile, loadConfigFile, configFilePath } from "../providers/config.ts";
 import { InputLine } from "./input_state.ts";
 import { VIOLET, BOLD, DIM, wrap } from "./style.ts";
 
@@ -124,7 +124,8 @@ export function runOnboarding(): ConfigFile {
   let model = readRequiredField("model", "", false);
   let apiKey = readRequiredField("api key", "", true);
 
-  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey };
+  let existing = loadConfigFile(configFilePath());
+  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey, server: existing.server };
   saveConfigFile(configFilePath(), file);
 
   write("\r\n" + wrap(DIM, "saved to ~/.config/joule-code/config.json") + "\r\n\r\n");

@@ -1,4 +1,5 @@
 import { VIOLET, DIM, wrap } from "./style.ts";
+import { isDefaultServer } from "../auth/server.ts";
 import { VERSION } from "../version.ts";
 
 const BOX_WIDTH: int = 54;
@@ -39,13 +40,16 @@ function contentLine(text: string): string {
   return "│" + padTo(text, CONTENT_WIDTH) + "│";
 }
 
-export function buildWelcomeBox(model: string, workspace: string, mode: string): string {
+export function buildWelcomeBox(model: string, workspace: string, mode: string, server: string): string {
   let out = wrap(VIOLET, borderLine("┌", "┐"));
   out = out + "\n" + wrap(VIOLET, contentLine(" joule " + VERSION));
   out = out + "\n" + wrap(VIOLET, contentLine(""));
   out = out + "\n" + wrap(VIOLET, contentLine(field("model", model)));
   out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace)));
   out = out + "\n" + wrap(VIOLET, contentLine(field("mode", mode)));
+  if (server != "" && !isDefaultServer(server)) {
+    out = out + "\n" + wrap(VIOLET, contentLine(field("server", server)));
+  }
   out = out + "\n" + wrap(VIOLET, contentLine(""));
   out = out + "\n" + wrap(VIOLET, contentLine(" agentic coding, on your machine"));
   out = out + "\n" + wrap(VIOLET, borderLine("└", "┘"));

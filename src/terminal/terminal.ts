@@ -1,15 +1,16 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
-import { loadConfig } from "../providers/config.ts";
+import { loadConfig, loadServerBase } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
-import { readFile } from "../tools/files.ts";
 import { Gate, MODE_AUTO_EDIT, REPLY_DENY } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { catText } from "./cat.ts";
+import { runLogin, logoutText } from "./login_ui.ts";
 import { InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval } from "./approval_ui.ts";
@@ -41,6 +42,7 @@ export function runTerminal(argv: string[]): void {
     let onboarded = runOnboarding();
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
   }
+  let serverBase = loadServerBase(argv);
   let workspaceRoot = process.cwd();
   let resume = resolveResume(argv, workspaceRoot);
 
@@ -198,7 +200,7 @@ export function runTerminal(argv: string[]): void {
   process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR + ENABLE_MOUSE_REPORTING);
   rawEnable(STDIN);
 
-  sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode));
+  sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, serverBase));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   if (resume.note != "") { sb.append(resume.note); }
   drawScreen(sb, input, gate.mode, rk);
@@ -390,20 +392,20 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
+    if (cmd.kind == CMD_LOGIN) {
+      runLogin(sb, input, gate.mode, rk, serverBase);
+      drawScreen(sb, input, gate.mode, rk);
+      continue;
+    }
+
+    if (cmd.kind == CMD_LOGOUT) {
+      sb.append(logoutText(serverBase));
+      drawScreen(sb, input, gate.mode, rk);
+      continue;
+    }
+
     if (cmd.kind == CMD_CAT) {
-      if (cmd.arg == "") {
-        sb.append("\nusage: /cat <path>");
-      } else {
-        let r = readFile(workspaceRoot, cmd.arg, 0, 0);
-        if (!r.ok) {
-          sb.append("\ncat: " + cmd.arg + ": " + r.error);
-        } else {
-          sb.append("\n" + r.content);
-          if (r.truncated) {
-            sb.append("\n(truncated)");
-          }
-        }
-      }
+      sb.append(catText(workspaceRoot, cmd.arg));
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
