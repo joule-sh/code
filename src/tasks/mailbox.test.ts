@@ -106,3 +106,66 @@ test("drainNew holds its position when a read comes back short, instead of repla
   expect(again.length == 1);
   expect(again[0].payload == "three");
 });
+
+test("an entry that is only half written is held back until its newline lands", () => {
+  let p = freshPath("partial");
+  appendMailbox(p, "DELTA", "whole");
+  let fd = fs.openSync(p, "a");
+  fs.writeSync(fd, "1700000000000|DELTA|half");
+  let r = new MailboxReader(p);
+  let first = r.drainNew();
+  expect(first.length == 1);
+  expect(first[0].payload == "whole");
+  expect(r.drainNew().length == 0);
+  fs.writeSync(fd, " an entry\n");
+  fs.closeSync(fd);
+  let second = r.drainNew();
+  expect(second.length == 1);
+  expect(second[0].payload == "half an entry");
+});
+
+test("appending only ever grows the mailbox file", () => {
+  let p = freshPath("monotonic");
+  let last: int = 0;
+  let i: int = 0;
+  while (i < 64) {
+    appendMailbox(p, "DELTA", "entry " + `${i}`);
+    let size = fs.statSync(p).size;
+    expect(size > last);
+    last = size;
+    i = i + 1;
+  }
+});
+
+const CONCURRENT_ENTRIES: int = 500;
+const CONCURRENT_PATH: string = "/tmp/mailbox-test-concurrent.log";
+const CONCURRENT_TIMEOUT_MS: i64 = 60000;
+
+function spawnConcurrentWriter(): void {
+  let loop = "i=0; while [ $i -lt " + `${CONCURRENT_ENTRIES}` + " ]; do";
+  loop = loop + " printf '%s' \"1700000000000|DELTA|seq-$i\" >> " + CONCURRENT_PATH + ";";
+  loop = loop + " printf '\n' >> " + CONCURRENT_PATH + ";";
+  loop = loop + " i=$((i+1)); done";
+  let args: string[] = ["-c", loop + " &"];
+  child_process.spawnSync("/bin/sh", args);
+}
+
+test("a reader polling a mailbox another process is appending to sees every entry once, in order", () => {
+  fs.writeFileSync(CONCURRENT_PATH, "");
+  let r = new MailboxReader(CONCURRENT_PATH);
+  let started: i64 = Date.now();
+  spawnConcurrentWriter();
+  let next: int = 0;
+  let smallest: int = 0;
+  while (next < CONCURRENT_ENTRIES && Date.now() - started < CONCURRENT_TIMEOUT_MS) {
+    let size = fs.statSync(CONCURRENT_PATH).size;
+    expect(size >= smallest);
+    smallest = size;
+    for (const e of r.drainNew()) {
+      expect(e.tag == "DELTA");
+      expect(e.payload == "seq-" + `${next}`);
+      next = next + 1;
+    }
+  }
+  expect(next == CONCURRENT_ENTRIES);
+});
