@@ -2,6 +2,8 @@ export const CMD_HELP: string = "help";
 export const CMD_MODEL: string = "model";
 export const CMD_MODE: string = "mode";
 export const CMD_SHARE: string = "share";
+export const CMD_LOGIN: string = "login";
+export const CMD_LOGOUT: string = "logout";
 export const CMD_CAT: string = "cat";
 export const CMD_TASKS: string = "tasks";
 export const CMD_CLEAR: string = "clear";
@@ -39,6 +41,8 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "model") { return withKind(CMD_MODEL, arg); }
   if (name == "mode") { return withKind(CMD_MODE, arg); }
   if (name == "share") { return withKind(CMD_SHARE, arg); }
+  if (name == "login") { return withKind(CMD_LOGIN, arg); }
+  if (name == "logout") { return withKind(CMD_LOGOUT, arg); }
   if (name == "cat") { return withKind(CMD_CAT, arg); }
   if (name == "tasks") { return withKind(CMD_TASKS, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
@@ -52,6 +56,8 @@ export function commandList(): CommandInfo[] {
     { name: "/model", args: "[name]", description: "show or set the model" },
     { name: "/mode", args: "[mode]", description: "show or set the approval mode (read-only, auto-edit, full-auto)" },
     { name: "/share", args: "", description: "print the pairing URL for this session" },
+    { name: "/login", args: "", description: "sign in to the configured Joule server through a browser" },
+    { name: "/logout", args: "", description: "forget the stored credential for the configured Joule server" },
     { name: "/cat", args: "<path>", description: "show a file's contents without asking the model" },
     { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
     { name: "/clear", args: "", description: "clear the scrollback" },

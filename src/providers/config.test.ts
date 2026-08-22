@@ -59,7 +59,7 @@ test("parseConfigFile on empty or malformed text returns empty, not a crash", ()
 test("saveConfigFile writes a config that loadConfigFile reads back exactly", () => {
   let root = freshRoot("roundtrip");
   let target = root + "/nested/config.json";
-  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123" };
+  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123", server: "" };
 
   saveConfigFile(target, file);
   let loaded = loadConfigFile(target);
@@ -72,8 +72,8 @@ test("saveConfigFile writes a config that loadConfigFile reads back exactly", ()
 test("saveConfigFile overwrites a previously written config", () => {
   let root = freshRoot("overwrite");
   let target = root + "/config.json";
-  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key" };
-  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key" };
+  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key", server: "" };
+  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key", server: "" };
 
   saveConfigFile(target, first);
   saveConfigFile(target, second);

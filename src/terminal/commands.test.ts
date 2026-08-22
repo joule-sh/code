@@ -1,4 +1,4 @@
-import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -27,6 +27,11 @@ test("/share /clear /exit all parse", () => {
   expect(parseCommand("/share").kind == CMD_SHARE);
   expect(parseCommand("/clear").kind == CMD_CLEAR);
   expect(parseCommand("/exit").kind == CMD_EXIT);
+});
+
+test("/login and /logout parse with no arg", () => {
+  expect(parseCommand("/login").kind == CMD_LOGIN);
+  expect(parseCommand("/logout").kind == CMD_LOGOUT);
 });
 
 test("/cat with a path argument", () => {
