@@ -604,15 +604,46 @@ this pass rather than assumed:
   `terminal-harness` and `daemon-attach`/`concurrent`/`commands` runs were
   each repeated after the detach-crash fix specifically to confirm the flake
   it explains is gone, not just quieter).
-- `make layout-harness` (`verify_layout.py`) - 125 of 127 checks pass. Two
-  do not, deterministically, only when run as the third and fourth case in
-  that script's own size-variant sequence (never in isolation, and not
-  explained by port collision, stub-model state, or workspace reuse - all
-  checked directly): at 80x10 and 45x12, a tool-call reply to a follow-up
-  message sent after the panel/collapse tests in the same run does not
-  arrive within the 10s budget. Not root-caused within this pass's scope;
-  recorded here rather than weakened or worked around, as the two checks
-  that do not currently pass unmodified.
+- **`make layout-harness` (`verify_layout.py`) is a confirmed regression, not
+  a pre-existing gap - do not merge until it is fixed.** A fresh clone of
+  unmodified `main`, built and run in isolation, passes all 169 assertions
+  the script logs (its real total; see below for why this differs from an
+  earlier, wrong "127" this doc used to state) every time, three runs
+  straight. The identical script against this branch, also a fresh isolated
+  clone, fails the same two checks deterministically, three runs straight:
+  at 80x10 and 45x12 (the third and fourth case in the script's own
+  size-variant sequence, never the first two, never in isolation as a
+  single case), a tool-call reply to a follow-up message does not arrive
+  within the 10s budget `wait_for` enforces. `wait_for` raises on timeout
+  rather than returning a bool, so each miss aborts the rest of that case's
+  checks too - the true shape of the regression is "two of four cases abort
+  partway through," not "two assertions fail," which is why the branch's
+  total (123 pass + 2 explicit fail) is so much lower than main's 169: the
+  ~20 checks each aborted case would otherwise have logged never run.
+  Root cause, as far as this pass traced it: the daemon connection is not
+  merely slow to establish, it **drops and reconnects while the client is
+  otherwise idle**, mid-session, sometimes twice in the same short window -
+  each cycle costs three failed handshake attempts plus backoff before a
+  fourth succeeds, several seconds altogether, comfortably enough to blow a
+  10s budget. This was directly observed (an instrumented copy of the
+  harness dumping the raw pty stream): "hello there" is typed, submitted,
+  and *then* two full rounds of `daemon.disconnected` / `daemon.attached`
+  play out in the scrollback before the read/run turn that was already
+  in flight finally completes - well past the deadline. It reproduces only
+  from the third daemon-backed case onward in one script run, which is
+  exactly when two earlier cases' daemons are still alive in the
+  background (each one's `SessionWorker.loop()` ticking indefinitely, by
+  design - see Lifecycle, above); it does not reproduce with zero or one
+  other daemon running. Not yet pinned to a single line of code - whether
+  the proximate cause is scheduling contention on this test environment
+  once several daemon processes are live, or a real limit in the
+  websocket accept/handshake path under concurrent load (`lumen#12`'s
+  thread-pool territory) - but the correlation with background daemon
+  count is exact and repeatable, and it is a real reliability gap for
+  exactly the lifecycle this pass just made the default: a user who has
+  several workspace daemons alive at once, which this pass's own lifecycle
+  design (daemons outlive their client) makes the normal case, not an edge
+  case.
 - A live pty session against the real configured model (not the stub):
   welcome box, a real turn, streamed reply, `ctrl-d` exits in under a
   second, a second invocation in the same workspace attaches (one
