@@ -211,7 +211,9 @@ async function reapDaemon(daemon, workspace, label, clean) {
     residue.push(`${label}: the daemon for ${workspace} on 127.0.0.1:${daemon.port} ignored daemon.stop, killed ${stragglers.join(",") || "nothing"}`);
     console.error("LEAK: " + residue[residue.length - 1]);
   }
-  try { fs.rmSync(daemon.file, { force: true }); } catch { }
+  if (pidsListeningOn(daemon.port).length === 0) {
+    try { fs.rmSync(daemon.file, { force: true }); } catch { }
+  }
   if (clean) {
     try { fs.rmSync(daemon.log, { force: true }); } catch { }
   } else {

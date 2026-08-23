@@ -178,4 +178,12 @@ export class DaemonClient {
     this.attaching = false;
     this.socketReady = false;
   }
+
+  disconnect(): void {
+    this.detachRequested = true;
+    this.attaching = false;
+    this.socketReady = false;
+    let sock = currentAttachSocket();
+    if (sock.length > 0) { sock[0].close(); }
+  }
 }
