@@ -2,6 +2,7 @@ import { connectWebSocket, receive, sendText, Connection } from "../vendor/webso
 import { PROTOCOL_VERSION, RESUME, ResumeFrame, encodeResume } from "../protocol/frames.ts";
 import { encodeMailboxFrame, encodeMailboxControl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
 import { attachPath } from "./paths.ts";
+import { appendAttachMailbox } from "./attach_mailbox.ts";
 
 let g_host: string = "";
 let g_port: int = 0;
@@ -25,7 +26,7 @@ export function currentAttachSocket(): Socket[] {
 }
 
 function appendMailbox(line: string): void {
-  try { fs.appendFileSync(g_mailboxPath, line + "\n"); } catch { }
+  appendAttachMailbox(g_mailboxPath, line);
 }
 
 export function attachReceiveLoop(): int {
