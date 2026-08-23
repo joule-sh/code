@@ -4,12 +4,18 @@ import { Upgrade, readUpgrade, acceptResponse, refuseResponse } from "./handshak
 
 const MAX_MESSAGE: int = 8 * 1024 * 1024;
 
-export type Peer = {
-  socket: Socket,
-  path: string,
-  open: bool,
-  headers: Map<string, string>,
-};
+export class Peer {
+  socket: Socket;
+  path: string;
+  open: bool;
+  headers: Map<string, string>;
+  constructor(socket: Socket, path: string, headers: Map<string, string>) {
+    this.socket = socket;
+    this.path = path;
+    this.open = true;
+    this.headers = headers;
+  }
+}
 
 export function send(peer: Peer, message: string): void {
   if (!peer.open) { return; }
@@ -28,6 +34,7 @@ export function ping(peer: Peer, payload: string): void {
 
 export function closePeer(peer: Peer, code: int, reason: string): void {
   if (peer.open) {
+    peer.open = false;
     peer.socket.write(encodeClose(code, reason, false, ""));
   }
   peer.socket.close();
@@ -66,7 +73,7 @@ export function handleConnection(socket: Socket, onMessage: (peer: Peer, message
 
   buffer = buffer.slice(upgraded.consumed, buffer.length);
 
-  let peer: Peer = { socket: socket, path: upgraded.path, open: true, headers: upgraded.headers };
+  let peer = new Peer(socket, upgraded.path, upgraded.headers);
   let assembly = newAssembly();
 
   while (true) {
@@ -95,6 +102,7 @@ export function handleConnection(socket: Socket, onMessage: (peer: Peer, message
 
     let chunk = socket.read();
     if (chunk == "") {
+      peer.open = false;
       socket.close();
       onClose(peer, false);
       return;
