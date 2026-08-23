@@ -1,0 +1,80 @@
+{
+  "name": "joule-editor",
+  "displayName": "Joule",
+  "description": "Drive a joule daemon session from the editor.",
+  "version": "0.0.0",
+  "publisher": "joule-sh",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "joule",
+          "title": "Joule",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "joule": [
+        {
+          "id": "joule.chat",
+          "name": "Session",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "joule.attach",
+        "title": "Joule: Attach to this workspace's session"
+      },
+      {
+        "command": "joule.detach",
+        "title": "Joule: Detach from the session"
+      },
+      {
+        "command": "joule.cancel",
+        "title": "Joule: Cancel the current turn"
+      },
+      {
+        "command": "joule.stopDaemon",
+        "title": "Joule: Stop this workspace's daemon"
+      }
+    ],
+    "configuration": {
+      "title": "Joule",
+      "properties": {
+        "joule.path": {
+          "type": "string",
+          "default": "joule",
+          "description": "Path to the joule binary. The daemon is started and stopped through it, so it must be the same install a terminal would use."
+        },
+        "joule.attachOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Attach to this workspace's daemon as soon as the window opens. Off by default: attaching can join a session someone is already driving from a terminal, so it is an explicit action."
+        },
+        "joule.resumeOnStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "When this window is the one that starts the daemon, resume the workspace's previous session instead of beginning a new one."
+        }
+      }
+    }
+  }
+}

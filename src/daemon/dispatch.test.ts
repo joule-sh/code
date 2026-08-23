@@ -7,7 +7,7 @@ import { TaskManager } from "../tasks/manager.ts";
 import { RelayInputBridge } from "../terminal/relay_bridge.ts";
 import { ShareController, ShareResult } from "./share_controller.ts";
 import { dispatchDaemonFrame } from "./dispatch.ts";
-import { PROTOCOL_VERSION, frameType, DaemonStopFrame, encodeDaemonStop, DAEMON_STOPPING, decodeDaemonStopping, ShareRequestFrame, encodeShareRequest, SHARE_STARTED, SHARE_FAILED } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, frameType, DaemonStopFrame, encodeDaemonStop, DAEMON_STOPPING, decodeDaemonStopping, ShareRequestFrame, encodeShareRequest, SHARE_STARTED, SHARE_FAILED, APPROVAL_REPLY, APPROVAL_REPLY_RESULT, ApprovalReplyFrame, encodeApprovalReply, decodeApprovalReplyResult } from "../protocol/frames.ts";
 
 class Echoer {
   run(tool: string, args: string): ToolResult {
@@ -104,6 +104,60 @@ test("input and cancel frames still fall through to the shared relay dispatch, w
 
   expect(!stop);
   expect(session.cancelledTurnId == "t7");
+});
+
+function replyFrame(callId: string, decision: string): string {
+  let f: ApprovalReplyFrame = { v: PROTOCOL_VERSION, seq: 0, type: APPROVAL_REPLY, callId: callId, decision: decision };
+  return encodeApprovalReply(f);
+}
+
+function replyResults(cap: FrameCapture): string[] {
+  let out: string[] = [];
+  let i = 0;
+  while (i < cap.frames.length) {
+    if (frameType(cap.frames[i]) == APPROVAL_REPLY_RESULT) { out.push(cap.frames[i]); }
+    i = i + 1;
+  }
+  return out;
+}
+
+test("the first answer to an approval is broadcast as applied, so every attached client can clear the prompt", () => {
+  let session = newSession();
+  let gate = newGate();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => cap.add(f));
+
+  dispatchDaemonFrame(session, gate, newLive(), newTasks(), new RelayInputBridge(), fakeUplink(), replyFrame("c1", "deny"));
+
+  let results = replyResults(cap);
+  expect(results.length == 1);
+  let decoded = decodeApprovalReplyResult(results[0]);
+  expect(decoded != null);
+  if (decoded != null) {
+    expect(decoded.applied);
+    expect(decoded.callId == "c1");
+    expect(decoded.decision == "deny");
+  }
+});
+
+test("a second answer to the same approval is broadcast as not applied, naming the decision that won", () => {
+  let session = newSession();
+  let gate = newGate();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => cap.add(f));
+
+  dispatchDaemonFrame(session, gate, newLive(), newTasks(), new RelayInputBridge(), fakeUplink(), replyFrame("c1", "allow"));
+  dispatchDaemonFrame(session, gate, newLive(), newTasks(), new RelayInputBridge(), fakeUplink(), replyFrame("c1", "deny"));
+
+  let results = replyResults(cap);
+  expect(results.length == 2);
+  let second = decodeApprovalReplyResult(results[1]);
+  expect(second != null);
+  if (second != null) {
+    expect(!second.applied);
+    expect(second.decision == "allow");
+  }
+  expect(gate.findReply("c1") == "allow");
 });
 
 test("a share.request frame with a working uplink answers share.started", () => {

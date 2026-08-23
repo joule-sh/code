@@ -180,11 +180,13 @@ async function main() {
 
     const runRan = attachFrames.some((f) => f.type === "tool.call" && f.tool === "run");
     const results = [...attachFrames, ...browserFrames].filter((f) => f.type === "approval.reply.result" && f.callId === callId);
-    ok(results.length >= 1, "the losing side of the approval race was told a reply already applied (approval.reply.result), got " + results.length + " such frame(s)");
+    const refused = results.filter((r) => r.applied === false);
+    const applied = results.filter((r) => r.applied === true);
+    ok(refused.length >= 1, "the losing side of the approval race was told its reply was not applied (approval.reply.result), got " + refused.length + " such frame(s)");
+    ok(applied.length >= 1, "the winning answer was broadcast as applied too, so every attached client can clear the prompt, got " + applied.length + " such frame(s)");
     if (results.length > 0) {
       const winningDecision = runRan ? "allow" : "deny";
-      ok(results.every((r) => r.decision === winningDecision), "the loser's approval.reply.result names the decision that actually won (" + winningDecision + ")");
-      ok(results.every((r) => r.applied === false), "the loser's approval.reply.result says applied: false");
+      ok(results.every((r) => r.decision === winningDecision), "every approval.reply.result names the decision that actually won (" + winningDecision + ")");
     }
 
     const readmeAfter = fs.readFileSync(path.join(workspace, "README.md"), "utf8");
