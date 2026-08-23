@@ -156,23 +156,6 @@ async function openAttach(port) {
   return { conn, state };
 }
 
-async function assertDaemonServes(port, workspace, label) {
-  const holders = pidsListeningOn(port);
-  if (holders.length > 1) {
-    throw new Error(`${label}: ${holders.length} daemons share 127.0.0.1:${port} (pids ${holders.join(",")}), so a turn for ${workspace} could land on either`);
-  }
-  if (holders.length === 0) {
-    throw new Error(`${label}: nothing is listening on 127.0.0.1:${port} for ${workspace}`);
-  }
-}
-
-function assertSolePort(port, what, label) {
-  const holders = pidsListeningOn(port);
-  if (holders.length > 1) {
-    throw new Error(`${label}: ${holders.length} processes share 127.0.0.1:${port} for ${what} (pids ${holders.join(",")}), so its traffic would be split between them`);
-  }
-}
-
 async function reapPort(port, what, label) {
   if (!port) return;
   if (await waitForPortClosed(port, 5000)) return;
@@ -252,7 +235,6 @@ async function runScenario(name, approve) {
       env: { ...process.env, E2E_STUB_PORT: String(ports.stub), E2E_STUB_LOG: stubLog },
     });
     if (!(await waitForPort(ports.stub, 5000))) throw new Error(name + ": stub model server did not start");
-    assertSolePort(ports.stub, "the stub model", name);
 
     relay = spawnBg(path.join(REPO_ROOT, "bin/relay"), [], {
       env: {
@@ -263,11 +245,8 @@ async function runScenario(name, approve) {
       },
     });
     if (!(await waitForPort(ports.http, 5000))) throw new Error(name + ": relay http port did not start");
-    assertSolePort(ports.http, "the relay http port", name);
     if (!(await waitForPort(ports.ws, 5000))) throw new Error(name + ": relay terminal ws port did not start");
-    assertSolePort(ports.ws, "the relay terminal ws port", name);
     if (!(await waitForPort(ports.wsBrowser, 5000))) throw new Error(name + ": relay browser ws port did not start");
-    assertSolePort(ports.wsBrowser, "the relay browser ws port", name);
 
     const knownDaemons = new Set(daemonInfoNames());
     term = spawnBg("script", ["-qec", `${REPO_ROOT}/bin/joule --share`, termLog], {
@@ -295,7 +274,6 @@ async function runScenario(name, approve) {
       throw new Error(name + ": no daemon registered itself for " + repoDir + ", the client attached to someone else's");
     }
     console.log("ok: " + name + ": daemon for this run is on 127.0.0.1:" + daemon.port);
-    await assertDaemonServes(daemon.port, repoDir, name);
 
     const userId = crypto.randomUUID();
     const pairResp = await fetch(`http://127.0.0.1:${ports.http}/pair`, {

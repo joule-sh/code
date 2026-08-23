@@ -39,6 +39,11 @@ export function helloWorkspace(frames: string[]): string {
   return "";
 }
 
+export function describeWorkspace(seen: string): string {
+  if (seen == "") { return "nothing that identified itself"; }
+  return seen;
+}
+
 export function isTaken(taken: int[], port: int): bool {
   for (const p of taken) {
     if (p == port) { return true; }
@@ -110,8 +115,10 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
   let info = readDaemonInfo(workspaceRoot);
   let taken = portsHeldByOthers(workspaceRoot);
   let port = DEFAULT_PORT_BASE;
+  let recorded = false;
   if (info != null) {
     port = info.port;
+    recorded = true;
   } else {
     port = firstFreePort(portFromWorkspace(workspaceRoot, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD), taken);
   }
@@ -125,14 +132,15 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     if (first.ready) {
       let settled = waitForHello(client, first.frames, HELLO_WAIT_TICKS);
       let seen = helloWorkspace(settled);
-      if (seen == "" || seen == workspaceRoot) {
+      if (seen == workspaceRoot || (recorded && seen == "")) {
         let already: AttachResult = { client: client, spawned: false, pending: settled, port: port };
         return already;
       }
-      console.log("joule: 127.0.0.1:" + `${port}` + " is serving " + seen + ", not " + workspaceRoot + " - looking for a port of its own");
+      console.log("joule: 127.0.0.1:" + `${port}` + " answers for " + describeWorkspace(seen) + ", not " + workspaceRoot + " - looking for a port of its own");
       client.disconnect();
       taken.push(port);
       port = firstFreePort(nextPortInRange(port), taken);
+      recorded = false;
       attempt = attempt + 1;
       continue;
     }
