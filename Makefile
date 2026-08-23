@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness bench-mailbox clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -71,6 +71,15 @@ daemon-concurrent-harness: build bin/stub_model
 
 daemon-attach-harness: build bin/stub_model
 	python3 scripts/verify_attach_pty.py
+
+daemon-commands-harness: build bin/stub_model
+	node scripts/verify_daemon_mode_model.mjs
+
+daemon-stop-harness: build bin/stub_model
+	node scripts/verify_daemon_stop.mjs
+
+attach-commands-harness: build bin/stub_model
+	python3 scripts/verify_attach_commands.py
 
 bin/mailbox_bench: $(ALL_TS)
 	mkdir -p bin

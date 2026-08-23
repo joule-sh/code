@@ -96,7 +96,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   registry.setTaskRunner(taskRunner);
   wireForegroundRunner(registry);
 
-  let worker = new SessionWorker(runtimeDir, session, gate, tasks);
+  let worker = new SessionWorker(runtimeDir, session, gate, live, tasks);
   gate.setOnPoll(() => { worker.drainOnce(); });
 
   session.subscribe((frameJson: string) => {
@@ -123,6 +123,8 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   Worker.run(() => { runDaemonWebSocket(port, runtimeDir); return 0; });
   worker.loop();
   removeDaemonInfo(workspaceRoot);
+  console.log("joule-daemon: stopped");
+  process.exit(0);
 }
 
 export function runDaemonMain(): void {

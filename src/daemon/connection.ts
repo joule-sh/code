@@ -1,6 +1,6 @@
 import { Peer, send, closePeer, serveWebSocket } from "../vendor/websocket/server.ts";
 import { CLOSE_PROTOCOL_ERROR } from "../vendor/websocket/frame.ts";
-import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
+import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
 import { connIdFromPath, isSafeConnId } from "./paths.ts";
 import { appendInbound } from "./inbox.ts";
 import { newBroadcastReader } from "./broadcast.ts";
@@ -38,6 +38,12 @@ function sinceFromResume(message: string): int {
   return resume.since;
 }
 
+export function isAcceptedInboundType(t: string): bool {
+  if (t == INPUT || t == CANCEL || t == APPROVAL_REPLY) { return true; }
+  if (t == MODE_SET || t == MODEL_SET || t == TASKS_REQUEST || t == DAEMON_STOP) { return true; }
+  return false;
+}
+
 export function daemonOnMessage(peer: Peer, message: string): void {
   let connId = connIdFromPath(peer.path);
   if (!isSafeConnId(connId)) {
@@ -50,7 +56,7 @@ export function daemonOnMessage(peer: Peer, message: string): void {
     Worker.run(() => { return pusherLoop(peer, since); });
     return;
   }
-  if (t != INPUT && t != CANCEL && t != APPROVAL_REPLY) { return; }
+  if (!isAcceptedInboundType(t)) { return; }
   appendInbound(g_runtimeDir, connId, message);
 }
 

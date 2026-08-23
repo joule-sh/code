@@ -20,6 +20,19 @@ and built by default, plus `joule attach` as its first client.
   `/update` are not wired up yet - `/help` says so - because doing that
   properly means retiring `runTerminal`'s local-session path, and that is
   its own change, not a rider on this one.
+
+  **Update, follow-up pass:** all of these except `/share` are wired up now.
+  `/mode` and `/model` go over the wire as `mode.set`/`model.set` and come
+  back as a broadcast every attached client sees (`src/daemon/dispatch_mode.ts`,
+  `dispatch_model.ts`); `/tasks` is the same request/broadcast shape
+  (`dispatch_tasks.ts`); `/memory`, `/login`, `/logout`, `/update` and `/cat`
+  stay entirely client-local, unchanged from what `terminal.ts` already does,
+  because none of them touch daemon-owned session state. `/share` still says
+  plainly that it isn't available rather than routing the raw command text to
+  the model - it needs the relay reshape this doc still describes as future
+  work, below. A new `/stop-daemon` command and a `joule attach --stop` flag
+  fill the "who owns shutdown" gap this doc originally left open (see
+  Lifecycle, below).
 - The default `joule` (no arguments) is untouched. Not "unlikely to have
   regressed" - the diff to `src/terminal/terminal.ts` is zero lines. Every
   existing harness (`terminal-harness`, `layout-harness`,
@@ -181,12 +194,45 @@ Spawn-if-absent works, through the same `/bin/sh -c 'nohup ... & disown'`
 indirection the spike identified as necessary (Lumen's `child_process` still
 cannot detach a spawned process from its parent - spec 450, lumen#6).
 
-**Who owns shutdown is still an open question, same as the spike left it.**
-A daemon started by `joule attach` currently outlives that attach session
-indefinitely - there is no stop frame, no idle timeout, no `joule detach
---stop`. Given persistence already writes to disk on every turn regardless
-of process, outliving one client is the right default; an explicit,
-deliberate stop path is the gap. Left open rather than guessed at.
+**Update, follow-up pass: shutdown is decided.** A daemon started by `joule
+attach` still outlives that attach session by default - persistence writes
+to disk on every turn regardless of process, so there was never a reason to
+tear it down just because one client left. What was missing was a
+deliberate way to ask it to stop, and that's what this adds.
+
+Any attached client may ask - `/stop-daemon` from inside `joule attach`, or
+`joule attach --stop` without opening a TUI at all. There is no separate
+authorization layer beyond being attached to the workspace's daemon in the
+first place, which is the same trust boundary #142 already established for
+approvals: any attached client can already answer any other client's
+approval prompt, so any attached client being able to ask for a stop is not
+a new kind of trust, just the same one applied to a new frame type.
+
+On `daemon.stop`, the daemon broadcasts `daemon.stopping` (with a reason)
+to every attached client before it does anything else - every client finds
+out, not just the one that asked. It does not tear down immediately: the
+`SessionWorker` loop keeps running for a short grace window (long enough
+for every connection's pusher thread to actually push the notice out over
+its websocket before the process disappears out from under it) and, more
+importantly, does not force an in-flight turn to stop. `Gate.check()`'s
+approval-wait loop already re-enters `SessionWorker.drainOnce()` on every
+poll, so a `daemon.stop` frame arriving mid-turn is seen and recorded right
+away (the broadcast goes out immediately), but the loop only actually exits
+once the current `session.submit()` call has fully returned - normal
+completion, cancellation, or the existing approval timeout, whichever
+comes first. Nothing forces that turn to end sooner.
+
+What this does not and cannot guarantee: a tool call already in flight when
+someone asks the daemon to stop keeps running. `tools/run.ts` still spawns
+its child with `child_process.spawnSync` and cannot kill it (lumen#6, open
+upstream, the same limitation `docs/00-plan.md` and `02-background-task-spike.md`
+already documented for the synchronous case) - stop does not change that,
+it just does not pretend otherwise. Background runs and subagents
+(`tasks/background_run.ts`, `tasks/subagent_worker.ts`) are independently
+spawned, fire-and-forget child processes with no handle the daemon keeps
+past spawning them; stopping the daemon does not stop them either, for the
+same underlying reason. `joule attach --stop` says this explicitly when it
+gets an acknowledgement, rather than implying a clean kill happened.
 
 ## Verification
 
@@ -207,3 +253,29 @@ deliberate stop path is the gap. Left open rather than guessed at.
   effect lands on disk, ctrl-d exits cleanly.
 - A manual run against the real configured model (not the stub) confirmed a
   full turn end to end through the daemon.
+
+**Update, follow-up pass:** four more harnesses, same Makefile convention
+(their own target, not part of `make test`):
+
+- `make attach-commands-harness` (`scripts/verify_attach_commands.py`) -
+  a real pty running `bin/joule attach` against a real daemon, exercising
+  `/mode`, `/model`, `/tasks`, `/share` and `/help` end to end.
+- `make daemon-commands-harness` (`scripts/verify_daemon_mode_model.mjs`)
+  and `make daemon-stop-harness` (`scripts/verify_daemon_stop.mjs`) - the
+  same two-raw-websocket-clients shape as `daemon-concurrent-harness`,
+  for mode/model/tasks cross-client visibility and for `daemon.stop`.
+- `src/daemon/cross_client.test.ts`, part of `make test` - wires a real
+  `Session` to `appendBroadcast` the way `daemon.ts` itself does, dispatches
+  a real `mode.set`/`model.set`, and asserts two independent broadcast
+  readers both see the resulting frame.
+
+The two new two-client harnesses currently hang in the environment this
+pass was verified in, at the same point and for the same reason
+`daemon-concurrent-harness` already does there: a second concurrent
+websocket connection to one daemon process never completes its handshake.
+This reproduces identically against the unmodified merged baseline, so
+it's a pre-existing environment/toolchain issue, not something this pass
+introduced - `cross_client.test.ts` is the substitute proof that runs
+clean today, and the daemon-side mechanism it exercises (broadcast log,
+multiple independent readers) is exactly what a second websocket
+connection's pusher thread would also be doing.
