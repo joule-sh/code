@@ -14,6 +14,8 @@ export const PAIR_RATE_LIMITED: string = "rate_limited";
 
 export type PairOutcome = { status: string, sessionId: string };
 
+export type SessionSummary = { sessionId: string, workspace: string, model: string, createdAt: i64, lastActivityAt: i64, paired: bool };
+
 export class SessionRecord {
   sessionId: string;
   secret: string;
@@ -25,8 +27,10 @@ export class SessionRecord {
   pairedUserId: string;
   createdAt: i64;
   lastActivityAt: i64;
+  accountId: string;
+  accountEmail: string;
 
-  constructor(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64) {
+  constructor(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string) {
     this.sessionId = sessionId;
     this.secret = secret;
     this.workspace = workspace;
@@ -37,6 +41,16 @@ export class SessionRecord {
     this.pairedUserId = "";
     this.createdAt = now;
     this.lastActivityAt = now;
+    this.accountId = accountId;
+    this.accountEmail = accountEmail;
+  }
+
+  summary(): SessionSummary {
+    let s: SessionSummary = {
+      sessionId: this.sessionId, workspace: this.workspace, model: this.model,
+      createdAt: this.createdAt, lastActivityAt: this.lastActivityAt, paired: this.pairedUserId != "",
+    };
+    return s;
   }
 }
 
@@ -78,14 +92,27 @@ export class SessionStore {
     this.pairLimiter = new RateLimiter(PAIR_RATE_LIMIT_MAX, PAIR_RATE_LIMIT_WINDOW_MS);
   }
 
-  create(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64): SessionRecord {
-    let created = new SessionRecord(sessionId, secret, workspace, model, code, now);
+  create(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string): SessionRecord {
+    let created = new SessionRecord(sessionId, secret, workspace, model, code, now, accountId, accountEmail);
     this.sessions.set(sessionId, created);
     return created;
   }
 
   find(sessionId: string): SessionRecord | null {
     return this.sessions.get(sessionId);
+  }
+
+  listForAccount(accountId: string): SessionSummary[] {
+    let out: SessionSummary[] = [];
+    if (accountId == "") { return out; }
+    let ids = this.sessions.keys();
+    for (const id of ids) {
+      let rec = this.sessions.get(id);
+      if (rec == null) { continue; }
+      if (rec.accountId != accountId) { continue; }
+      out.push(rec.summary());
+    }
+    return out;
   }
 
   touch(sessionId: string, now: i64): void {

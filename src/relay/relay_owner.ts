@@ -1,6 +1,6 @@
 import { SessionStore } from "./store.ts";
 import { appendMailbox, MailboxReader } from "../tasks/mailbox.ts";
-import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, commandKind, CreateCommand, decodeCreateCommand, CreateResult, encodeCreateResult, PairCommand, decodePairCommand, PairResult, encodePairResult, ConnectCommand, decodeConnectCommand, ConnectResult, encodeConnectResult, DetachCommand, decodeDetachCommand, DetachResult, encodeDetachResult } from "./store_commands.ts";
+import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, CMD_LIST_MINE, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, commandKind, CreateCommand, decodeCreateCommand, CreateResult, encodeCreateResult, PairCommand, decodePairCommand, PairResult, encodePairResult, ConnectCommand, decodeConnectCommand, ConnectResult, encodeConnectResult, DetachCommand, decodeDetachCommand, DetachResult, encodeDetachResult, ListMineCommand, decodeListMineCommand, ListMineResult, encodeListMineResult } from "./store_commands.ts";
 import { commandsLogPath, resultsLogPath, sessionDir, sessionsDir, toBrowserLogPath, toTerminalLogPath } from "./relay_paths.ts";
 import { generateCode, generateSecret, generateSessionId } from "./pairing.ts";
 
@@ -45,7 +45,7 @@ export class RelayOwner {
     let sessionId = generateSessionId();
     let secret = generateSecret();
     let code = generateCode();
-    let created = this.store.create(sessionId, secret, createCmd.workspace, createCmd.model, code, createCmd.now);
+    let created = this.store.create(sessionId, secret, createCmd.workspace, createCmd.model, code, createCmd.now, createCmd.accountId, createCmd.accountEmail);
     fs.mkdirSync(sessionDir(this.runtimeDir, sessionId), true);
     let result: CreateResult = { sessionId: created.sessionId, secret: created.secret, code: created.code, expiresAt: created.codeExpiresAt };
     return encodeCreateResult(result);
@@ -97,12 +97,20 @@ export class RelayOwner {
     return encodeDetachResult(result);
   }
 
+  handleListMine(text: string): string {
+    let listCmd = decodeListMineCommand(text);
+    if (listCmd == null) { return ""; }
+    let result: ListMineResult = { sessions: this.store.listForAccount(listCmd.accountId) };
+    return encodeListMineResult(result);
+  }
+
   handleCommand(text: string): string {
     let kind = commandKind(text);
     if (kind == CMD_CREATE) { return this.handleCreate(text); }
     if (kind == CMD_PAIR) { return this.handlePair(text); }
     if (kind == CMD_CONNECT) { return this.handleConnect(text); }
     if (kind == CMD_DETACH) { return this.handleDetach(text); }
+    if (kind == CMD_LIST_MINE) { return this.handleListMine(text); }
     return "";
   }
 

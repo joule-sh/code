@@ -4,6 +4,8 @@ import { remoteStoreCaller } from "./relay_rpc.ts";
 import { RelayOwner } from "./relay_owner.ts";
 import { serveTerminalWebSocket, serveBrowserWebSocket } from "./ws.ts";
 import { relayRuntimeDir, sessionsDir } from "./relay_paths.ts";
+import { AccountVerifier } from "./http.ts";
+import { verifyAccountCredential, consoleUrlFromEnv, CONSOLE_URL_ENV } from "./account_verify.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -32,6 +34,7 @@ function envPort(name: string, fallback: int): int {
 const HTTP_PORT: int = envPort("JOULE_RELAY_HTTP_PORT", 8090);
 const WS_PORT: int = envPort("JOULE_RELAY_WS_PORT", 8091);
 const WS_BROWSER_PORT: int = envPort("JOULE_RELAY_WS_BROWSER_PORT", WS_PORT + 1);
+const CONSOLE_URL: string = consoleUrlFromEnv(process.env(CONSOLE_URL_ENV) ?? "");
 
 let runtimeDir = relayRuntimeDir(HTTP_PORT);
 
@@ -40,8 +43,12 @@ function freshRuntimeDir(dir: string): void {
   fs.mkdirSync(sessionsDir(dir), true);
 }
 
+function accountVerifier(): AccountVerifier {
+  return (secret: string) => verifyAccountCredential(CONSOLE_URL, secret);
+}
+
 function runHttpListener(): int {
-  net.createServer(HTTP_PORT, socketHandler(remoteStoreCaller(runtimeDir), WS_BROWSER_PORT));
+  net.createServer(HTTP_PORT, socketHandler(remoteStoreCaller(runtimeDir), WS_BROWSER_PORT, accountVerifier()));
   return 0;
 }
 
@@ -57,7 +64,7 @@ function runBrowserWsListener(): int {
 
 function runRelay(): void {
   freshRuntimeDir(runtimeDir);
-  console.log("relay: pairing on :" + `${HTTP_PORT}` + ", terminal ws on :" + `${WS_PORT}` + ", browser ws on :" + `${WS_BROWSER_PORT}`);
+  console.log("relay: pairing on :" + `${HTTP_PORT}` + ", terminal ws on :" + `${WS_PORT}` + ", browser ws on :" + `${WS_BROWSER_PORT}` + ", verifying accounts against " + CONSOLE_URL);
   Worker.run(runHttpListener);
   Worker.run(runTerminalWsListener);
   Worker.run(runBrowserWsListener);

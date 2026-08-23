@@ -12,8 +12,9 @@ export class RelayUplink {
   relay: RelayClient;
   reader: MailboxReader;
 
-  constructor(host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string, runtimeDir: string) {
+  constructor(host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string, runtimeDir: string, credentialSecret: string) {
     this.relay = new RelayClient(host, httpPort, wsPort, webBaseUrl, tmpDir);
+    this.relay.credentialSecret = credentialSecret;
     this.reader = newBroadcastReader(runtimeDir);
   }
 

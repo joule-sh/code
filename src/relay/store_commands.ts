@@ -1,12 +1,15 @@
+import { SessionSummary } from "./store.ts";
+
 export const CMD_CREATE: string = "create";
 export const CMD_PAIR: string = "pair";
 export const CMD_CONNECT: string = "connect";
 export const CMD_DETACH: string = "detach";
+export const CMD_LIST_MINE: string = "list_mine";
 
 export const ROLE_TERMINAL_CMD: string = "terminal";
 export const ROLE_BROWSER_CMD: string = "browser";
 
-export type CreateCommand = { kind: string, workspace: string, model: string, now: i64 };
+export type CreateCommand = { kind: string, workspace: string, model: string, now: i64, accountId: string, accountEmail: string };
 export type CreateResult = { sessionId: string, secret: string, code: string, expiresAt: i64 };
 
 export type PairCommand = { kind: string, code: string, userId: string, now: i64 };
@@ -15,7 +18,10 @@ export type PairResult = { status: string, sessionId: string };
 export type ConnectCommand = { kind: string, sessionId: string, role: string, credential: string, now: i64 };
 export type ConnectResult = { ok: bool, refusal: string };
 
-function rawFieldValue(body: string, key: string): string {
+export type ListMineCommand = { kind: string, accountId: string };
+export type ListMineResult = { sessions: SessionSummary[] };
+
+export function rawFieldValue(body: string, key: string): string {
   let mark = "\"" + key + "\"";
   let at = body.indexOf(mark);
   if (at < 0) { return ""; }
@@ -88,4 +94,13 @@ export function decodeDetachCommand(text: string): DetachCommand | null {
 export function encodeDetachResult(r: DetachResult): string { return JSON.stringify(r); }
 export function decodeDetachResult(text: string): DetachResult | null {
   try { return JSON.parse<DetachResult>(text); } catch { return null; }
+}
+
+export function encodeListMineCommand(c: ListMineCommand): string { return JSON.stringify(c); }
+export function decodeListMineCommand(text: string): ListMineCommand | null {
+  try { return JSON.parse<ListMineCommand>(text); } catch { return null; }
+}
+export function encodeListMineResult(r: ListMineResult): string { return JSON.stringify(r); }
+export function decodeListMineResult(text: string): ListMineResult | null {
+  try { return JSON.parse<ListMineResult>(text); } catch { return null; }
 }

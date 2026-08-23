@@ -1,5 +1,5 @@
 import { StoreCaller } from "./relay_rpc.ts";
-import { makeHttpHandler, RelayHttpRequest, RelayHttpResponse } from "./http.ts";
+import { makeHttpHandler, RelayHttpRequest, RelayHttpResponse, AccountVerifier } from "./http.ts";
 
 const MAX_HEAD_SIZE: int = 65536;
 const STATUS_REASONS: Map<int, string> = http.STATUS_CODES();
@@ -118,7 +118,7 @@ function writeResponse(socket: Socket, resp: RelayHttpResponse): void {
   socket.close();
 }
 
-export function socketHandler(caller: StoreCaller, wsBrowserPort: int): (socket: Socket) => void {
+export function socketHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier): (socket: Socket) => void {
   return (socket: Socket) => {
     let parsed = readRequest(socket);
     if (!parsed.ok) {
@@ -129,7 +129,7 @@ export function socketHandler(caller: StoreCaller, wsBrowserPort: int): (socket:
       }
       return;
     }
-    let handler = makeHttpHandler(caller, wsBrowserPort);
+    let handler = makeHttpHandler(caller, wsBrowserPort, verifyAccount);
     let resp = handler(parsed.req);
     writeResponse(socket, resp);
   };
