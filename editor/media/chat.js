@@ -134,6 +134,10 @@
 
   function gateNode() {
     const box = el("div", "gate");
+    if (state.blocked) {
+      box.appendChild(el("pre", "gate-error", state.blocked));
+      return box;
+    }
     if (state.daemonAlreadyRunning) {
       box.appendChild(el("p", "gate-text", "A joule daemon is already running for this folder. Attaching joins that session - if someone is driving it from a terminal, you will both be in it."));
     } else {

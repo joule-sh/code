@@ -1,4 +1,4 @@
-.PHONY: build release test e2e editor-frames editor-check editor-harness terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test e2e editor-frames editor-check editor-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -102,6 +102,9 @@ editor-check:
 editor-harness: build bin/stub_model editor-check
 	node scripts/verify_editor_client.mjs
 
+editor-package: editor-check
+	node scripts/package_editor.mjs
+
 relay-reconnect-harness: bin/relay
 	node scripts/verify_relay_reconnect.mjs
 
@@ -121,4 +124,4 @@ bench-mailbox: bin/mailbox_bench
 	BENCH_MODE=concurrent BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
 
 clean:
-	rm -rf bin code relay daemon_main src/vendor/tty/tty_shim.o
+	rm -rf bin code relay daemon_main dist src/vendor/tty/tty_shim.o

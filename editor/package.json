@@ -5,6 +5,15 @@
   "version": "0.0.0",
   "publisher": "joule-sh",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joule-sh/code.git",
+    "directory": "editor"
+  },
+  "homepage": "https://github.com/joule-sh/code/tree/main/editor#readme",
+  "bugs": {
+    "url": "https://github.com/joule-sh/code/issues"
+  },
   "private": true,
   "engines": {
     "vscode": "^1.85.0"
@@ -14,6 +23,13 @@
   ],
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "joule",
+    "agent",
+    "ai",
+    "pair programming",
+    "coding agent"
   ],
   "main": "./extension.js",
   "activationEvents": [

@@ -4,6 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { EditorSession } = require("./session.js");
 const { findDaemonInfo } = require("./daemon_link.js");
+const { unsupportedPlatform } = require("./binary.js");
 
 const VIEW_ID = "joule.chat";
 const CONN_ID_KEY = "joule.connId";
@@ -108,6 +109,19 @@ class ChatPanel {
     const session = this.sessionFor(folder);
     const resume = vscode.workspace.getConfiguration("joule").get("resumeOnStart") === true;
     await session.attach({ resume: (options && options.resume) || resume });
+    if (session.problem !== "") { await this.reportProblem(session); }
+  }
+
+  async reportProblem(session) {
+    const help = session.help;
+    if (help === null || !help.url) {
+      vscode.window.showErrorMessage(session.detail);
+      return;
+    }
+    const picked = await vscode.window.showErrorMessage(session.detail, help.label);
+    if (picked === help.label) {
+      vscode.env.openExternal(vscode.Uri.parse(help.url));
+    }
   }
 
   detach() {
@@ -167,9 +181,11 @@ class ChatPanel {
   post() {
     if (this.view === null) { return; }
     const folders = this.folders().map((f) => ({ name: f.name, path: f.uri.fsPath }));
+    const blocked = unsupportedPlatform("");
     const state = this.session === null
       ? this.idleState(folders)
       : Object.assign(this.session.view(), { folders });
+    state.blocked = blocked;
     this.view.webview.postMessage({ kind: "state", state });
   }
 

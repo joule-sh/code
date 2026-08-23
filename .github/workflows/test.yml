@@ -96,6 +96,7 @@ jobs:
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: node --version
       - run: make editor-harness
+      - run: make editor-package
 
   daemon-attach:
     runs-on: [self-hosted, diff]
