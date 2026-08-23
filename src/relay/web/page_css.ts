@@ -131,6 +131,8 @@ button:disabled {
   word-break: break-word;
 }
 .line-error { color: var(--fail); font-weight: 600; }
+.line-warn { color: var(--warn); font-weight: 600; }
+.line-notice { color: var(--muted); }
 .md-header { font-weight: 700; color: var(--accent); }
 .md-fence { display: none; }
 .md-code-line {

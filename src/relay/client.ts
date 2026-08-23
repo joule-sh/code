@@ -1,18 +1,13 @@
-import { PROTOCOL_VERSION, ERROR, ErrorFrame, encodeError, frameType } from "../protocol/frames.ts";
+import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
 import { Connection, sendText, closeConnection } from "../vendor/websocket/client.ts";
 import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
-import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
 import { configureWorker, currentSocket, receiveLoop } from "./client_worker.ts";
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
 
 type CreateSessionRequest = { workspace: string, model: string, credentialSecret: string };
 type SessionCreated = { sessionId: string, secret: string, code: string, expiresAt: i64 };
-
-function noticeFrame(code: string, message: string): ErrorFrame {
-  let f: ErrorFrame = { v: PROTOCOL_VERSION, seq: 0, type: ERROR, code: code, message: message };
-  return f;
-}
 
 export class RelayClient {
   host: string;
@@ -34,6 +29,8 @@ export class RelayClient {
   lastSeq: int;
   outbound: string[];
   overflowed: bool;
+  saidUnreachable: bool;
+  outageSince: i64;
 
   mailboxPath: string;
   mailboxSeen: int;
@@ -61,6 +58,8 @@ export class RelayClient {
     this.lastSeq = 0;
     this.outbound = [];
     this.overflowed = false;
+    this.saidUnreachable = false;
+    this.outageSince = 0;
     this.mailboxPath = "";
     this.mailboxSeen = 0;
     this.backoffMs = BACKOFF_START_MS;
@@ -106,6 +105,8 @@ export class RelayClient {
     this.lastSeq = 0;
     this.outbound = [];
     this.overflowed = false;
+    this.saidUnreachable = false;
+    this.outageSince = 0;
     this.mailboxPath = mailboxPathFor(this.tmpDir, this.sessionId);
     this.mailboxSeen = 0;
     this.backoffMs = BACKOFF_START_MS;
@@ -138,7 +139,7 @@ export class RelayClient {
     this.outbound = pushed.buffer;
     if (pushed.overflowed && !this.overflowed) {
       this.overflowed = true;
-      this.diagnostics.push(encodeError(noticeFrame("relay.buffer_overflow", "the local outbound buffer overflowed while disconnected, the oldest buffered frames were dropped - the web view will be behind once reconnected")));
+      this.diagnostics.push(encodeNotice(noticeFrame("relay.buffer_overflow", LEVEL_WARN, "the local outbound buffer overflowed while disconnected, the oldest buffered frames were dropped - the web view will be behind once reconnected")));
     }
   }
 
@@ -154,16 +155,22 @@ export class RelayClient {
     this.socketReady = true;
     this.connecting = false;
     this.backoffMs = BACKOFF_START_MS;
-    this.diagnostics.push(encodeError(noticeFrame("relay.attached", "connected to the relay")));
+    this.saidUnreachable = false;
+    this.outageSince = 0;
     this.flushOutbound();
   }
 
-  onDisconnected(detail: string): void {
+  onDisconnected(detail: string, retryFailed: bool): void {
     this.socketReady = false;
     this.connecting = false;
     if (this.detachRequested) { return; }
-    this.diagnostics.push(encodeError(noticeFrame("relay.disconnected", "lost the relay connection (" + detail + "), retrying")));
-    this.nextRetryAt = Date.now() + this.backoffMs;
+    let now = Date.now();
+    if (this.outageSince == 0) { this.outageSince = now; }
+    if (shouldSayUnreachable(retryFailed, this.saidUnreachable, this.outageSince, now)) {
+      this.saidUnreachable = true;
+      this.diagnostics.push(encodeNotice(noticeFrame("relay.unreachable", LEVEL_WARN, "cannot reach the relay (" + detail + "), still retrying - the web view is behind until it answers")));
+    }
+    this.nextRetryAt = now + this.backoffMs;
     this.backoffMs = nextBackoffMs(this.backoffMs);
   }
 
@@ -179,12 +186,14 @@ export class RelayClient {
         if (isDownstreamAllowed(frameType(parsed.payload))) {
           this.inboundQueue.push(parsed.payload);
         } else {
-          this.diagnostics.push(encodeError(noticeFrame("relay.rejected_frame", "dropped a frame of a type the terminal never accepts from the relay: " + frameType(parsed.payload))));
+          this.diagnostics.push(encodeNotice(noticeFrame("relay.rejected_frame", LEVEL_WARN, "dropped a frame of a type the terminal never accepts from the relay: " + frameType(parsed.payload))));
         }
       } else if (parsed.tag == TAG_CONNECTED) {
         this.onConnected();
-      } else if (parsed.tag == TAG_DISCONNECTED || parsed.tag == TAG_CONNECT_FAILED) {
-        this.onDisconnected(parsed.payload);
+      } else if (parsed.tag == TAG_DISCONNECTED) {
+        this.onDisconnected(parsed.payload, false);
+      } else if (parsed.tag == TAG_CONNECT_FAILED) {
+        this.onDisconnected(parsed.payload, true);
       }
       i = i + 1;
     }

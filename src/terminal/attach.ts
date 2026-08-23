@@ -16,7 +16,7 @@ import { DaemonClient } from "../daemon/attach_client.ts";
 import { AttachResult, ensureAttached, runAttachStop, hasStopFlag } from "../daemon/attach_lifecycle.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
-import { runLogin, logoutText } from "./login_ui.ts";
+import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { ServerOrigin } from "../auth/server.ts";
@@ -114,6 +114,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let history = new InputHistory();
   let rk = new TurnStatusTracker();
   let pendingApproval = new PendingApproval();
+  let signin = new SignIn();
   let updateOffer = new PendingUpdateOffer();
   let updateInstall = new PendingUpdateInstall();
   let planPending = new PendingPlanDecision();
@@ -239,7 +240,10 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     if (k.kind == KEY_CTRL_D || k.kind == KEY_EOF) { running = false; continue; }
 
     if (k.kind == KEY_CTRL_C) {
-      if (pendingApproval.callId != "") {
+      if (signin.isActive()) {
+        cancelSignIn(sb, input, signin);
+        drawScreen(sb, input, approvalLog.mode, rk);
+      } else if (pendingApproval.callId != "") {
         sendApprovalDecision(client, approvalLog, sb, input, rk, pendingApproval, APPROVAL_OPTION_DENY);
         client.publish(encodeCancel({ v: PROTOCOL_VERSION, seq: 0, type: CANCEL, turnId: state.turnId }));
       } else if (input.buf != "") {
@@ -259,6 +263,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (k.kind == KEY_CHAR) {
+      if (input.capturing()) { input.push(k.char); drawScreen(sb, input, approvalLog.mode, rk); continue; }
       let optionIndex = approvalOptionForChar(k.char);
       if (optionIndex >= 0 && pendingApproval.callId != "") {
         sendApprovalDecision(client, approvalLog, sb, input, rk, pendingApproval, optionIndex);
@@ -304,6 +309,8 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
 
     if (k.kind != KEY_ENTER) { continue; }
 
+    if (signin.isActive() && input.buf.trim() == "") { continue; }
+
     if (pendingApproval.callId != "") {
       sendApprovalDecision(client, approvalLog, sb, input, rk, pendingApproval, pendingApproval.selected);
       continue;
@@ -315,6 +322,12 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     let line = input.takeAndClear();
     drawScreen(sb, input, approvalLog.mode, rk);
     if (line.trim() == "") { continue; }
+
+    if (signin.isActive()) {
+      submitSignIn(sb, input, signin, line);
+      drawScreen(sb, input, approvalLog.mode, rk);
+      continue;
+    }
 
     if (line.trim() == "/stop-daemon") {
       client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
@@ -363,7 +376,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (cmd.kind == CMD_LOGIN) {
-      runLogin(sb, input, approvalLog.mode, rk, serverBase, cmd.arg);
+      beginSignIn(sb, input, signin, serverBase, cmd.arg);
       drawScreen(sb, input, approvalLog.mode, rk);
       continue;
     }

@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -94,4 +94,31 @@ test("resolveRelayConfig honors every field when set", () => {
   expect(cfg.wsPort == 9091);
   expect(cfg.webBaseUrl == "https://example.com/w/");
   expect(cfg.tmpDir == "/var/tmp");
+});
+
+test("a connection lost and repaired inside the quiet window says nothing at all", () => {
+  let started: i64 = 1000;
+  expect(!shouldSayUnreachable(true, false, started, started));
+  expect(!shouldSayUnreachable(true, false, started, started + 500));
+  expect(!shouldSayUnreachable(true, false, started, started + UNREACHABLE_QUIET_MS - 1));
+});
+
+test("an outage that outlives the quiet window warns on the first retry past it", () => {
+  let started: i64 = 1000;
+  expect(shouldSayUnreachable(true, false, started, started + UNREACHABLE_QUIET_MS));
+  expect(shouldSayUnreachable(true, false, started, started + 60000));
+});
+
+test("the warning is said once per outage, not once per failed retry", () => {
+  let started: i64 = 1000;
+  expect(!shouldSayUnreachable(true, true, started, started + 60000));
+});
+
+test("a clean disconnect is not a failed retry, so it never warns however long it lasts", () => {
+  let started: i64 = 1000;
+  expect(!shouldSayUnreachable(false, false, started, started + 60000));
+});
+
+test("with no outage recorded there is nothing to warn about", () => {
+  expect(!shouldSayUnreachable(true, false, 0, 60000));
 });

@@ -1,23 +1,21 @@
-import { readKey, cols, rows, cursorTo, CLEAR_LINE, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "../vendor/tty/tty.ts";
 import { Scrollback } from "./scrollback.ts";
-import { InputLine, clip } from "./input_state.ts";
-import { TurnStatusTracker, drawScreen } from "./screen.ts";
-import { stylePrompt, styleBanner, wrap, DIM, GREEN, VIOLET } from "./style.ts";
+import { InputLine } from "./input_state.ts";
+import { CODE_MARKER } from "./prompt_rows.ts";
+import { styleBanner, wrap, DIM, GREEN, VIOLET } from "./style.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
-import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSourceLabel, ServerOrigin, SERVER_OK, INSECURE_ENV, DEFAULT_SERVER } from "../auth/server.ts";
-import { loginUrl, exchangeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
+import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSourceLabel, ServerOrigin, SERVER_OK, INSECURE_ENV, DEFAULT_SERVER, SERVER_FROM_DEFAULT } from "../auth/server.ts";
+import { loginUrl, exchangeCode, normalizeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
 import { credentialsPath, loadCredential, saveCredential, forgetCredential, accountLabel, otherServers } from "../auth/credentials.ts";
 import { rememberServer, configFilePath } from "../providers/config.ts";
 
-const STDIN: int = 0;
 const MAX_ATTEMPTS: int = 3;
 const LIST_LIMIT: int = 3;
 
 export function browserCommand(url: string): string {
   let quoted = shellQuoteSingle(url);
-  return "if [ -n \"$BROWSER\" ]; then \"$BROWSER\" " + quoted + " >/dev/null 2>&1 & exit 0; fi; "
+  return "if [ -n \"$BROWSER\" ]; then \"$BROWSER\" " + quoted + " </dev/null >/dev/null 2>&1 & exit 0; fi; "
     + "for opener in xdg-open open; do "
-    + "if command -v \"$opener\" >/dev/null 2>&1; then \"$opener\" " + quoted + " >/dev/null 2>&1 & exit 0; fi; "
+    + "if command -v \"$opener\" >/dev/null 2>&1; then \"$opener\" " + quoted + " </dev/null >/dev/null 2>&1 & exit 0; fi; "
     + "done; exit 1";
 }
 
@@ -25,44 +23,6 @@ export function openBrowser(url: string): bool {
   let args: string[] = ["-c", browserCommand(url)];
   let r = child_process.spawnSync("/bin/sh", args);
   return r.status == 0;
-}
-
-function promptRow(): int {
-  let r = rows(STDIN);
-  if (r <= 1) { r = 24; }
-  return r;
-}
-
-function promptWidth(): int {
-  let c = cols(STDIN);
-  if (c <= 0) { c = 80; }
-  return c;
-}
-
-function drawCodePrompt(buf: string): void {
-  let line = stylePrompt("code> ") + buf;
-  process.stdout().write(cursorTo(promptRow(), 1) + CLEAR_LINE + clip(line, promptWidth()));
-}
-
-export function readCodeFromTerminal(): string {
-  let buf = "";
-  drawCodePrompt(buf);
-  while (true) {
-    let k = readKey(STDIN);
-    if (k.kind == KEY_CTRL_C || k.kind == KEY_CTRL_D || k.kind == KEY_EOF) { return ""; }
-    if (k.kind == KEY_ENTER) { return buf; }
-    if (k.kind == KEY_BACKSPACE) {
-      if (buf.length > 0) { buf = buf.slice(0, buf.length - 1); }
-      drawCodePrompt(buf);
-      continue;
-    }
-    if (k.kind == KEY_CHAR) {
-      buf = buf + k.char;
-      drawCodePrompt(buf);
-      continue;
-    }
-  }
-  return "";
 }
 
 export function platformNote(): string {
@@ -99,8 +59,28 @@ export function serverHint(origin: ServerOrigin, requested: string): string {
     return "\n" + wrap(DIM, "this address comes from " + serverSourceLabel(origin.source)
       + ", which outranks anything /login is told, so it stays the one joule uses.");
   }
-  if (requested.trim() != "") { return ""; }
-  return "\n" + wrap(DIM, "a different Joule server? /login <url> signs in there and keeps it.");
+  return "";
+}
+
+export function waitingLines(origin: ServerOrigin): string {
+  let out = "\n" + wrap(DIM, "waiting for the code. Type it below.");
+  if (serverPinned(origin.source)) { return out; }
+  return out + "\n" + wrap(DIM, "another server? type its address instead.");
+}
+
+export function looksLikeServer(text: string): bool {
+  let t = text.trim();
+  if (t == "") { return false; }
+  if (t.indexOf(" ") >= 0) { return false; }
+  if (normalizeCode(t) != "") { return false; }
+  if (t.indexOf("://") >= 0) { return true; }
+  return t.indexOf(".") >= 0 || t.indexOf(":") >= 0;
+}
+
+export function typedServerAddress(text: string): string {
+  let t = text.trim();
+  if (t.indexOf("://") >= 0) { return t; }
+  return "https://" + t;
 }
 
 export function chosenServerNote(origin: ServerOrigin, base: string): string {
@@ -135,7 +115,7 @@ function introduce(sb: Scrollback, base: string, url: string, origin: ServerOrig
   if (!openBrowser(url)) {
     sb.append("\n" + wrap(DIM, "no browser opened from here, so copy that address into one yourself."));
   }
-  sb.append("\n" + wrap(DIM, "waiting for the code. Type it below, or ctrl-c to stop."));
+  sb.append(waitingLines(origin));
 }
 
 function announce(sb: Scrollback, base: string, email: string, scopes: string): void {
@@ -148,39 +128,93 @@ function announce(sb: Scrollback, base: string, email: string, scopes: string): 
   sb.append("\n" + wrap(DIM, platformNote()));
 }
 
-export function runLogin(sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker, origin: ServerOrigin, requested: string): void {
+export class SignIn {
+  active: bool;
+  base: string;
+  attempts: int;
+  origin: ServerOrigin;
+
+  constructor() {
+    this.active = false;
+    this.base = "";
+    this.attempts = 0;
+    this.origin = { base: DEFAULT_SERVER, source: SERVER_FROM_DEFAULT };
+  }
+
+  isActive(): bool {
+    return this.active;
+  }
+}
+
+function openSignIn(sb: Scrollback, input: InputLine, signin: SignIn, base: string, requested: string): void {
+  signin.base = base;
+  signin.active = true;
+  signin.attempts = 0;
+  introduce(sb, base, loginUrl(base), signin.origin, requested);
+  input.captureWith(CODE_MARKER);
+}
+
+function endSignIn(input: InputLine, signin: SignIn): void {
+  signin.active = false;
+  signin.base = "";
+  signin.attempts = 0;
+  input.release();
+}
+
+export function beginSignIn(sb: Scrollback, input: InputLine, signin: SignIn, origin: ServerOrigin, requested: string): void {
   let check = checkServer(loginTarget(origin, requested), insecureAllowed(process.env(INSECURE_ENV) ?? ""));
   if (check.status != SERVER_OK) {
     sb.append("\n" + check.message);
     return;
   }
-  let base = check.base;
-  introduce(sb, base, loginUrl(base), origin, requested);
-  drawScreen(sb, input, mode, rk);
+  signin.origin = origin;
+  openSignIn(sb, input, signin, check.base, requested);
+}
 
-  let attempt = 0;
-  while (attempt < MAX_ATTEMPTS) {
-    attempt = attempt + 1;
-    let typed = readCodeFromTerminal();
-    if (typed.trim() == "") {
-      sb.append("\nsign-in stopped. Nothing was saved.");
-      return;
-    }
-    let outcome = exchangeCode(base, typed, Date.now());
-    if (outcome.outcome == EX_OK) {
-      saveCredential(outcome.credential);
-      announce(sb, base, accountLabel(outcome.credential), outcome.credential.scopes);
-      keepServer(sb, origin, base);
-      return;
-    }
-    sb.append("\n" + outcome.message);
-    if (!retryable(outcome.outcome)) { return; }
-    if (attempt < MAX_ATTEMPTS) {
-      sb.append("\n" + wrap(DIM, "type it again, or ctrl-c to stop."));
-      drawScreen(sb, input, mode, rk);
-    }
+export function cancelSignIn(sb: Scrollback, input: InputLine, signin: SignIn): void {
+  if (!signin.active) { return; }
+  endSignIn(input, signin);
+  sb.append("\nsign-in stopped. Nothing was saved.");
+}
+
+function switchSignInServer(sb: Scrollback, input: InputLine, signin: SignIn, typed: string): void {
+  let check = checkServer(typedServerAddress(typed), insecureAllowed(process.env(INSECURE_ENV) ?? ""));
+  if (check.status != SERVER_OK) {
+    sb.append("\n" + check.message);
+    sb.append(waitingLines(signin.origin));
+    return;
   }
-  sb.append("\nthat is " + `${MAX_ATTEMPTS}` + " tries. Run /login again for a fresh code.");
+  openSignIn(sb, input, signin, check.base, check.base);
+}
+
+export function submitSignIn(sb: Scrollback, input: InputLine, signin: SignIn, typed: string): void {
+  if (!signin.active) { return; }
+  if (looksLikeServer(typed)) {
+    switchSignInServer(sb, input, signin, typed);
+    return;
+  }
+  let base = signin.base;
+  let origin = signin.origin;
+  signin.attempts = signin.attempts + 1;
+  let outcome = exchangeCode(base, typed, Date.now());
+  if (outcome.outcome == EX_OK) {
+    saveCredential(outcome.credential);
+    endSignIn(input, signin);
+    announce(sb, base, accountLabel(outcome.credential), outcome.credential.scopes);
+    keepServer(sb, origin, base);
+    return;
+  }
+  sb.append("\n" + outcome.message);
+  if (!retryable(outcome.outcome)) {
+    endSignIn(input, signin);
+    return;
+  }
+  if (signin.attempts >= MAX_ATTEMPTS) {
+    sb.append("\nthat is " + `${MAX_ATTEMPTS}` + " tries. Run /login again for a fresh code.");
+    endSignIn(input, signin);
+    return;
+  }
+  sb.append("\n" + wrap(DIM, "type it again, or ctrl-c to stop."));
 }
 
 export function logoutText(server: string, requested: string): string {

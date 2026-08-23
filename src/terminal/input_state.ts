@@ -1,13 +1,30 @@
 import { REPLY_ALLOW, REPLY_DENY, REPLY_ALWAYS, MODE_AUTO_EDIT } from "../approval/gate.ts";
 import { Completion } from "./completion.ts";
+import { PROMPT_MARKER } from "./prompt_rows.ts";
 
 export class InputLine {
   buf: string;
+  marker: string;
   completion: Completion;
 
   constructor() {
     this.buf = "";
+    this.marker = PROMPT_MARKER;
     this.completion = new Completion();
+  }
+
+  capturing(): bool {
+    return this.marker != PROMPT_MARKER;
+  }
+
+  captureWith(marker: string): void {
+    this.marker = marker;
+    this.setBuf("");
+  }
+
+  release(): void {
+    this.marker = PROMPT_MARKER;
+    this.setBuf("");
   }
 
   push(ch: string): void {
@@ -32,6 +49,10 @@ export class InputLine {
 
   setBuf(text: string): void {
     this.buf = text;
+    if (this.capturing()) {
+      this.completion.refresh("");
+      return;
+    }
     this.completion.refresh(text);
   }
 

@@ -13,7 +13,7 @@ import { InputLine, clip } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { planToolOutputCollapse } from "./collapse.ts";
 import { completionRows, panelBudget } from "./completion.ts";
-import { promptRowCount, usesBox, buildPrompt } from "./input_box.ts";
+import { promptRowCount, usesBox, buildPromptMarked } from "./input_box.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
 
 const STDIN: int = 0;
@@ -168,7 +168,7 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
   }
   out = out + cursorTo(r - promptRows, 1) + CLEAR_LINE + clip(buildStatusLine(rk.statusInfo(mode), c), c);
 
-  let prompt = buildPrompt(input.buf, c, r);
+  let prompt = buildPromptMarked(input.buf, input.marker, c, r);
   let promptTop = r - promptRows + 1;
   let pl = 0;
   while (pl < prompt.lines.length) {

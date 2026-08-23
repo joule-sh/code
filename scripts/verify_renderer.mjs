@@ -16,10 +16,10 @@ const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(embeddedJs, sandbox);
 vm.runInContext(
-  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame, planToolOutputCollapseJs: planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES: TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES: TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType: isKnownFrameType };",
+  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame, planToolOutputCollapseJs: planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES: TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES: TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType: isKnownFrameType, noticeLineClass: noticeLineClass };",
   sandbox
 );
-const { fixtureScript, renderFrameText, decodeFrame, planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType } = sandbox.__exports;
+const { fixtureScript, renderFrameText, decodeFrame, planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType, noticeLineClass } = sandbox.__exports;
 
 let failures = 0;
 function expectContains(haystack, needle, label) {
@@ -99,6 +99,38 @@ expectContains(
 expectTrue(
   isKnownFrameType("approval.reply.result"),
   "approval.reply.result is a frame type this renderer claims to know (#136)"
+);
+
+// #192: connection lifecycle is a notice with a severity, not an error. Both
+// renderers have to agree on what each level looks like, or the same event is
+// a red alarm in one place and a quiet line in the other.
+const warnNotice = '{"v":1,"seq":1,"type":"notice","code":"relay.unreachable","level":"warn","message":"cannot reach the relay (closed), still retrying"}';
+const infoNotice = '{"v":1,"seq":2,"type":"notice","code":"relay.attached","level":"info","message":"connected to the relay"}';
+expectContains(
+  renderFrameText(warnNotice, ""),
+  "! cannot reach the relay",
+  "a warning notice carries the ! marker (#192)"
+);
+expectTrue(
+  renderFrameText(warnNotice, "").indexOf("relay.unreachable") < 0,
+  "a notice renders its message, not its code (#192)"
+);
+expectTrue(
+  renderFrameText(infoNotice, "").indexOf("!") < 0,
+  "an informational notice carries no error marker at all (#192)"
+);
+expectContains(
+  renderFrameText(infoNotice, ""),
+  "connected to the relay",
+  "an informational notice still renders its message (#192)"
+);
+expectTrue(
+  isKnownFrameType("notice"),
+  "notice is a frame type this renderer claims to know, so it is never a placeholder (#192)"
+);
+expectTrue(
+  noticeLineClass("warn") === "line-warn" && noticeLineClass("info") === "line-notice",
+  "the page styles the two notice levels apart, as the terminal does (#192)"
 );
 
 expectTrue(

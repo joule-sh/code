@@ -10,7 +10,7 @@ import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
-import { runLogin, logoutText } from "./login_ui.ts";
+import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadProjectInstructions } from "../session/project_instructions.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
@@ -70,6 +70,7 @@ export function runTerminal(argv: string[]): void {
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => live.ask(h, d) };
 
   let pendingApproval = new PendingApproval();
+  let signin = new SignIn();
   let planDecision = new PendingPlanDecision();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
@@ -241,7 +242,8 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind == KEY_CTRL_C) {
-      if (input.buf != "") {
+      if (signin.isActive()) { cancelSignIn(sb, input, signin); drawScreen(sb, input, gate.mode, rk); }
+      else if (input.buf != "") {
         input.clear();
         drawScreen(sb, input, gate.mode, rk);
       } else {
@@ -258,6 +260,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (k.kind == KEY_CHAR) {
+      if (input.capturing()) { input.push(k.char); drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandleAgentApprovalChar(approvalResponder, input.buf == "", k.char)) {
         drawScreen(sb, input, gate.mode, rk);
         continue;
@@ -336,6 +339,7 @@ export function runTerminal(argv: string[]): void {
       continue;
     }
 
+    if (signin.isActive() && input.buf.trim() == "") { continue; }
     if (tryHandleAgentApprovalEnter(approvalResponder, sb, input.buf == "")) {
       drawScreen(sb, input, gate.mode, rk);
       continue;
@@ -350,6 +354,8 @@ export function runTerminal(argv: string[]): void {
     if (line.trim() == "") {
       continue;
     }
+
+    if (signin.isActive()) { submitSignIn(sb, input, signin, line); drawScreen(sb, input, gate.mode, rk); continue; }
 
     let cmd = parseCommand(line);
 
@@ -395,7 +401,7 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (cmd.kind == CMD_LOGIN) {
-      runLogin(sb, input, gate.mode, rk, server, cmd.arg);
+      beginSignIn(sb, input, signin, server, cmd.arg);
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }

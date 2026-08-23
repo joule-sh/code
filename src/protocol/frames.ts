@@ -8,6 +8,7 @@ export const TOOL_RESULT: string = "tool.result";
 export const APPROVAL_REQUEST: string = "approval.request";
 export const TURN_END: string = "turn.end";
 export const ERROR: string = "error";
+export const NOTICE: string = "notice";
 export const INPUT: string = "input";
 export const CANCEL: string = "cancel";
 export const APPROVAL_REPLY: string = "approval.reply";
@@ -25,6 +26,9 @@ export const SHARE_REQUEST: string = "share.request";
 export const SHARE_STARTED: string = "share.started";
 export const SHARE_FAILED: string = "share.failed";
 
+export const LEVEL_INFO: string = "info";
+export const LEVEL_WARN: string = "warn";
+
 export const REASON_DONE: string = "done";
 export const REASON_CANCELLED: string = "cancelled";
 export const REASON_ERROR: string = "error";
@@ -41,6 +45,7 @@ export type ToolResultFrame = { v: int, seq: int, type: string, turnId: string, 
 export type ApprovalRequestFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, summary: string, detail: string, args: string };
 export type TurnEndFrame = { v: int, seq: int, type: string, turnId: string, reason: string };
 export type ErrorFrame = { v: int, seq: int, type: string, code: string, message: string };
+export type NoticeFrame = { v: int, seq: int, type: string, code: string, level: string, message: string };
 
 export type InputFrame = { v: int, seq: int, type: string, text: string };
 export type CancelFrame = { v: int, seq: int, type: string, turnId: string };
@@ -67,6 +72,7 @@ export function encodeToolResult(f: ToolResultFrame): string { return JSON.strin
 export function encodeApprovalRequest(f: ApprovalRequestFrame): string { return JSON.stringify(f); }
 export function encodeTurnEnd(f: TurnEndFrame): string { return JSON.stringify(f); }
 export function encodeError(f: ErrorFrame): string { return JSON.stringify(f); }
+export function encodeNotice(f: NoticeFrame): string { return JSON.stringify(f); }
 export function encodeInput(f: InputFrame): string { return JSON.stringify(f); }
 export function encodeCancel(f: CancelFrame): string { return JSON.stringify(f); }
 export function encodeApprovalReply(f: ApprovalReplyFrame): string { return JSON.stringify(f); }
@@ -107,6 +113,9 @@ export function decodeTurnEnd(text: string): TurnEndFrame | null {
 }
 export function decodeError(text: string): ErrorFrame | null {
   try { return JSON.parse<ErrorFrame>(text); } catch { return null; }
+}
+export function decodeNotice(text: string): NoticeFrame | null {
+  try { return JSON.parse<NoticeFrame>(text); } catch { return null; }
 }
 export function decodeInput(text: string): InputFrame | null {
   try { return JSON.parse<InputFrame>(text); } catch { return null; }
@@ -243,7 +252,17 @@ export function isKnownType(t: string): bool {
   if (t == MODE_SET || t == MODE_CHANGED || t == MODEL_SET || t == MODEL_CHANGED) { return true; }
   if (t == TASKS_REQUEST || t == TASKS_RESPONSE || t == DAEMON_STOP || t == DAEMON_STOPPING) { return true; }
   if (t == SHARE_REQUEST || t == SHARE_STARTED || t == SHARE_FAILED) { return true; }
+  if (t == NOTICE) { return true; }
   return false;
+}
+
+export function noticeFrame(code: string, level: string, message: string): NoticeFrame {
+  let f: NoticeFrame = { v: PROTOCOL_VERSION, seq: 0, type: NOTICE, code: code, level: level, message: message };
+  return f;
+}
+
+export function isWarning(level: string): bool {
+  return level == LEVEL_WARN;
 }
 
 export function hasSeqGap(lastSeq: int, seq: int): bool {

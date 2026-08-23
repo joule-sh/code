@@ -1,3 +1,6 @@
+export const PROMPT_MARKER: string = "> ";
+export const CODE_MARKER: string = "code> ";
+
 export const BOX_PROMPT_ROWS: int = 3;
 export const PLAIN_PROMPT_ROWS: int = 1;
 
