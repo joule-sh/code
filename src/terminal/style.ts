@@ -1,4 +1,4 @@
-import { TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR } from "../protocol/frames.ts";
+import { TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, MODE_CHANGED, MODEL_CHANGED, DAEMON_STOPPING } from "../protocol/frames.ts";
 
 const ESC: string = String.fromCharCode(27);
 
@@ -47,6 +47,12 @@ export function styleFrame(kind: string, text: string): string {
   }
   if (kind == TURN_END) {
     return wrap(DIM, text);
+  }
+  if (kind == MODE_CHANGED || kind == MODEL_CHANGED) {
+    return wrap(DIM, text);
+  }
+  if (kind == DAEMON_STOPPING) {
+    return wrap(BOLD + YELLOW, text);
   }
   return text;
 }
