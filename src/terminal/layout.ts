@@ -1,73 +1,14 @@
-import { VIOLET, DIM, wrap } from "./style.ts";
-import { isDefaultServer } from "../auth/server.ts";
-import { VERSION } from "../version.ts";
+import { DIM, wrap } from "./style.ts";
+import { visualWidth, padTo, repeatChar } from "./text.ts";
+import { buildWelcomeBox } from "./welcome.ts";
 import { MODE_SAFE_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
-const BOX_WIDTH: int = 54;
-const CONTENT_WIDTH: int = BOX_WIDTH - 2;
-const LABEL_WIDTH: int = 10;
-
-function repeatChar(ch: string, n: int): string {
-  let out = "";
-  let i = 0;
-  while (i < n) {
-    out = out + ch;
-    i = i + 1;
-  }
-  return out;
-}
-
-function utf8ByteCount(first: int): int {
-  if (first >= 240) { return 4; }
-  if (first >= 224) { return 3; }
-  if (first >= 192) { return 2; }
-  return 1;
-}
-
-export function visualWidth(plain: string): int {
-  let count = 0;
-  let i = 0;
-  while (i < plain.length) {
-    i = i + utf8ByteCount(plain.charCodeAt(i));
-    count = count + 1;
-  }
-  return count;
-}
-
-function truncateToWidth(text: string, width: int): string {
-  if (width <= 0) { return ""; }
-  let count = 0;
-  let i = 0;
-  while (i < text.length && count < width) {
-    i = i + utf8ByteCount(text.charCodeAt(i));
-    count = count + 1;
-  }
-  return text.slice(0, i);
-}
-
-function padTo(text: string, width: int): string {
-  let vw = visualWidth(text);
-  let t = text;
-  if (vw > width) {
-    if (width > 3) {
-      t = truncateToWidth(text, width - 3) + "...";
-    } else {
-      t = truncateToWidth(text, width);
-    }
-  }
-  let pad = width - visualWidth(t);
-  if (pad < 0) { pad = 0; }
-  return t + repeatChar(" ", pad);
-}
+export { visualWidth, buildWelcomeBox };
 
 function modeDisplay(mode: string): string {
   if (mode == MODE_SAFE_AUTO) { return mode + " (commands run unattended)"; }
   if (mode == MODE_PLAN) { return mode + " (read-only, propose then approve)"; }
   return mode;
-}
-
-function field(label: string, value: string): string {
-  return " " + padTo(label, LABEL_WIDTH) + padTo(value, CONTENT_WIDTH - LABEL_WIDTH - 1);
 }
 
 export function borderLine(left: string, right: string, width: int): string {
@@ -76,22 +17,6 @@ export function borderLine(left: string, right: string, width: int): string {
 
 export function contentLine(text: string, width: int): string {
   return "│" + padTo(text, width - 2) + "│";
-}
-
-export function buildWelcomeBox(model: string, workspace: string, mode: string, server: string): string {
-  let out = wrap(VIOLET, borderLine("┌", "┐", BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(" joule " + VERSION, BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine("", BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("model", model), BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("workspace", workspace), BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(field("mode", modeDisplay(mode)), BOX_WIDTH));
-  if (server != "" && !isDefaultServer(server)) {
-    out = out + "\n" + wrap(VIOLET, contentLine(field("server", server), BOX_WIDTH));
-  }
-  out = out + "\n" + wrap(VIOLET, contentLine("", BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, contentLine(" agentic coding, on your machine", BOX_WIDTH));
-  out = out + "\n" + wrap(VIOLET, borderLine("└", "┘", BOX_WIDTH));
-  return out;
 }
 
 export type StatusInfo = { mode: string, elapsedMs: i64, tokens: int, runningTasks: int, turnLive: bool };

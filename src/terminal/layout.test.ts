@@ -1,39 +1,6 @@
-import { buildWelcomeBox, buildStatusLine, statusText, idleStatus, visualWidth, formatElapsed, formatTokens, formatRunningTasks, StatusInfo, NO_TURN } from "./layout.ts";
-import { VIOLET, DIM, RESET } from "./style.ts";
+import { buildStatusLine, statusText, idleStatus, visualWidth, buildWelcomeBox, formatElapsed, formatTokens, formatRunningTasks, StatusInfo, NO_TURN } from "./layout.ts";
+import { DIM, RESET } from "./style.ts";
 import { VERSION } from "../version.ts";
-
-function stripColor(line: string, color: string): string {
-  let out = line;
-  if (out.indexOf(color) == 0) {
-    out = out.slice(color.length, out.length);
-  }
-  if (out.slice(out.length - RESET.length, out.length) == RESET) {
-    out = out.slice(0, out.length - RESET.length);
-  }
-  return out;
-}
-
-function allEqual(widths: int[]): bool {
-  let i = 0;
-  while (i < widths.length) {
-    if (widths[i] != widths[0]) {
-      return false;
-    }
-    i = i + 1;
-  }
-  return true;
-}
-
-function plainLines(box: string): string[] {
-  let raw = box.split("\n");
-  let out: string[] = [];
-  let i = 0;
-  while (i < raw.length) {
-    out.push(stripColor(raw[i], VIOLET));
-    i = i + 1;
-  }
-  return out;
-}
 
 function busy(): StatusInfo {
   return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2, turnLive: true };
@@ -43,76 +10,14 @@ function settled(): StatusInfo {
   return { mode: "auto-edit", elapsedMs: 592000, tokens: 18432, runningTasks: 2, turnLive: false };
 }
 
-test("the welcome box is nine rows: top border, title, blank, three fields, blank, tagline, bottom border", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  let lines = box.split("\n");
-  expect(lines.length == 9);
+test("the welcome block still reaches its callers through layout, which is where they import it from", () => {
+  let block = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
+  expect(block.indexOf(VERSION) >= 0);
+  expect(block.indexOf("gpt-4") >= 0);
 });
 
-test("every row of the welcome box is styled violet and reset on its own row, with no bleed to the next", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  let raw = box.split("\n");
-  let i = 0;
-  while (i < raw.length) {
-    expect(raw[i].indexOf(VIOLET) == 0);
-    expect(raw[i].slice(raw[i].length - RESET.length, raw[i].length) == RESET);
-    i = i + 1;
-  }
-});
-
-test("every row of the welcome box has the same true visible width", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  let lines = plainLines(box);
-  let widths: int[] = [];
-  let j = 0;
-  while (j < lines.length) {
-    widths.push(visualWidth(lines[j]));
-    j = j + 1;
-  }
-  expect(allEqual(widths));
-});
-
-test("the welcome box has square single-line corners", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  let lines = plainLines(box);
-  let top = lines[0];
-  let bottom = lines[lines.length - 1];
-  expect(top.slice(0, 3) == "┌");
-  expect(top.slice(top.length - 3, top.length) == "┐");
-  expect(bottom.slice(0, 3) == "└");
-  expect(bottom.slice(bottom.length - 3, bottom.length) == "┘");
-});
-
-test("every content row is bordered by single vertical bars", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  let lines = plainLines(box);
-  let i = 1;
-  while (i < lines.length - 1) {
-    expect(lines[i].slice(0, 3) == "│");
-    expect(lines[i].slice(lines[i].length - 3, lines[i].length) == "│");
-    i = i + 1;
-  }
-});
-
-test("the welcome box shows the model, workspace and mode it was given", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", "");
-  expect(box.indexOf("gpt-4") >= 0);
-  expect(box.indexOf("/home/aymen/project") >= 0);
-  expect(box.indexOf("auto-edit") >= 0);
-});
-
-test("a workspace path too long for the box is truncated rather than breaking row width", () => {
-  let longPath = "/home/aymen/some/really/long/path/that/does/not/fit/in/the/box/at/all/seriously";
-  let box = buildWelcomeBox("gpt-4", longPath, "auto-edit", "");
-  let lines = plainLines(box);
-  let widths: int[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    widths.push(visualWidth(lines[i]));
-    i = i + 1;
-  }
-  expect(allEqual(widths));
-  expect(box.indexOf(longPath) < 0);
+test("layout still hands on the width helper the input box measures its own rows with", () => {
+  expect(visualWidth("┌ · ┐") == 5);
 });
 
 test("the status line names the current mode and the key hints, dim and reset", () => {
@@ -155,11 +60,6 @@ test("the running task count is always dim, live or settled, since it does not b
   let done = buildStatusLine(settled(), 120);
   expect(live.indexOf(DIM + "2 running tasks") >= 0);
   expect(done.indexOf(DIM + "2 running tasks") >= 0);
-});
-
-test("the welcome box shows the running version, so a released build is distinguishable from a source build", () => {
-  let box = buildWelcomeBox("m", "/w", "auto-edit", "");
-  expect(box.indexOf(" joule " + VERSION) >= 0);
 });
 
 test("an idle status line carries neither an elapsed clock nor a token or task count", () => {
@@ -256,21 +156,6 @@ test("a field is left out entirely when its source has nothing to report", () =>
 
 test("a width of zero leaves the line uncut, so the caller's own clip stays in charge", () => {
   expect(statusText(busy(), 0) == "mode: auto-edit · 9m 52s · 18k tokens · 2 running tasks · /help for commands · PageUp/PageDown to scroll");
-});
-
-test("the welcome box names the server only when it is not the default", () => {
-  let hosted = buildWelcomeBox("m", "/w", "auto-edit", "https://joule.sh");
-  expect(hosted.indexOf("server") < 0);
-
-  let staging = buildWelcomeBox("m", "/w", "auto-edit", "http://100.89.7.80:8090");
-  expect(staging.indexOf("server") >= 0);
-  expect(staging.indexOf("100.89.7.80:8090") >= 0);
-});
-
-test("safe-auto states plainly in the welcome box that commands run unattended", () => {
-  let box = buildWelcomeBox("gpt-4", "/home/aymen/project", "safe-auto", "");
-  expect(box.indexOf("safe-auto") >= 0);
-  expect(box.indexOf("commands run unattended") >= 0);
 });
 
 test("safe-auto states plainly in the status bar that commands run unattended", () => {

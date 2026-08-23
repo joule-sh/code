@@ -2,7 +2,7 @@ import { readKey, cols, rows, cursorTo, CLEAR_LINE, KEY_CHAR, KEY_ENTER, KEY_BAC
 import { Scrollback } from "./scrollback.ts";
 import { InputLine, clip } from "./input_state.ts";
 import { TurnStatusTracker, drawScreen } from "./screen.ts";
-import { stylePrompt, styleBanner, wrap, DIM } from "./style.ts";
+import { stylePrompt, styleBanner, wrap, DIM, GREEN, VIOLET } from "./style.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
 import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSourceLabel, ServerOrigin, SERVER_OK, INSECURE_ENV, DEFAULT_SERVER } from "../auth/server.ts";
 import { loginUrl, exchangeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
@@ -129,16 +129,18 @@ function introduce(sb: Scrollback, base: string, url: string, origin: ServerOrig
   if (hint != "") { sb.append(hint); }
   let known = serverListNote("also signed in to", otherServers(base));
   if (known != "") { sb.append(known); }
-  sb.append("\nopen this page, sign in, and it will show you a " + `${CODE_LENGTH}` + "-character code:");
-  sb.append("\n  " + url);
+  let lead = "open ";
+  if (existing.secret == "") { lead = "first time here. Open "; }
+  sb.append("\n" + lead + wrap(VIOLET, url) + " and enter the " + `${CODE_LENGTH}` + "-character code it shows you.");
   if (!openBrowser(url)) {
-    sb.append("\n" + wrap(DIM, "no browser could be opened from here, so copy the address into one yourself."));
+    sb.append("\n" + wrap(DIM, "no browser opened from here, so copy that address into one yourself."));
   }
-  sb.append("\n" + wrap(DIM, "type the code below and press enter, or ctrl-c to stop."));
+  sb.append("\n" + wrap(DIM, "waiting for the code. Type it below, or ctrl-c to stop."));
 }
 
 function announce(sb: Scrollback, base: string, email: string, scopes: string): void {
-  sb.append("\nsigned in to " + base + " as " + email);
+  sb.append("\n" + wrap(GREEN, "signed in to " + base + " as " + email));
+  sb.append("\n" + wrap(DIM, "it lasts until you sign out with /logout on this machine."));
   sb.append("\n" + wrap(DIM, "credential stored per server in " + credentialsPath() + ", readable only by you."));
   if (scopes != "") {
     sb.append("\n" + wrap(DIM, "it can use: " + scopes));

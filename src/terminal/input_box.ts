@@ -1,23 +1,12 @@
 import { VIOLET, wrap } from "./style.ts";
 import { borderLine, contentLine, visualWidth } from "./layout.ts";
+import { BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS, MIN_ROWS_FOR_BOX, promptRowCount, usesBox } from "./prompt_rows.ts";
 
-export const BOX_PROMPT_ROWS: int = 3;
-export const PLAIN_PROMPT_ROWS: int = 1;
-
-export const MIN_ROWS_FOR_BOX: int = 12;
+export { BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS, MIN_ROWS_FOR_BOX, promptRowCount, usesBox };
 
 const MARKER: string = "> ";
 const BOX_PREFIX: string = " " + MARKER;
 const CURSOR_MARGIN: int = 1;
-
-export function promptRowCount(termRows: int): int {
-  if (termRows >= MIN_ROWS_FOR_BOX) { return BOX_PROMPT_ROWS; }
-  return PLAIN_PROMPT_ROWS;
-}
-
-export function usesBox(termRows: int): bool {
-  return promptRowCount(termRows) == BOX_PROMPT_ROWS;
-}
 
 function utf8ByteCount(first: int): int {
   if (first >= 240) { return 4; }
