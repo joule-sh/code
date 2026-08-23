@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, TASKS_RESPONSE, DAEMON_STOP, DAEMON_STOPPING, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, ModeSetFrame, ModeChangedFrame, ModelSetFrame, ModelChangedFrame, TasksRequestFrame, TasksResponseFrame, DaemonStopFrame, DaemonStoppingFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, encodeModeSet, decodeModeSet, encodeModeChanged, decodeModeChanged, encodeModelSet, decodeModelSet, encodeModelChanged, decodeModelChanged, encodeTasksRequest, decodeTasksRequest, encodeTasksResponse, decodeTasksResponse, encodeDaemonStop, decodeDaemonStop, encodeDaemonStopping, decodeDaemonStopping, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
 
 test("SESSION_HELLO round-trips", () => {
   let f: SessionHelloFrame = { v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO, sessionId: "s1", workspace: "/repo", model: "gpt", mode: "agent", protocol: 1 };
@@ -85,6 +85,73 @@ test("resume round-trips", () => {
   let back = decodeResume(encodeResume(f));
   expect(back != null);
   expect(back!.since == 41);
+});
+
+test("MODE_SET round-trips", () => {
+  let f: ModeSetFrame = { v: PROTOCOL_VERSION, seq: 13, type: MODE_SET, mode: "full-auto" };
+  let back = decodeModeSet(encodeModeSet(f));
+  expect(back != null);
+  expect(back!.mode == "full-auto");
+});
+
+test("MODE_CHANGED round-trips", () => {
+  let f: ModeChangedFrame = { v: PROTOCOL_VERSION, seq: 14, type: MODE_CHANGED, mode: "read-only" };
+  let back = decodeModeChanged(encodeModeChanged(f));
+  expect(back != null);
+  expect(back!.mode == "read-only");
+});
+
+test("MODEL_SET round-trips", () => {
+  let f: ModelSetFrame = { v: PROTOCOL_VERSION, seq: 15, type: MODEL_SET, model: "gpt-5" };
+  let back = decodeModelSet(encodeModelSet(f));
+  expect(back != null);
+  expect(back!.model == "gpt-5");
+});
+
+test("MODEL_CHANGED round-trips", () => {
+  let f: ModelChangedFrame = { v: PROTOCOL_VERSION, seq: 16, type: MODEL_CHANGED, model: "gpt-5" };
+  let back = decodeModelChanged(encodeModelChanged(f));
+  expect(back != null);
+  expect(back!.model == "gpt-5");
+});
+
+test("TASKS_REQUEST round-trips", () => {
+  let f: TasksRequestFrame = { v: PROTOCOL_VERSION, seq: 17, type: TASKS_REQUEST, arg: "cancel bgrun-1" };
+  let back = decodeTasksRequest(encodeTasksRequest(f));
+  expect(back != null);
+  expect(back!.arg == "cancel bgrun-1");
+});
+
+test("TASKS_RESPONSE round-trips", () => {
+  let f: TasksResponseFrame = { v: PROTOCOL_VERSION, seq: 18, type: TASKS_RESPONSE, text: "no background tasks" };
+  let back = decodeTasksResponse(encodeTasksResponse(f));
+  expect(back != null);
+  expect(back!.text == "no background tasks");
+});
+
+test("DAEMON_STOP round-trips", () => {
+  let f: DaemonStopFrame = { v: PROTOCOL_VERSION, seq: 19, type: DAEMON_STOP };
+  let back = decodeDaemonStop(encodeDaemonStop(f));
+  expect(back != null);
+  expect(back!.type == DAEMON_STOP);
+});
+
+test("DAEMON_STOPPING round-trips", () => {
+  let f: DaemonStoppingFrame = { v: PROTOCOL_VERSION, seq: 20, type: DAEMON_STOPPING, reason: "an attached client asked the daemon to stop" };
+  let back = decodeDaemonStopping(encodeDaemonStopping(f));
+  expect(back != null);
+  expect(back!.reason == "an attached client asked the daemon to stop");
+});
+
+test("the new session-state and lifecycle frame types are known", () => {
+  expect(isKnownType(MODE_SET));
+  expect(isKnownType(MODE_CHANGED));
+  expect(isKnownType(MODEL_SET));
+  expect(isKnownType(MODEL_CHANGED));
+  expect(isKnownType(TASKS_REQUEST));
+  expect(isKnownType(TASKS_RESPONSE));
+  expect(isKnownType(DAEMON_STOP));
+  expect(isKnownType(DAEMON_STOPPING));
 });
 
 test("unknown frame type is not fatal", () => {

@@ -13,6 +13,14 @@ export const CANCEL: string = "cancel";
 export const APPROVAL_REPLY: string = "approval.reply";
 export const RESUME: string = "resume";
 export const APPROVAL_REPLY_RESULT: string = "approval.reply.result";
+export const MODE_SET: string = "mode.set";
+export const MODE_CHANGED: string = "mode.changed";
+export const MODEL_SET: string = "model.set";
+export const MODEL_CHANGED: string = "model.changed";
+export const TASKS_REQUEST: string = "tasks.request";
+export const TASKS_RESPONSE: string = "tasks.response";
+export const DAEMON_STOP: string = "daemon.stop";
+export const DAEMON_STOPPING: string = "daemon.stopping";
 
 export const REASON_DONE: string = "done";
 export const REASON_CANCELLED: string = "cancelled";
@@ -36,6 +44,14 @@ export type CancelFrame = { v: int, seq: int, type: string, turnId: string };
 export type ApprovalReplyFrame = { v: int, seq: int, type: string, callId: string, decision: string };
 export type ResumeFrame = { v: int, seq: int, type: string, since: int };
 export type ApprovalReplyResultFrame = { v: int, seq: int, type: string, callId: string, applied: bool, decision: string };
+export type ModeSetFrame = { v: int, seq: int, type: string, mode: string };
+export type ModeChangedFrame = { v: int, seq: int, type: string, mode: string };
+export type ModelSetFrame = { v: int, seq: int, type: string, model: string };
+export type ModelChangedFrame = { v: int, seq: int, type: string, model: string };
+export type TasksRequestFrame = { v: int, seq: int, type: string, arg: string };
+export type TasksResponseFrame = { v: int, seq: int, type: string, text: string };
+export type DaemonStopFrame = { v: int, seq: int, type: string };
+export type DaemonStoppingFrame = { v: int, seq: int, type: string, reason: string };
 
 export function encodeSessionHello(f: SessionHelloFrame): string { return JSON.stringify(f); }
 export function encodeTurnStart(f: TurnStartFrame): string { return JSON.stringify(f); }
@@ -50,6 +66,14 @@ export function encodeCancel(f: CancelFrame): string { return JSON.stringify(f);
 export function encodeApprovalReply(f: ApprovalReplyFrame): string { return JSON.stringify(f); }
 export function encodeResume(f: ResumeFrame): string { return JSON.stringify(f); }
 export function encodeApprovalReplyResult(f: ApprovalReplyResultFrame): string { return JSON.stringify(f); }
+export function encodeModeSet(f: ModeSetFrame): string { return JSON.stringify(f); }
+export function encodeModeChanged(f: ModeChangedFrame): string { return JSON.stringify(f); }
+export function encodeModelSet(f: ModelSetFrame): string { return JSON.stringify(f); }
+export function encodeModelChanged(f: ModelChangedFrame): string { return JSON.stringify(f); }
+export function encodeTasksRequest(f: TasksRequestFrame): string { return JSON.stringify(f); }
+export function encodeTasksResponse(f: TasksResponseFrame): string { return JSON.stringify(f); }
+export function encodeDaemonStop(f: DaemonStopFrame): string { return JSON.stringify(f); }
+export function encodeDaemonStopping(f: DaemonStoppingFrame): string { return JSON.stringify(f); }
 
 export function decodeSessionHello(text: string): SessionHelloFrame | null {
   try { return JSON.parse<SessionHelloFrame>(text); } catch { return null; }
@@ -89,6 +113,30 @@ export function decodeResume(text: string): ResumeFrame | null {
 }
 export function decodeApprovalReplyResult(text: string): ApprovalReplyResultFrame | null {
   try { return JSON.parse<ApprovalReplyResultFrame>(text); } catch { return null; }
+}
+export function decodeModeSet(text: string): ModeSetFrame | null {
+  try { return JSON.parse<ModeSetFrame>(text); } catch { return null; }
+}
+export function decodeModeChanged(text: string): ModeChangedFrame | null {
+  try { return JSON.parse<ModeChangedFrame>(text); } catch { return null; }
+}
+export function decodeModelSet(text: string): ModelSetFrame | null {
+  try { return JSON.parse<ModelSetFrame>(text); } catch { return null; }
+}
+export function decodeModelChanged(text: string): ModelChangedFrame | null {
+  try { return JSON.parse<ModelChangedFrame>(text); } catch { return null; }
+}
+export function decodeTasksRequest(text: string): TasksRequestFrame | null {
+  try { return JSON.parse<TasksRequestFrame>(text); } catch { return null; }
+}
+export function decodeTasksResponse(text: string): TasksResponseFrame | null {
+  try { return JSON.parse<TasksResponseFrame>(text); } catch { return null; }
+}
+export function decodeDaemonStop(text: string): DaemonStopFrame | null {
+  try { return JSON.parse<DaemonStopFrame>(text); } catch { return null; }
+}
+export function decodeDaemonStopping(text: string): DaemonStoppingFrame | null {
+  try { return JSON.parse<DaemonStoppingFrame>(text); } catch { return null; }
 }
 
 function rawFieldValue(body: string, key: string): string {
@@ -153,6 +201,18 @@ export function frameTurnId(text: string): string {
   return rawFieldValue(text, "turnId");
 }
 
+export function modeSetFrameMode(text: string): string {
+  return rawFieldValue(text, "mode");
+}
+
+export function modelSetFrameModel(text: string): string {
+  return rawFieldValue(text, "model");
+}
+
+export function tasksRequestFrameArg(text: string): string {
+  return rawFieldValue(text, "arg");
+}
+
 export function isSupportedVersion(v: int): bool {
   return v == PROTOCOL_VERSION;
 }
@@ -162,6 +222,8 @@ export function isKnownType(t: string): bool {
   if (t == TOOL_RESULT || t == APPROVAL_REQUEST || t == TURN_END || t == ERROR) { return true; }
   if (t == INPUT || t == CANCEL || t == APPROVAL_REPLY || t == RESUME) { return true; }
   if (t == APPROVAL_REPLY_RESULT) { return true; }
+  if (t == MODE_SET || t == MODE_CHANGED || t == MODEL_SET || t == MODEL_CHANGED) { return true; }
+  if (t == TASKS_REQUEST || t == TASKS_RESPONSE || t == DAEMON_STOP || t == DAEMON_STOPPING) { return true; }
   return false;
 }
 
