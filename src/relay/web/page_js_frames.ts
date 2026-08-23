@@ -19,6 +19,12 @@ var REASON_ERROR = "error";
 var DECISION_ALLOW = "allow";
 var DECISION_DENY = "deny";
 var DECISION_ALWAYS = "always";
+var MODE_CHANGED = "mode.changed";
+var MODEL_CHANGED = "model.changed";
+var TASKS_RESPONSE = "tasks.response";
+var DAEMON_STOPPING = "daemon.stopping";
+var SHARE_STARTED = "share.started";
+var SHARE_FAILED = "share.failed";
 
 function decodeFrame(text) {
   try {
@@ -292,6 +298,12 @@ function isKnownFrameType(t) {
   if (t === SESSION_HELLO || t === TURN_START || t === TEXT_DELTA || t === TOOL_CALL) { return true; }
   if (t === TOOL_RESULT || t === APPROVAL_REQUEST || t === TURN_END || t === ERROR_FRAME) { return true; }
   if (t === APPROVAL_REPLY_RESULT) { return true; }
+  return false;
+}
+
+function isDaemonBroadcastType(t) {
+  if (t === MODE_CHANGED || t === MODEL_CHANGED || t === TASKS_RESPONSE) { return true; }
+  if (t === DAEMON_STOPPING || t === SHARE_STARTED || t === SHARE_FAILED) { return true; }
   return false;
 }
 `;

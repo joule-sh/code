@@ -56,9 +56,9 @@
     if (item.state === "pending") {
       const row = el("div", "approval-actions");
       const options = [
-        { decision: "allow", label: "Allow" },
-        { decision: "always", label: "Always allow " + item.tool + " this session" },
-        { decision: "deny", label: "Deny" },
+        { decision: DECISION_ALLOW, label: "Allow" },
+        { decision: DECISION_ALWAYS, label: "Always allow " + item.tool + " this session" },
+        { decision: DECISION_DENY, label: "Deny" },
       ];
       for (const opt of options) {
         const button = el("button", "approval-button approval-" + opt.decision, opt.label);

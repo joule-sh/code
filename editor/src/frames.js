@@ -20,6 +20,12 @@ var REASON_ERROR = "error";
 var DECISION_ALLOW = "allow";
 var DECISION_DENY = "deny";
 var DECISION_ALWAYS = "always";
+var MODE_CHANGED = "mode.changed";
+var MODEL_CHANGED = "model.changed";
+var TASKS_RESPONSE = "tasks.response";
+var DAEMON_STOPPING = "daemon.stopping";
+var SHARE_STARTED = "share.started";
+var SHARE_FAILED = "share.failed";
 
 function decodeFrame(text) {
   try {
@@ -296,6 +302,12 @@ function isKnownFrameType(t) {
   return false;
 }
 
+function isDaemonBroadcastType(t) {
+  if (t === MODE_CHANGED || t === MODEL_CHANGED || t === TASKS_RESPONSE) { return true; }
+  if (t === DAEMON_STOPPING || t === SHARE_STARTED || t === SHARE_FAILED) { return true; }
+  return false;
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
   FRAMES_GENERATED_FROM,
@@ -319,6 +331,12 @@ if (typeof module !== "undefined" && module.exports) {
   DECISION_ALLOW,
   DECISION_DENY,
   DECISION_ALWAYS,
+  MODE_CHANGED,
+  MODEL_CHANGED,
+  TASKS_RESPONSE,
+  DAEMON_STOPPING,
+  SHARE_STARTED,
+  SHARE_FAILED,
   APPROVAL_OPTION_ALLOW,
   APPROVAL_OPTION_ALWAYS,
   APPROVAL_OPTION_DENY,
@@ -328,6 +346,7 @@ if (typeof module !== "undefined" && module.exports) {
   diffableToolPathJs,
   renderFrameText,
   isKnownFrameType,
+  isDaemonBroadcastType,
   encodeInputFrame,
   encodeCancelFrame,
   encodeApprovalReplyFrame,

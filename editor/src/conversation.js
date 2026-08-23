@@ -56,6 +56,7 @@ class Conversation extends EventEmitter {
     this.approvalByCallId = new Map();
     this.localAnswers = new Map();
     this.openText = null;
+    this.daemonStopping = false;
   }
 
   push(item) {
@@ -213,9 +214,41 @@ class Conversation extends EventEmitter {
       return;
     }
 
+    if (frames.isDaemonBroadcastType(kind)) {
+      this.handleBroadcast(kind, f);
+      return;
+    }
+
     if (!frames.isKnownFrameType(kind)) {
       this.notice("an unrecognised frame arrived (" + String(kind) + ") - this editor client is older than the daemon", "warn");
     }
+  }
+
+  handleBroadcast(kind, f) {
+    if (kind === frames.MODE_CHANGED) {
+      if (this.session !== null) { this.session.mode = f.mode; }
+      this.notice("mode set to " + f.mode);
+      return;
+    }
+    if (kind === frames.MODEL_CHANGED) {
+      if (this.session !== null) { this.session.model = f.model; }
+      this.notice("model set to " + f.model);
+      return;
+    }
+    if (kind === frames.TASKS_RESPONSE) {
+      this.notice(f.text);
+      return;
+    }
+    if (kind === frames.SHARE_STARTED) {
+      this.notice("this session is now shared over the relay: " + f.url, "warn");
+      return;
+    }
+    if (kind === frames.SHARE_FAILED) {
+      this.notice("sharing this session failed: " + f.error, "error");
+      return;
+    }
+    this.daemonStopping = true;
+    this.notice("the daemon is stopping (" + f.reason + ") - a run already in flight is not killed", "warn");
   }
 
   approvalItem(callId) {
@@ -266,6 +299,7 @@ class Conversation extends EventEmitter {
       turnActive: this.turnActive,
       currentTurnId: this.currentTurnId,
       pendingCallId: this.pendingApprovalId,
+      daemonStopping: this.daemonStopping,
     };
   }
 }

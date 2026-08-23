@@ -168,6 +168,13 @@ async function approveInEditorBody(name, ws) {
   const editorText = session.conversation.items.filter((i) => i.kind === "text").map((i) => i.text).join("");
   ok(editorText.includes("No health route yet"), name + ": streamed model text landed in the editor transcript");
 
+  peer.conn.send(JSON.stringify({ v: 1, seq: 0, type: "mode.set", mode: "full-auto" }));
+  await waitFor(() => session.conversation.session.mode === "full-auto", 15000, name + ": a mode change made elsewhere reaching the editor");
+  ok(session.conversation.session.mode === "full-auto", name + ": the editor tracks a mode change another client made");
+
+  const warnings = session.conversation.items.filter((i) => i.kind === "notice" && String(i.text).includes("unrecognised"));
+  ok(warnings.length === 0, name + ": the editor recognised every frame the daemon broadcast, with no unknown-frame warnings");
+
   peer.conn.close();
   session.detach();
 }
