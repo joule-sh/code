@@ -28,39 +28,42 @@ function shell(status: int, stdout: string, stderr: string): ShellResult {
   return r;
 }
 
-function buildShim(name: string, msg: string, code: int): string {
+function buildShim(scratch: string, name: string, msg: string, code: int): string {
   let out = FIXTURES + "/" + name;
   if (fs.existsSync(out)) { return out; }
-  let args: string[] = [];
-  args.push("-DMSG=\"" + msg + "\"");
-  args.push("-DCODE=" + `${code}`);
-  args.push(FIXTURES + "/shim.c");
-  args.push("-o");
-  args.push(out);
-  run("cc", args);
+  let staged = scratch + "/" + name;
+  run("cc", ["-DMSG=\"" + msg + "\"", "-DCODE=" + `${code}`, scratch + "/shim.c", "-o", staged]);
+  fs.renameSync(staged, out);
   return out;
 }
 
-function buildLoaderCasualty(name: string): string {
+function buildLoaderCasualty(scratch: string, nonce: string, name: string): string {
   let out = FIXTURES + "/" + name;
   if (fs.existsSync(out)) { return out; }
-  let lib = FIXTURES + "/lib" + SIDE_LIB + ".so";
-  fs.writeFileSync(FIXTURES + "/side.c", SIDE_SOURCE);
-  fs.writeFileSync(FIXTURES + "/needs.c", NEEDS_SOURCE);
-  run("cc", ["-shared", "-fPIC", "-o", lib, FIXTURES + "/side.c"]);
-  run("cc", [FIXTURES + "/needs.c", "-L" + FIXTURES, "-l" + SIDE_LIB, "-Wl,-rpath," + FIXTURES, "-o", out]);
+  let side = SIDE_LIB + nonce;
+  let lib = scratch + "/lib" + side + ".so";
+  let staged = scratch + "/" + name;
+  run("cc", ["-shared", "-fPIC", "-o", lib, scratch + "/side.c"]);
+  run("cc", [scratch + "/needs.c", "-L" + scratch, "-l" + side, "-Wl,-rpath," + scratch, "-o", staged]);
   fs.rmSync(lib, false);
+  fs.renameSync(staged, out);
   return out;
 }
 
 function ensureFixtures(): void {
   if (g_new != "") { return; }
   if (!fs.existsSync(FIXTURES)) { fs.mkdirSync(FIXTURES, true); }
-  fs.writeFileSync(FIXTURES + "/shim.c", SHIM_SOURCE);
-  g_old = buildShim("joule-0.1.0", "joule 0.1.0", 0);
-  g_dead_loader = buildLoaderCasualty("joule-dead-loader");
-  g_dead_exit = buildShim("joule-dead-exit", "joule 0.2.0", 1);
-  g_new = buildShim("joule-0.2.0", "joule 0.2.0", 0);
+  let nonce = `${Date.now()}`;
+  let scratch = FIXTURES + "/build-" + nonce;
+  fs.mkdirSync(scratch, true);
+  fs.writeFileSync(scratch + "/shim.c", SHIM_SOURCE);
+  fs.writeFileSync(scratch + "/side.c", SIDE_SOURCE);
+  fs.writeFileSync(scratch + "/needs.c", NEEDS_SOURCE);
+  g_old = buildShim(scratch, "joule-0.1.0", "joule 0.1.0", 0);
+  g_dead_loader = buildLoaderCasualty(scratch, nonce, "joule-dead-loader");
+  g_dead_exit = buildShim(scratch, "joule-dead-exit", "joule 0.2.0", 1);
+  g_new = buildShim(scratch, "joule-0.2.0", "joule 0.2.0", 0);
+  fs.rmSync(scratch, true);
 }
 
 function place(src: string, dst: string): void {
