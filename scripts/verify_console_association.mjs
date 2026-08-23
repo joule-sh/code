@@ -232,7 +232,6 @@ async function main() {
     const browserFrames = [];
     browser.onMessage((text) => { try { browserFrames.push(JSON.parse(text)); } catch { /* ignore */ } });
     browser.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
-    await sleep(200);
 
     attach.send(JSON.stringify({ v: 1, seq: 0, type: "input", text: "add a health note to the README" }));
     const approval = await collectUntil(browserFrames, (f) => f.type === "approval.request", 10000, "the paired browser to see the approval.request");

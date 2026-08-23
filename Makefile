@@ -1,4 +1,4 @@
-.PHONY: build release test e2e editor-frames editor-check editor-harness terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness bench-mailbox clean
+.PHONY: build release test e2e editor-frames editor-check editor-harness terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -101,6 +101,9 @@ editor-check:
 
 editor-harness: build bin/stub_model editor-check
 	node scripts/verify_editor_client.mjs
+
+relay-reconnect-harness: bin/relay
+	node scripts/verify_relay_reconnect.mjs
 
 bin/mailbox_bench: $(ALL_TS)
 	mkdir -p bin
