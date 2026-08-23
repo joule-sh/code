@@ -1,10 +1,11 @@
-import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, frameType, encodeDaemonStop } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, frameType, decodeSessionHello, encodeDaemonStop } from "../protocol/frames.ts";
 import { DaemonClient } from "./attach_client.ts";
-import { readDaemonInfo, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
+import { readDaemonInfo, readDaemonInfoAt, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
 
 export const POLL_MS: int = 100;
 const CONNECT_WAIT_TICKS: int = 20;
 const SPAWN_WAIT_TICKS: int = 50;
+const HELLO_WAIT_TICKS: int = 30;
 const DEFAULT_PORT_BASE: int = 8300;
 const DEFAULT_PORT_SPREAD: int = 400;
 const STOP_ACK_TICKS: int = 50;
@@ -19,6 +20,54 @@ export function hasStopFlag(argv: string[]): bool {
     if (a == STOP_FLAG) { return true; }
   }
   return false;
+}
+
+export function nextPortInRange(port: int): int {
+  let next = port + 1;
+  if (next >= DEFAULT_PORT_BASE + DEFAULT_PORT_SPREAD) { return DEFAULT_PORT_BASE; }
+  return next;
+}
+
+export function helloWorkspace(frames: string[]): string {
+  for (const f of frames) {
+    if (frameType(f) == SESSION_HELLO) {
+      let hello = decodeSessionHello(f);
+      if (hello != null) { return hello.workspace; }
+    }
+  }
+  return "";
+}
+
+export function isTaken(taken: int[], port: int): bool {
+  for (const p of taken) {
+    if (p == port) { return true; }
+  }
+  return false;
+}
+
+export function portsHeldByOthers(workspaceRoot: string): int[] {
+  let dir = daemonInfoDir();
+  let names: string[] = [];
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  let ports: int[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) { continue; }
+    let info = readDaemonInfoAt(dir + "/" + name);
+    if (info == null) { continue; }
+    if (info.workspace == workspaceRoot) { continue; }
+    ports.push(info.port);
+  }
+  return ports;
+}
+
+export function firstFreePort(start: int, taken: int[]): int {
+  let port = start;
+  let steps = 0;
+  while (steps < DEFAULT_PORT_SPREAD && isTaken(taken, port)) {
+    port = nextPortInRange(port);
+    steps = steps + 1;
+  }
+  return port;
 }
 
 export type ReadyOutcome = { ready: bool, frames: string[] };
@@ -40,7 +89,29 @@ function waitForReady(client: DaemonClient, ticks: int): ReadyOutcome {
   return out;
 }
 
-export type AttachResult = { client: DaemonClient, spawned: bool, pending: string[] };
+function waitForHello(client: DaemonClient, seed: string[], ticks: int): string[] {
+  let collected: string[] = [];
+  for (const f of seed) { collected.push(f); }
+  let i = 0;
+  while (i < ticks) {
+    if (helloWorkspace(collected) != "") { return collected; }
+    let frames = client.pollInbound();
+    for (const f of frames) { collected.push(f); }
+    process.sleep(POLL_MS);
+    i = i + 1;
+  }
+  return collected;
+}
+
+export type AttachResult = { client: DaemonClient, spawned: bool, pending: string[], port: int };
+
+function refuse(client: DaemonClient, port: int, seen: string, workspaceRoot: string, frames: string[]): AttachResult {
+  console.log("joule: 127.0.0.1:" + `${port}` + " is serving " + seen + ", not " + workspaceRoot);
+  console.log("joule: refusing to drive another workspace's daemon - stop the stale one with joule --stop in " + seen);
+  client.detach();
+  let wrong: AttachResult = { client: client, spawned: false, pending: frames, port: port };
+  return wrong;
+}
 
 export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
   let info = readDaemonInfo(workspaceRoot);
@@ -48,14 +119,20 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
   if (info != null) {
     port = info.port;
   } else {
-    port = portFromWorkspace(workspaceRoot, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD);
+    let hashed = portFromWorkspace(workspaceRoot, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD);
+    port = firstFreePort(hashed, portsHeldByOthers(workspaceRoot));
   }
 
   let client = new DaemonClient("127.0.0.1", port, tmpDir());
   client.connect();
   let first = waitForReady(client, CONNECT_WAIT_TICKS);
   if (first.ready) {
-    let already: AttachResult = { client: client, spawned: false, pending: first.frames };
+    let settled = waitForHello(client, first.frames, HELLO_WAIT_TICKS);
+    let seen = helloWorkspace(settled);
+    if (seen != "" && seen != workspaceRoot) {
+      return refuse(client, port, seen, workspaceRoot, settled);
+    }
+    let already: AttachResult = { client: client, spawned: false, pending: settled, port: port };
     return already;
   }
 
@@ -66,7 +143,12 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
   let combined: string[] = [];
   for (const f of first.frames) { combined.push(f); }
   for (const f of second.frames) { combined.push(f); }
-  let fresh: AttachResult = { client: client, spawned: true, pending: combined };
+  let settled = waitForHello(client, combined, HELLO_WAIT_TICKS);
+  let seen = helloWorkspace(settled);
+  if (seen != "" && seen != workspaceRoot) {
+    return refuse(client, port, seen, workspaceRoot, settled);
+  }
+  let fresh: AttachResult = { client: client, spawned: true, pending: settled, port: port };
   return fresh;
 }
 
@@ -85,10 +167,18 @@ export function runAttachStop(workspaceRoot: string): void {
     return;
   }
 
+  let settled = waitForHello(client, ready.frames, HELLO_WAIT_TICKS);
+  let seen = helloWorkspace(settled);
+  if (seen != "" && seen != workspaceRoot) {
+    console.log("joule --stop: 127.0.0.1:" + `${info.port}` + " is serving " + seen + ", not " + workspaceRoot + " - leaving it alone");
+    client.detach();
+    return;
+  }
+
   client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
 
   let acked = false;
-  for (const f of ready.frames) {
+  for (const f of settled) {
     if (frameType(f) == DAEMON_STOPPING) { acked = true; }
   }
   let i = 0;
