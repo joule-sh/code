@@ -1,4 +1,5 @@
 import { InputLine, InputHistory, PendingApproval, clip, approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, PendingUpdateOffer, updateOfferOptionForChar, UPDATE_OFFER_ACCEPT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT } from "./input_state.ts";
+import { PROMPT_MARKER, CODE_MARKER } from "./prompt_rows.ts";
 
 test("InputLine push and backspace edit the buffer", () => {
   let line = new InputLine();
@@ -320,4 +321,36 @@ test("close resets the offer back to its fresh state", () => {
   expect(!o.isPending());
   expect(!o.hasOptionRows());
   expect(o.toVersion == "");
+});
+
+test("a fresh input line carries the ordinary prompt marker and is not capturing", () => {
+  let line = new InputLine();
+  expect(line.marker == PROMPT_MARKER);
+  expect(!line.capturing());
+});
+
+test("capturing swaps the marker, empties the buffer, and keeps the command panel shut", () => {
+  let line = new InputLine();
+  line.setBuf("/mod");
+  expect(line.completion.isOpen());
+  line.captureWith(CODE_MARKER);
+  expect(line.marker == CODE_MARKER);
+  expect(line.buf == "");
+  expect(line.capturing());
+  line.push("/");
+  expect(!line.completion.isOpen());
+  expect(!line.acceptCompletion());
+});
+
+test("releasing the capture restores the ordinary prompt and clears what was typed into it", () => {
+  let line = new InputLine();
+  line.captureWith(CODE_MARKER);
+  line.push("A");
+  line.push("B");
+  line.release();
+  expect(line.marker == PROMPT_MARKER);
+  expect(line.buf == "");
+  expect(!line.capturing());
+  line.setBuf("/mod");
+  expect(line.completion.isOpen());
 });

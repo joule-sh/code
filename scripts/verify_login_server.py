@@ -1,10 +1,13 @@
-# Real-pty verification for choosing a Joule server from /login (ticket #150).
-# Reuses terminal_structural_harness.py's PtySession, and stands up a fake
-# Joule console that answers the sign-in exchange, so the whole path can be
-# driven end to end: the default sign-in naming its server and going straight
-# to the code prompt, a public plain-http address still refused, a loopback
-# one accepted, the chosen server persisting to the config file and turning up
-# in the next run's welcome box, and a server pinned by JOULE_CODE_SERVER
+# Real-pty verification for choosing a Joule server from /login (#150), for the
+# code prompt being the framed input rather than a second prompt under it
+# (#193), and for the prompt going back to ordinary after a cancelled sign-in
+# (#194). Reuses terminal_structural_harness.py's PtySession, and stands up a
+# fake Joule console that answers the sign-in exchange, so the whole path can
+# be driven end to end: the default sign-in naming its server and going
+# straight to the code prompt, an address typed at that prompt switching the
+# sign-in in place, a public plain-http address still refused, a loopback one
+# accepted, the chosen server persisting to the config file and turning up in
+# the next run's welcome box, and a server pinned by JOULE_CODE_SERVER
 # offering no choice it would then override.
 
 import os
@@ -31,6 +34,19 @@ def ok(cond, label):
     else:
         failures.append(label)
         print("FAIL: " + label, file=sys.stderr)
+
+
+def rows_of(session):
+    """The stripped rows of the latest redraw, keyed by row number."""
+    full = harness.text(bytes(session.raw))
+    out = {}
+    for (row, cell) in harness.parse_redraw_rows(harness.last_redraw_block(full)):
+        out[row] = harness.strip_sgr(cell).rstrip()
+    return out
+
+
+def has_row(session, wanted):
+    return any(row == wanted for row in rows_of(session).values())
 
 
 BODY = json.dumps({
@@ -115,11 +131,63 @@ def main():
             ok(True, "/login names the server it is about to use")
             s.wait_for("code> ", timeout=10.0, from_index=mark)
             ok(True, "the default path goes straight to the code prompt, with nothing to answer first")
-            after = harness.text(s.raw[mark:])
-            ok("/login <url>" in harness.strip_sgr(after), "it says how to reach a different server")
+            s.settle(0.3, 2.0)
+            after = harness.strip_sgr(harness.text(s.raw[mark:]))
+            ok("another server? type its address instead." in after, "the prompt taking the code also offers the other server, so choosing one costs no restart")
+            # #193: the code prompt is the framed input itself. A row starting
+            # with the marker is a second, unframed prompt drawn under the box
+            # - the exact defect reported - so there must be none.
+            ok(harness.input_row(harness.text(bytes(s.raw)), 40) == "code>", "the code prompt is the marker inside the input box")
+            loose = [r for r in rows_of(s).values() if r.startswith("code>")]
+            ok(loose == [], "no second code prompt is drawn outside the box, got %r" % (loose,))
+
+            # #193: an address typed at the code prompt moves the sign-in
+            # there, without cancelling the command and typing it again.
+            mark = len(s.raw)
+            s.write(fake + "\r")
+            s.wait_for("sign in to " + fake, timeout=10.0, from_index=mark)
+            ok(True, "an address typed at the code prompt switches the sign-in to that server in place")
+            s.wait_for("code> ", timeout=10.0, from_index=mark)
+            ok(config_of(home_dir).get("server", "") == "", "switching at the prompt does not write the config file until the sign-in works")
+            mark = len(s.raw)
+            s.write("ABC234\r")
+            s.wait_for("signed in to " + fake + " as dev@example.com", timeout=15.0, from_index=mark)
+            ok(True, "the sign-in completes against the server chosen at the prompt")
+            ok(config_of(home_dir).get("server", "") == fake, "a server chosen at the prompt persists, exactly as one named on the command line does")
+            s.settle(0.3, 2.0)
+            ok(harness.input_row(harness.text(bytes(s.raw)), 40) == ">", "the prompt goes back to the ordinary marker once the sign-in is done")
+
+            mark = len(s.raw)
+            s.write("/logout " + fake + "\r")
+            s.wait_for("signed out of " + fake, timeout=10.0, from_index=mark)
+            with open(config_path, "w") as f:
+                json.dump({"baseUrl": "http://127.0.0.1:9", "model": "stub", "apiKey": "stub-key", "server": "", "updateCheck": ""}, f)
+
+            mark = len(s.raw)
+            s.write("/login\r")
+            s.wait_for("code> ", timeout=10.0, from_index=mark)
             s.write("\x03")
             s.wait_for("sign-in stopped", timeout=10.0)
+            s.settle(0.3, 2.0)
             ok(config_of(home_dir).get("server", "") == "", "an abandoned sign-in writes nothing to the config file")
+
+            # #194: after a cancelled sign-in the prompt has to be the one a
+            # fresh start gives. Ordinary text is a request, and a command runs
+            # only when it is typed. Both states worked in isolation before;
+            # only this transition was broken.
+            ok(harness.input_row(harness.text(bytes(s.raw)), 40) == ">", "a cancelled sign-in leaves the ordinary prompt marker behind")
+            mark = len(s.raw)
+            s.write("ls\r")
+            s.settle(0.6, 4.0)
+            ok(has_row(s, "> ls"), "text typed after a cancelled sign-in is echoed as a request")
+            ran = harness.strip_sgr(harness.text(s.raw[mark:]))
+            for output in ("show this help", "asking the daemon", "attached - code", "unknown command", "clear the scrollback"):
+                ok(output not in ran, "a cancelled sign-in does not turn typed text into a command (%r never ran)" % output)
+            # everything above is still on screen, and every redraw repaints
+            # it, so clear the transcript before the checks below go looking
+            # for text that has to be new.
+            s.write("/clear\r")
+            s.settle(0.3, 2.0)
 
             mark = len(s.raw)
             s.write("/login http://joule.example.invalid\r")
@@ -180,7 +248,7 @@ def main():
             s.wait_for("sign in to https://pinned.example", timeout=10.0, from_index=mark)
             pinned = harness.strip_sgr(harness.text(s.raw[mark:]))
             ok("JOULE_CODE_SERVER" in pinned, "a pinned server says where its address comes from")
-            ok("/login <url>" not in pinned, "a pinned server offers no choice it would then override")
+            ok("another server?" not in pinned, "a pinned server offers no choice it would then override")
             s.write("\x03")
             s.wait_for("sign-in stopped", timeout=10.0)
 

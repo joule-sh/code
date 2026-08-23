@@ -1,6 +1,6 @@
 import { renderFrame, approvalOptionLabel, approvalOptionRow, approvalOptionsBlock } from "./renderer.ts";
 import { fixtureScript } from "./fixture.ts";
-import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, APPROVAL_REQUEST, ToolCallFrame, ApprovalRequestFrame, encodeToolCall, encodeApprovalRequest } from "../protocol/frames.ts";
+import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, APPROVAL_REQUEST, ToolCallFrame, ApprovalRequestFrame, encodeToolCall, encodeApprovalRequest, encodeNotice, noticeFrame, LEVEL_INFO, LEVEL_WARN } from "../protocol/frames.ts";
 import { GREEN, RED, DIM, REVERSE, RESET } from "./style.ts";
 import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 
@@ -231,4 +231,24 @@ test("an approval.request highlights the first option by default so Enter on an 
   let out = renderFrame(runApprovalFrame("npm test"), "");
   expect(out.indexOf(REVERSE + "> 1. Yes") >= 0);
   expect(out.indexOf(REVERSE + "> 3. No") < 0);
+});
+
+function noticeJson(code: string, level: string, message: string): string {
+  return encodeNotice(noticeFrame(code, level, message));
+}
+
+test("a warning notice renders with the ! marker, so something worth seeing still stands out", () => {
+  let out = renderFrame(noticeJson("daemon.unreachable", LEVEL_WARN, "cannot reach the daemon (closed), still retrying"), "");
+  expect(out.indexOf("! cannot reach the daemon") >= 0);
+});
+
+test("an informational notice renders as a plain line, with no error marker at all", () => {
+  let out = renderFrame(noticeJson("daemon.attached", LEVEL_INFO, "connected to the daemon"), "");
+  expect(out.indexOf("!") < 0);
+  expect(out.indexOf("connected to the daemon") >= 0);
+});
+
+test("a notice never renders the code, which belongs in the log rather than on the first screen", () => {
+  let out = renderFrame(noticeJson("relay.buffer_overflow", LEVEL_WARN, "the buffer overflowed"), "");
+  expect(out.indexOf("relay.buffer_overflow") < 0);
 });

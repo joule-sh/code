@@ -236,6 +236,11 @@ function applyFrameToTranscript(frameJson) {
     appendLine("line-error", "! " + f.code + ": " + f.message);
     return;
   }
+  if (kind === NOTICE_FRAME) {
+    var mark = f.level === LEVEL_WARN ? "! " : "";
+    appendLine(noticeLineClass(f.level), mark + f.message);
+    return;
+  }
   appendLine("line-unknown", "(unrenderable frame: " + kind + ")");
 }
 

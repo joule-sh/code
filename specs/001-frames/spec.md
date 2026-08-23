@@ -50,6 +50,25 @@ Terminal to everyone:
 | `approval.request` | `turnId`, `callId`, `tool`, `summary`, `detail`, `args` |
 | `turn.end` | `turnId`, `reason`: `done` \| `cancelled` \| `error` |
 | `error` | `code`, `message` |
+| `notice` | `code`, `level`: `info` \| `warn`, `message` |
+
+`error` means a turn could not do what was asked. `notice` is the other thing a
+transport has to say - the connection came back, a buffer overflowed, a frame
+was dropped - and it carries the severity so a renderer never has to guess.
+Without it every lifecycle event was an `error`, and the line most people saw
+on every run was a successful attach painted red, which teaches a person to
+ignore the one marker that is supposed to mean something broke.
+
+Two rules follow from that, and they are about what is worth saying at all:
+
+1. **A lifecycle event that went the normal way is not announced.** A
+   successful attach gets no line: the welcome block already names the
+   workspace and the model, so a line saying the usual thing happened is noise
+   in the position where alarm belongs.
+2. **A loss that the retry repairs is not announced either.** Only a retry that
+   fails speaks, once per outage, at `warn`. A connection that drops and comes
+   back within a tick has cost the person nothing and does not need their
+   attention; one that stays down does.
 
 `approval.request.args` carries the same JSON the matching `tool.call` would
 carry, verbatim, so a renderer can show what a write or edit actually proposes

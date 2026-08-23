@@ -1,4 +1,4 @@
-import { promptRowCount, usesBox, scrollToEnd, buildPrompt, MIN_ROWS_FOR_BOX, BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS } from "./input_box.ts";
+import { promptRowCount, usesBox, scrollToEnd, buildPrompt, buildPromptMarked, PROMPT_MARKER, CODE_MARKER, MIN_ROWS_FOR_BOX, BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS } from "./input_box.ts";
 import { VIOLET, RESET } from "./style.ts";
 import { visualWidth } from "./layout.ts";
 
@@ -178,4 +178,34 @@ test("an empty buffer still places the cursor right after the marker", () => {
   expect(plain.cursorCol == 3);
   let boxed = buildPrompt("", 80, 24);
   expect(boxed.cursorCol == 5);
+});
+
+test("the code prompt is drawn inside the box, as its content row, not as a second prompt below it", () => {
+  let render = buildPromptMarked("ABC234", CODE_MARKER, 80, 24);
+  expect(render.lines.length == BOX_PROMPT_ROWS);
+  expect(render.lines[1].indexOf(CODE_MARKER + "ABC234") >= 0);
+  expect(render.cursorLine == 1);
+  expect(render.cursorCol == 1 + 1 + CODE_MARKER.length + 6 + 1);
+});
+
+test("a marked prompt degrades to the same single plain row a short terminal always gets", () => {
+  let render = buildPromptMarked("ABC234", CODE_MARKER, 45, 10);
+  expect(render.lines.length == PLAIN_PROMPT_ROWS);
+  expect(render.lines[0].indexOf(CODE_MARKER) >= 0);
+  expect(render.cursorLine == 0);
+});
+
+test("a long entry scrolls inside the marked prompt rather than pushing the box wider", () => {
+  let render = buildPromptMarked("0123456789012345678901234567890123456789", CODE_MARKER, 30, 24);
+  let content = render.lines[1];
+  expect(content.indexOf("9") >= 0);
+  expect(render.cursorCol <= 30);
+});
+
+test("buildPrompt is the marked prompt with the ordinary marker, so the two cannot drift", () => {
+  let plain = buildPrompt("hi", 80, 24);
+  let marked = buildPromptMarked("hi", PROMPT_MARKER, 80, 24);
+  expect(plain.lines.length == marked.lines.length);
+  expect(plain.lines[1] == marked.lines[1]);
+  expect(plain.cursorCol == marked.cursorCol);
 });

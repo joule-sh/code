@@ -1,4 +1,4 @@
-import { browserCommand, platformNote, retryable, loginTarget, serverHint, chosenServerNote, serverListNote } from "./login_ui.ts";
+import { browserCommand, platformNote, retryable, loginTarget, serverHint, waitingLines, looksLikeServer, typedServerAddress, chosenServerNote, serverListNote } from "./login_ui.ts";
 import { checkServer, ServerOrigin, SERVER_OK, SERVER_INSECURE, SERVER_ENV, INSECURE_ENV, DEFAULT_SERVER, SERVER_FROM_FLAG, SERVER_FROM_ENV, SERVER_FROM_DEFAULT } from "../auth/server.ts";
 import { configFilePath } from "../providers/config.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
@@ -71,21 +71,70 @@ test("a private or loopback http address typed after /login is accepted without 
   expect(checkServer(loginTarget(o, "http://box.internal"), false).status == SERVER_OK);
 });
 
-test("the default sign-in offers the other path without asking anything", () => {
-  let hint = serverHint(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "");
-  expect(hint.indexOf("/login <url>") >= 0);
+test("the default sign-in offers the other server at the prompt that is already taking input", () => {
+  let lines = waitingLines(originOf("https://joule.sh", SERVER_FROM_DEFAULT));
+  expect(lines.indexOf("waiting for the code") >= 0);
+  expect(lines.indexOf("another server? type its address instead.") >= 0);
 });
 
-test("a sign-in that already names an address does not repeat the offer", () => {
-  expect(serverHint(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "https://joule.internal") == "");
+test("the offer is not a step: there is no option list and no key to press before the code", () => {
+  let lines = waitingLines(originOf("https://joule.sh", SERVER_FROM_DEFAULT));
+  expect(lines.indexOf("press") < 0);
+  expect(lines.indexOf("1.") < 0);
+  expect(lines.indexOf("2.") < 0);
+  expect(lines.indexOf("[y/n]") < 0);
 });
 
-test("a pinned server says where it comes from rather than offering a choice it would lose", () => {
+test("a pinned server is told, and offered nothing it would then override", () => {
   let env = serverHint(originOf("https://joule.sh", SERVER_FROM_ENV), "");
   expect(env.indexOf(SERVER_ENV) >= 0);
-  expect(env.indexOf("/login <url>") < 0);
+  let pinnedWait = waitingLines(originOf("https://joule.sh", SERVER_FROM_ENV));
+  expect(pinnedWait.indexOf("another server?") < 0);
   let flag = serverHint(originOf("https://joule.sh", SERVER_FROM_FLAG), "https://joule.internal");
   expect(flag.indexOf("--server") >= 0);
+});
+
+test("an unpinned sign-in states no pin, because there is none to state", () => {
+  expect(serverHint(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "") == "");
+});
+
+test("a sign-in code is never mistaken for a server address", () => {
+  expect(!looksLikeServer("ABC234"));
+  expect(!looksLikeServer("abc234"));
+  expect(!looksLikeServer("ABC-234"));
+  expect(!looksLikeServer(" ABC234 "));
+});
+
+test("an address typed at the code prompt is recognized as one, with or without a scheme", () => {
+  expect(looksLikeServer("https://joule.internal"));
+  expect(looksLikeServer("joule.internal"));
+  expect(looksLikeServer("http://127.0.0.1:8080"));
+  expect(looksLikeServer("localhost:8080"));
+});
+
+test("neither an empty entry nor a sentence is treated as a server address", () => {
+  expect(!looksLikeServer(""));
+  expect(!looksLikeServer("   "));
+  expect(!looksLikeServer("what is this. a server?"));
+});
+
+test("an address typed without a scheme becomes https, so switching can never quietly downgrade", () => {
+  expect(typedServerAddress("joule.internal") == "https://joule.internal");
+  expect(typedServerAddress("  joule.internal  ") == "https://joule.internal");
+  expect(typedServerAddress("http://127.0.0.1:8080") == "http://127.0.0.1:8080");
+});
+
+test("a server chosen at the code prompt meets the same check, so plain http policy is untouched", () => {
+  let refused = checkServer(typedServerAddress("http://joule.example.com"), false);
+  expect(refused.status == SERVER_INSECURE);
+  expect(refused.message.indexOf(INSECURE_ENV) >= 0);
+  expect(checkServer(typedServerAddress("http://127.0.0.1:8080"), false).status == SERVER_OK);
+  expect(checkServer(typedServerAddress("box.internal"), false).status == SERVER_OK);
+});
+
+test("the browser is opened with the terminal's own input shut off, so nothing else can read the keys", () => {
+  let script = browserCommand("https://joule.sh/terminal/login");
+  expect(script.indexOf("</dev/null") >= 0);
 });
 
 test("choosing a server says it is now the one joule uses, and where that is written", () => {

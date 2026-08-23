@@ -3,6 +3,7 @@ import { frameSeq, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
 export const OUTBOUND_BUFFER_CAP: int = 500;
 export const BACKOFF_START_MS: i64 = 500;
 export const BACKOFF_CAP_MS: i64 = 10000;
+export const UNREACHABLE_QUIET_MS: i64 = 5000;
 
 export const TAG_FRAME: string = "FRAME";
 export const TAG_CONNECTED: string = "CTRL:CONNECTED";
@@ -14,6 +15,12 @@ export function nextBackoffMs(currentMs: i64): i64 {
   if (doubled > BACKOFF_CAP_MS) { return BACKOFF_CAP_MS; }
   if (doubled < BACKOFF_START_MS) { return BACKOFF_START_MS; }
   return doubled;
+}
+
+export function shouldSayUnreachable(retryFailed: bool, alreadySaid: bool, outageSince: i64, now: i64): bool {
+  if (!retryFailed || alreadySaid) { return false; }
+  if (outageSince == 0) { return false; }
+  return now - outageSince >= UNREACHABLE_QUIET_MS;
 }
 
 export function maxSeqSeen(current: int, frameJson: string): int {
