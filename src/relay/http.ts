@@ -1,5 +1,5 @@
 import { PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
-import { renderWebPage, WEB_PAGE_PATH } from "./web/web_page.ts";
+import { renderWebPage, renderFramesAsset, WEB_PAGE_PATH, FRAMES_ASSET_PATH } from "./web/web_page.ts";
 import { StoreCaller } from "./relay_rpc.ts";
 import { CMD_CREATE, CMD_PAIR, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, rawFieldValue, CMD_LIST_MINE, ListMineCommand, encodeListMineCommand, decodeListMineResult } from "./store_commands.ts";
 import { AccountVerifyResult, VERIFY_OK } from "./account_verify.ts";
@@ -125,6 +125,17 @@ function handleListMine(caller: StoreCaller, req: RelayHttpRequest): RelayHttpRe
   return jsonResponse(200, JSON.stringify(result));
 }
 
+function scriptResponse(status: int, body: string): RelayHttpResponse {
+  let h = new Map<string, string>();
+  h.set("content-type", "application/javascript; charset=utf-8");
+  let resp: RelayHttpResponse = { status: status, body: body, ok: status < 400, headers: h };
+  return resp;
+}
+
+function handleFramesAsset(): RelayHttpResponse {
+  return scriptResponse(200, renderFramesAsset());
+}
+
 function handleWebPage(wsBrowserPort: int): RelayHttpResponse {
   return htmlResponse(200, renderWebPage(wsBrowserPort));
 }
@@ -134,6 +145,9 @@ export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int, verifyA
     let now: i64 = Date.now();
     if (req.method == "GET" && req.path == WEB_PAGE_PATH) {
       return handleWebPage(wsBrowserPort);
+    }
+    if (req.method == "GET" && req.path == FRAMES_ASSET_PATH) {
+      return handleFramesAsset();
     }
     if (req.method == "POST" && req.path == "/sessions") {
       return handleCreateSession(caller, verifyAccount, req, now);

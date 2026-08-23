@@ -11,6 +11,7 @@ var ERROR_FRAME = "error";
 var INPUT_FRAME = "input";
 var CANCEL_FRAME = "cancel";
 var APPROVAL_REPLY_FRAME = "approval.reply";
+var APPROVAL_REPLY_RESULT = "approval.reply.result";
 var RESUME_FRAME = "resume";
 var REASON_DONE = "done";
 var REASON_CANCELLED = "cancelled";
@@ -280,12 +281,16 @@ function renderFrameText(frameJson, prevKind) {
   if (kind === ERROR_FRAME) {
     return "\\n! " + f.code + ": " + f.message;
   }
+  if (kind === APPROVAL_REPLY_RESULT) {
+    return "\\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
+  }
   return "";
 }
 
 function isKnownFrameType(t) {
   if (t === SESSION_HELLO || t === TURN_START || t === TEXT_DELTA || t === TOOL_CALL) { return true; }
   if (t === TOOL_RESULT || t === APPROVAL_REQUEST || t === TURN_END || t === ERROR_FRAME) { return true; }
+  if (t === APPROVAL_REPLY_RESULT) { return true; }
   return false;
 }
 `;

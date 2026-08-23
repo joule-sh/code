@@ -16,10 +16,10 @@ const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(embeddedJs, sandbox);
 vm.runInContext(
-  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame, planToolOutputCollapseJs: planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES: TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES: TOOL_OUTPUT_COLLAPSE_MIN_LINES };",
+  "var __exports = { fixtureScript: fixtureScript, renderFrameText: renderFrameText, decodeFrame: decodeFrame, planToolOutputCollapseJs: planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES: TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES: TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType: isKnownFrameType };",
   sandbox
 );
-const { fixtureScript, renderFrameText, decodeFrame, planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES } = sandbox.__exports;
+const { fixtureScript, renderFrameText, decodeFrame, planToolOutputCollapseJs, TOOL_OUTPUT_COLLAPSE_HEAD_LINES, TOOL_OUTPUT_COLLAPSE_MIN_LINES, isKnownFrameType } = sandbox.__exports;
 
 let failures = 0;
 function expectContains(haystack, needle, label) {
@@ -86,6 +86,19 @@ expectContains(
 expectTrue(
   renderFrameText('{"v":1,"seq":1,"type":"some.future.thing","whatever":true}', "") === "",
   "an unknown frame type renders nothing rather than crashing"
+);
+
+// #136: a losing approval reply is told so, and this renderer is the half that
+// used to print "unrenderable frame" at a browser while the terminal said it.
+const lateReply = '{"v":1,"seq":9,"type":"approval.reply.result","callId":"c1","applied":false,"decision":"allow"}';
+expectContains(
+  renderFrameText(lateReply, ""),
+  "already decided: allow",
+  "approval.reply.result says which decision won (#136)"
+);
+expectTrue(
+  isKnownFrameType("approval.reply.result"),
+  "approval.reply.result is a frame type this renderer claims to know (#136)"
 );
 
 expectTrue(
