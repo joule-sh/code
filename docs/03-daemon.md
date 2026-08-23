@@ -91,7 +91,15 @@ daemon is built to never do that, from three pieces:
    reverse: the owning thread appends every emitted frame to one broadcast
    log (`src/daemon/broadcast.ts`), and each connection gets its own
    `Worker.run`'d pusher thread that tails that log with its own
-   thread-local read cursor and pushes new frames to its own peer. This is
+   thread-local read cursor and pushes new frames to its own peer. An inbox
+   file lives exactly as long as its connection needs it: the connection
+   thread appends a close marker as its last act, and the owning thread
+   removes the file on a later tick, once it has drained everything above
+   that marker and the file has not grown since. The ordering comes from the
+   file itself, so a frame sent just before the socket dropped is still
+   delivered, and a client that reattaches under the same id before the reap
+   keeps its file and its place in it. A daemon also sweeps the directory as
+   it starts, since anything already there predates it. This is
    the same mailbox idiom `src/tasks/mailbox.ts` and `src/relay/client_worker.ts`
    already use for exactly this kind of cross-thread handoff, applied to a
    second place it was needed.
