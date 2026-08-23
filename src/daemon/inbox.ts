@@ -72,6 +72,12 @@ export class InboxDrain {
     return created;
   }
 
+  closeReader(connId: string): void {
+    let existing = this.readers.get(connId);
+    if (existing != null) { existing.close(); }
+    this.readers.delete(connId);
+  }
+
   reapSealed(): int {
     let pending = this.sealed;
     this.sealed = [];
@@ -80,7 +86,7 @@ export class InboxDrain {
       let path = inboxPath(this.runtimeDir, entry.connId);
       if (inboxSize(path) != entry.size) { continue; }
       removeInbox(path);
-      this.readers.delete(entry.connId);
+      this.closeReader(entry.connId);
       reaped = reaped + 1;
     }
     return reaped;
@@ -96,7 +102,7 @@ export class InboxDrain {
       }
       if (!stillThere) { gone.push(connId); }
     }
-    for (const connId of gone) { this.readers.delete(connId); }
+    for (const connId of gone) { this.closeReader(connId); }
   }
 
   drainAll(): string[] {

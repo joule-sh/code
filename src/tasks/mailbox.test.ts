@@ -155,6 +155,72 @@ test("appending only ever grows the mailbox file", () => {
   }
 });
 
+function readCharCounter(): i64 {
+  let fd = fs.openSync("/proc/self/io", "r");
+  if (fd < 0) { return -1; }
+  let content = fs.readSync(fd, 4096);
+  fs.closeSync(fd);
+  let prefix = "rchar: ";
+  for (const raw of content.split("\n")) {
+    if (raw.length <= prefix.length) { continue; }
+    if (raw.slice(0, prefix.length) != prefix) { continue; }
+    let digits = raw.slice(prefix.length, raw.length);
+    let out: i64 = 0;
+    let i: int = 0;
+    while (i < digits.length) {
+      let d = digits.charAt(i).charCodeAt(0) - "0".charCodeAt(0);
+      if (d < 0 || d > 9) { return out; }
+      out = out * 10 + d;
+      i = i + 1;
+    }
+    return out;
+  }
+  return -1;
+}
+
+function openFdCount(): int {
+  try { return fs.readdirSync("/proc/self/fd").length; } catch { return -1; }
+}
+
+const COST_ENTRIES: int = 600;
+const COST_PAYLOAD: int = 100;
+
+test("a reader polling a growing mailbox reads each entry once, not the whole file on every poll", () => {
+  let p = freshPath("incremental-cost");
+  let body = "";
+  while (body.length < COST_PAYLOAD) { body = body + "x"; }
+  let r = new MailboxReader(p);
+  let before = readCharCounter();
+  expect(before >= 0);
+  let drained: int = 0;
+  let i: int = 0;
+  while (i < COST_ENTRIES) {
+    appendMailbox(p, "DELTA", body);
+    drained = drained + r.drainNew().length;
+    i = i + 1;
+  }
+  let read: i64 = readCharCounter() - before;
+  expect(drained == COST_ENTRIES);
+  let size: i64 = fs.statSync(p).size;
+  expect(size > 0);
+  expect(read < size * 4);
+});
+
+test("closing a reader releases its descriptor, so short-lived readers do not accumulate them", () => {
+  let p = freshPath("fd-release");
+  appendMailbox(p, "DELTA", "one");
+  let baseline = openFdCount();
+  expect(baseline > 0);
+  let i: int = 0;
+  while (i < 200) {
+    let r = new MailboxReader(p);
+    expect(r.drainNew().length == 1);
+    r.close();
+    i = i + 1;
+  }
+  expect(openFdCount() <= baseline + 4);
+});
+
 const CONCURRENT_ENTRIES: int = 500;
 const CONCURRENT_PATH: string = "/tmp/mailbox-test-concurrent.log";
 const CONCURRENT_TIMEOUT_MS: i64 = 60000;
