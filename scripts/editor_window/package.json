@@ -1,0 +1,9 @@
+{
+  "name": "joule-editor-window-harness",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Drives the joule editor panel inside a real VS Code window.",
+  "devDependencies": {
+    "@vscode/test-electron": "2.5.2"
+  }
+}

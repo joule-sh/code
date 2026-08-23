@@ -2,6 +2,7 @@ const vscode = require("vscode");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { EventEmitter } = require("node:events");
 const { EditorSession } = require("./session.js");
 const { findDaemonInfo } = require("./daemon_link.js");
 const { unsupportedPlatform } = require("./binary.js");
@@ -17,12 +18,14 @@ function readAsset(root, ...parts) {
   return fs.readFileSync(path.join(root, ...parts), "utf8");
 }
 
-class ChatPanel {
+class ChatPanel extends EventEmitter {
   constructor(context) {
+    super();
     this.context = context;
     this.view = null;
     this.session = null;
     this.folder = null;
+    this.probing = context.extensionMode === vscode.ExtensionMode.Test;
   }
 
   jouleBin() {
@@ -64,6 +67,12 @@ class ChatPanel {
     this.post();
   }
 
+  probeTag(webview, media, n) {
+    if (!this.probing) { return ""; }
+    const uri = webview.asWebviewUri(vscode.Uri.joinPath(media, "probe.js"));
+    return `<script nonce="${n}" src="${uri}"></script>`;
+  }
+
   html(webview, media) {
     const n = nonce();
     const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(media, "chat.css"));
@@ -79,6 +88,7 @@ class ChatPanel {
 <link rel="stylesheet" href="${cssUri}">
 <title>Joule</title></head><body>
 <div id="root"></div>
+${this.probeTag(webview, media, n)}
 <script nonce="${n}" src="${framesUri}"></script>
 <script nonce="${n}" src="${jsUri}"></script>
 </body></html>`;
@@ -153,6 +163,10 @@ class ChatPanel {
 
   onMessage(msg) {
     if (!msg || typeof msg.kind !== "string") { return; }
+    if (msg.kind === "probe.result") {
+      if (this.probing) { this.emit("probe", msg); }
+      return;
+    }
     if (msg.kind === "ready") { this.post(); return; }
     if (msg.kind === "attach") { this.attach({}); return; }
     if (msg.kind === "detach") { this.detach(); return; }

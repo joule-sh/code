@@ -1,4 +1,4 @@
-.PHONY: build release test e2e editor-frames editor-check editor-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test e2e editor-frames editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -97,10 +97,17 @@ editor-check:
 	node scripts/syntax_check.mjs
 	node scripts/gen_editor_frames.mjs --check
 	node --check editor/extension.js
-	for f in editor/src/*.js editor/media/chat.js; do node --check $$f || exit 1; done
+	for f in editor/src/*.js editor/media/*.js scripts/editor_window/suite.js; do node --check $$f || exit 1; done
 
 editor-harness: build bin/stub_model editor-check
 	node scripts/verify_editor_client.mjs
+
+# Downloads a real VS Code, opens a window on a throwaway workspace and drives
+# the panel through it. Needs a display: on Linux the runner starts its own
+# Xvfb when DISPLAY is unset, and kills it again on the way out.
+editor-window-harness: build bin/stub_model editor-check
+	npm --prefix scripts/editor_window ci --no-audit --no-fund
+	node scripts/editor_window/runner.mjs
 
 editor-package: editor-check
 	node scripts/package_editor.mjs

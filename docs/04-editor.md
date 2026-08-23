@@ -197,6 +197,41 @@ session seeing the same call id; the cross-client approval race in both
 directions; closing the editor mid-turn; and two windows on one folder
 sharing one daemon.
 
+What it cannot reach is the webview. `chat_panel.js` and `chat.js` are only
+syntax-checked there, so nothing proved that a frame the session accepted ever
+becomes something a person can see or click.
+
+`make editor-window-harness` closes that. It uses `@vscode/test-electron`, the
+runner VS Code publishes for this: it downloads a real VS Code, opens a window
+on a throwaway workspace under its own `HOME` and `TMPDIR`, and runs the suite
+inside the extension host, where the `vscode` API is the real one. On Linux the
+runner starts its own Xvfb when `DISPLAY` is unset and kills it on the way out.
+Two windows run in sequence, each with its own workspace, `HOME`, daemon and
+stub model, because the stub reuses one tool call id and a second turn in one
+session would be answered from the first turn's memory rather than from a
+click.
+
+Every claim about what the panel shows is read back out of the webview's DOM,
+never off the frame stream: the first window types into the composer, waits for
+the streamed text to appear in `.text-body`, clicks `Allow` on the rendered
+approval card and then reads `README.md` off disk and through
+`vscode.workspace.fs`. A frame that arrives and never paints - #147's bug, one
+layer up - fails it. The second window closes the panel with an approval
+pending, reopens it, finds the same call id waiting, denies it from the webview
+and asserts the file was left alone, then reaps the daemon and asserts nothing
+is listening.
+
+The DOM is reached through `media/probe.js`, which `chat_panel.js` adds to the
+webview only when `context.extensionMode` is `Test`, and which `.vscodeignore`
+keeps out of the packaged `.vsix`. It reads text and dispatches real clicks on
+the real buttons; it does not stand in for the panel's own rendering.
+
+What this still does not cover: a human's mouse and keyboard (clicks are
+dispatched on the rendered nodes, not synthesised at the window), the panel's
+modal dialogs - the Stop confirmation and the multi-folder quick pick, which
+have no headless answer - Windows and macOS, and a real model, which stays out
+of CI on purpose.
+
 ## One thing worth knowing before building this
 
 The frame processing loop draws once per frame, not once per batch. #147 fixed

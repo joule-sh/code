@@ -10,4 +10,6 @@ src/relay/relay
 .lumen-*.zig
 src/vendor/tty/tty_shim.o
 scripts/__pycache__/
+scripts/editor_window/node_modules/
+scripts/editor_window/.vscode-test/
 /dist/

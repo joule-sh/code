@@ -23,6 +23,8 @@ function activate(context) {
   if (vscode.workspace.getConfiguration("joule").get("attachOnStartup") === true) {
     panel.attach({});
   }
+
+  return { panel };
 }
 
 function deactivate() {
