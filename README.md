@@ -41,6 +41,16 @@ on `PATH` order. Prebuilt for x86_64 Linux, Apple Silicon macOS
 (`aarch64-macos`) and Intel macOS (`x86_64-macos`); other platforms fail with a
 clear message and point at building from source below.
 
+Every archive carries the garbage collector it needs, so there is no library to
+install alongside it. A macOS binary needs nothing beyond the system's own
+libSystem. A Linux binary still needs glibc 2.36 or newer - Ubuntu 24.04 LTS,
+Debian 13, Fedora 37 and up - which leaves out Ubuntu 22.04 LTS, and with it
+the WSL install Windows hands most people;
+[#184](https://github.com/joule-sh/code/issues/184) tracks removing that floor
+rather than lowering it. The installer runs each binary before it links
+anything onto your `PATH`, so an install that reports success is one that runs,
+and an install that cannot says what stopped it.
+
 ## Build from source
 
 Requires the [Lumen](https://lumen-lang.org) toolchain (`lumen`, and `zig`
@@ -49,8 +59,8 @@ macOS builds too (`lumen-aarch64-macos.tar.gz`, `lumen-x86_64-macos.tar.gz`),
 so this works natively on a Mac.
 
 Lumen's allocator links the Boehm collector as a system library. Linux distros
-ship it as `libgc` and nothing extra is needed. macOS has no system copy, so a
-Mac build needs Homebrew's and has to point the compiler at it:
+ship it as `libgc` and a local build needs nothing extra. macOS has no system
+copy, so a Mac build needs Homebrew's and has to point the compiler at it:
 
 ```sh
 brew install bdw-gc
@@ -61,9 +71,16 @@ The `-L` is not optional on Intel Macs. Zig ignores `LIBRARY_PATH` on macOS and
 only has Apple Silicon's `/opt/homebrew` in its built-in search paths, so an
 Intel build fails without it.
 
-The macOS release archives link that library statically, so an installed
-release depends on nothing but the system's own libSystem and needs no
-Homebrew.
+The release archives link that library statically on both platforms, so an
+installed release carries it. macOS uses Homebrew's `libgc.a`; Linux builds its
+own, because a distribution's is compiled against newer glibc headers than the
+binaries should require. To reproduce what a Linux release ships:
+
+```sh
+scripts/linux_static_gc.sh "$PWD/gcstatic"
+make release LUMEN_FLAGS="--link -L$PWD/gcstatic"
+scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
+```
 
 ```sh
 git clone https://github.com/joule-sh/code.git

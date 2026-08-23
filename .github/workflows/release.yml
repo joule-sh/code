@@ -28,8 +28,9 @@ jobs:
       LUMEN_VERSION: v0.7.1
     steps:
       - uses: actions/checkout@v4
-      # Lumen's allocator links the Boehm collector as a system library. The
-      # Linux runner has one; macOS has none, so Homebrew provides it.
+      # Lumen's allocator links the Boehm collector as a system library. macOS
+      # has none, so Homebrew provides it. The Linux runner has one, but a
+      # release cannot link it - see the Linux step below - and builds its own.
       - if: runner.os == 'macOS'
         run: brew install bdw-gc
       - run: |
@@ -54,6 +55,15 @@ jobs:
           cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
           brew unlink bdw-gc
           echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+      # Linux gets the same treatment, for the same reason: an archive that
+      # needs a `libgc.so.1` the machine does not have installs fine and then
+      # cannot start (#184). The collector is built here rather than taken from
+      # the runner because the packaged `libgc.a` on 24.04 drags the binary's
+      # glibc requirement up with it, which would cost distributions.
+      - if: runner.os == 'Linux'
+        run: |
+          scripts/linux_static_gc.sh "$PWD/gcstatic"
+          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
       - run: make release
       - run: ./bin/joule --version
       - run: ./bin/joule-daemon --version
@@ -67,6 +77,8 @@ jobs:
             echo "a macOS binary still links libgc dynamically" >&2
             exit 1
           fi
+      - if: runner.os == 'Linux'
+        run: scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
       - run: |
           dir="code-${{ matrix.target }}"
           mkdir -p "$dir"

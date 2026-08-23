@@ -3,10 +3,14 @@
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
 
-# Extra flags for `lumen compile`. Empty on Linux, where the Boehm collector is
-# a normal system library. macOS has no system copy, and Zig only knows about
-# Apple Silicon's Homebrew prefix, so the release workflow passes the keg's lib
-# directory here as `--link -L<dir>`.
+# Extra flags for `lumen compile`. Empty for a local build, where the Boehm
+# collector is whatever the machine already has: a normal system library on
+# Linux, Homebrew's keg on macOS (Zig only knows about Apple Silicon's prefix,
+# so a Mac build passes it as `--link -L<dir>`).
+#
+# The release workflow fills this in on both platforms, pointing at a directory
+# holding nothing but a static `libgc.a`, so a released binary carries the
+# collector instead of hoping to find one on the machine it lands on.
 LUMEN_FLAGS ?=
 
 # How many mailbox entries `make bench-mailbox` writes per mode. The rewrite
