@@ -48,10 +48,17 @@ test("two different workspaces usually land on different default ports", () => {
 test("daemonSpawnCommand backgrounds the daemon and does not block the caller", () => {
   let cmd = daemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", false, "/opt/joule-code/bin/joule-daemon");
   expect(cmd.indexOf("nohup") >= 0);
-  expect(cmd.indexOf("disown") >= 0);
+  expect(cmd.slice(cmd.length - 1, cmd.length) == "&");
   expect(cmd.indexOf("JOULE_DAEMON_PORT=9100") >= 0);
   expect(cmd.indexOf("JOULE_DAEMON_RESUME") < 0);
   expect(cmd.indexOf("/opt/joule-code/bin/joule-daemon") >= 0);
+});
+
+test("daemonSpawnCommand asks for nothing a POSIX shell does not have, so its exit status means something", () => {
+  let cmd = daemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", false, "/opt/joule-code/bin/joule-daemon");
+  expect(cmd.indexOf("disown") < 0);
+  let ran = child_process.spawnSync("/bin/sh", ["-c", "true &"]);
+  expect(ran.status == 0);
 });
 
 test("daemonSpawnCommand carries a resume flag through as an env var when asked", () => {

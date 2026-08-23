@@ -76,7 +76,7 @@ export function defaultDaemonBinPath(): string {
 export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   let resumeEnv = "";
   if (resumeFlag) { resumeEnv = "JOULE_DAEMON_RESUME=1 "; }
-  return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + " >" + logPath + " 2>&1 & disown";
+  return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + " >" + logPath + " 2>&1 &";
 }
 
 export function daemonSpawnArgs(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string[] {
