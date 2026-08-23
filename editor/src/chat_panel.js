@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { EditorSession } = require("./session.js");
+const { findDaemonInfo } = require("./daemon_link.js");
 
 const VIEW_ID = "joule.chat";
 const CONN_ID_KEY = "joule.connId";
@@ -148,11 +149,26 @@ class ChatPanel {
     if (msg.kind === "answer") { this.session.answer(msg.callId, msg.decision); }
   }
 
+  idleState(folders) {
+    const folder = this.folder || (folders.length === 1 ? this.folders()[0] : null);
+    const root = folder ? folder.uri.fsPath : "";
+    const info = root === "" ? null : findDaemonInfo(root);
+    return {
+      state: "idle",
+      workspaceRoot: root,
+      detail: folders.length > 1 && this.folder === null ? "this window has " + folders.length + " folders - you will be asked which one" : "",
+      daemonAlreadyRunning: info !== null,
+      daemonStartedAt: info === null ? "" : info.startedAt,
+      folders,
+      conversation: { items: [], session: null, turnActive: false, pendingCallId: "" },
+    };
+  }
+
   post() {
     if (this.view === null) { return; }
     const folders = this.folders().map((f) => ({ name: f.name, path: f.uri.fsPath }));
     const state = this.session === null
-      ? { state: "idle", folders, conversation: { items: [], session: null, turnActive: false, pendingCallId: "" } }
+      ? this.idleState(folders)
       : Object.assign(this.session.view(), { folders });
     this.view.webview.postMessage({ kind: "state", state });
   }
