@@ -373,3 +373,251 @@ introduced - `cross_client.test.ts` is the substitute proof that runs
 clean today, and the daemon-side mechanism it exercises (broadcast log,
 multiple independent readers) is exactly what a second websocket
 connection's pusher thread would also be doing.
+
+## Making `joule` itself a daemon client, and retiring the zero-diff guarantee
+
+The three PRs above deliberately held `terminal.ts` at a zero-line diff so
+the shipped product could not break while the daemon was unproven. It is
+proven now - two concurrent clients, cross-client approval, a real tool
+landing on the real filesystem, a paired browser, command parity, a stop
+path. The cost of leaving it there is two permanent implementations of the
+same terminal: `joule` running the loop in-process, `joule attach` talking
+to the daemon. This pass collapses that: **`joule` (no arguments) is now a
+daemon client too.** `joule attach` becomes a thin, explicit alias for the
+exact same code path, kept for anyone who still types it and for the two
+harnesses (`daemon-attach-harness`, `attach-commands-harness`) that name it.
+
+### The converged client
+
+`src/terminal/attach.ts` is the one implementation now, not two. `runAttach`
+and the new `runDaemonJoule` both resolve to the same `runClientLoop`; the
+only behavioral difference is `announceDaemon` (`attach` still prints
+"connected to a daemon at ...", matching what `daemon-attach-harness` and
+`attach-commands-harness` already assert byte-for-byte; plain `joule` does
+not, because the whole point is that a user typing `joule` should not need
+to know a daemon exists). Everything else - the welcome box, the status
+bar, approvals, resume, plan mode, tagged task/subagent output, the update
+notifier, completion, history recall, `ctrl-o` collapse, page/wheel scroll,
+backtab mode-cycling - is one code path exercised by both entry points.
+
+`terminal.ts` itself is untouched, and stays that way for a real reason,
+not just caution: it is now the fallback (below), and a fallback that had
+drifted from what `joule` actually does before the daemon existed would be
+worse than no fallback. Nothing about converging the two clients required
+touching it - `terminal.ts` only ever needed `plan_mode.ts`'s constant to
+move to `src/approval/plan_briefing.ts` so the daemon side (`dispatch_mode.ts`,
+which cannot import a file that imports `Gate` bundled with `Scrollback`/
+`InputLine`/etc. any more than `attach.ts` itself can, per the lumen#29-class
+issue below) could inject the same briefing text without duplicating it.
+
+Three new client-side files exist for the same reason `attach_approval.ts`
+already avoided importing `Gate`: `attach_slots.ts` (mode-name constants and
+`nextMode`, duplicated from `slots.ts` rather than imported, because
+`slots.ts` imports `Gate`), `attach_keys.ts` (completion/history/`ctrl-o`/
+scroll/backtab, none of it Gate-dependent, factored out to keep `attach.ts`
+under the 450-line cap), and `attach_plan.ts` (plan-mode offer/accept/reject
+as pure client-side state plus two frame sends - `mode.set` back to the
+prior mode, then `input` with the approved-plan text - rather than the
+direct `Gate`/`Session` mutation `terminal.ts`'s `plan_mode.ts` uses, because
+the client does not have a `Gate` or `Session` object to mutate). Entering
+plan mode - injecting the plan briefing as system context - moved
+server-side, into `dispatch_mode.ts`, since that is the one place that
+already holds both `Session` and `Gate` for every client, attached or not.
+
+### The fallback decision
+
+**If a daemon cannot be reached and cannot be started, `joule` runs
+in-process instead of failing.** `runDaemonJoule` returns `false` rather
+than exiting, `code.ts` calls `runTerminal(argv)` when it does, and the
+user sees a clear one-line diagnostic ("could not reach or start a daemon
+for `<workspace>` - running in-process instead") before the fallback runs.
+This is deliberately asymmetric with `joule attach`, which still fails loud
+(prints an error, exits 1) on the same condition: `attach` is an explicit
+request to talk to a daemon, so failing loud when it cannot is the
+unsurprising outcome; plain `joule` carries no such request, so silently
+having a working terminal matters more than surfacing daemon internals.
+`terminal.ts` is the right fallback specifically because it is unmodified,
+proven code, not a hastily-written safety net - falling back to it is
+exercised deliberately (a workspace whose `bin/joule-daemon` cannot be
+found) and produces a normal, working turn end to end.
+
+The daemon-absent path (spawn, wait, connect) is exercised on every fresh
+`joule` invocation already; nothing about it is new to this pass.
+
+### Lifecycle: what happens to the daemon when you quit
+
+**A daemon a client spawned outlives that client by default, unchanged from
+what this doc already decided for `joule attach`.** Quitting `joule`
+(`ctrl-d`, or `ctrl-c` at an idle prompt, matching `terminal.ts`'s own
+quit-when-idle behavior exactly) detaches the client; the daemon keeps
+running, keeps its session warm, and a second `joule` in the same workspace
+attaches to it rather than starting a competing loop - verified directly (a
+fresh `joule`, then a second `joule` in the same workspace while the first
+is still up: one `joule-daemon` process throughout, not two). Background
+tasks and subagents a turn started are not silently killed by quitting the
+terminal that happened to be attached when they were spawned; that was
+already the design's point. `joule --stop` (equivalent to the existing
+`joule attach --stop`) is how anyone asks a workspace's daemon to actually
+stop, and now works from the default entry point too, not just `attach`.
+
+### `--continue`, across a daemon's lifetime
+
+`--continue` still means "load this workspace's saved session" - but a
+daemon spawned earlier in the same workspace already has that session live
+in memory, so there is nothing on disk more current than what it already
+holds. `runDaemonJoule`/`runAttach` only pass the resume flag through to a
+*freshly spawned* daemon (`JOULE_DAEMON_RESUME=1`, gating the
+`loadWorkspaceSession` call `daemon.ts` used to make unconditionally on
+every spawn - a real, if narrow, pre-existing bug: a daemon spawned without
+`--continue` was silently resuming anyway); attaching to an already-running
+daemon with `--continue` prints a short note that continuing only applies
+when starting a new daemon, rather than re-showing stale disk content next
+to the live session's real, continuous history. The resumed-session banner
+itself is rendered client-side from the same `resolveResume` `terminal.ts`
+already uses (disk I/O, no daemon involved) when this client did the
+spawning; when attaching to a session already carrying history, the banner
+is shorter (no message count - the client has not read the daemon's live
+history, only observed that a replay is about to happen) but still says
+"resumed previous session" so `--continue`'s user-visible contract does not
+depend on which of the two cases fired.
+
+### Bugs this pass found and fixed, not introduced by it
+
+Converging onto the daemon path for the very first invocation - not just
+the second, already-attached one `joule attach`'s existing harnesses cover
+- put real load on code that had only ever been exercised lightly, and
+turned up four genuine, pre-existing bugs:
+
+- **`session.hello`'s `mode` field was always the literal string `"agent"`**
+  (`session.mode`, the session-kind marker `new Session(root, "agent", ...)`
+  sets, not the actual approval mode) in both `daemon.ts` and `terminal.ts`'s
+  own relay-attach path. Nothing before this pass displayed that field
+  anywhere prominent enough to notice; the new welcome box and status bar
+  do, immediately, on every attach. Fixed in `daemon.ts` to report
+  `gate.mode`, the field that is actually true.
+- **A client-caused disconnect crashed the Lumen runtime.** `DaemonClient.detach()`
+  closed the websocket from the main thread while the background
+  `attachReceiveLoop` worker thread could still be blocked reading the same
+  socket - a classic cross-thread close-under-a-blocked-read race, and the
+  syscall wrapper treats the resulting `EBADF` as a fatal "programmer bug"
+  rather than a recoverable read error. It only ever fired probabilistically
+  (whether the crash's own stderr got flushed before the process finished
+  exiting), which is exactly the shape of the "zero raw 0x0A bytes"
+  flake `terminal_structural_harness.py` caught intermittently. Fixed by no
+  longer closing the socket from `detach()` at all - every caller detaches
+  right before the process exits anyway, so the OS reclaiming the fd on
+  exit is sufficient, and it removes the race instead of narrowing it.
+- **Frames that arrived while `ensureAttached` was still polling for
+  readiness were silently dropped.** `waitForReady` called
+  `client.pollInbound()` in a loop just to check `socketReady`, and
+  `pollInbound()` drains and clears the inbound queue as a side effect - so
+  a daemon's full backlog replay (which starts as soon as the socket is up,
+  i.e. exactly during this window) was read and thrown away before the main
+  loop ever got to look at it. This is why a second client attaching to a
+  workspace with real history rendered nothing: the replay happened, and
+  was discarded. Fixed by having `waitForReady` return what it drained
+  (`ReadyOutcome`), threading it through `AttachResult.pending`, and
+  processing it once before the main loop starts (rendering replayed
+  `turn.start` prompts as `"> " + prompt`, which live typing already
+  echoes locally and replay otherwise never would).
+- **The daemon spawn command referenced its own binary by a path relative
+  to the *workspace*** (`nohup bin/joule-daemon ...`), which only resolves
+  when `joule` happens to be run from the repository root. `joule attach`'s
+  existing harnesses never caught this because they always pre-spawn the
+  daemon themselves rather than exercising `joule`'s own spawn path.
+  `defaultDaemonBinPath()` now resolves the daemon binary as a sibling of
+  the currently-running `joule` executable (`detectRunningExePath()`,
+  already used by the update installer for the same kind of self-location),
+  which is correct both in this dev tree and in an installed layout. A
+  second, smaller gap in the same code path - the spawned daemon's log file
+  redirect (`>logPath`) failing because its parent directory did not exist
+  yet - is fixed alongside it (`fs.mkdirSync(daemonInfoDir(), true)` before
+  spawning).
+
+None of these are daemon-architecture problems; all four are in code this
+pass's predecessors wrote but never had a reason to exercise the way a
+first-ever `joule` invocation now does on every run.
+
+### Tasks and subagents (#77), now actually answerable remotely
+
+A gap, not a regression: a subagent's own tool-call approvals were never
+routable to any remote client, daemon or not. `TaskBoard.answerActiveApproval`
+writes straight to the subagent's own IPC mailbox file, bypassing `Gate`
+entirely - and the only thing that ever called it was `terminal.ts`'s local
+keyboard loop, wired directly to the in-process `TaskManager`. `joule attach`
+already rendered a subagent's `approval.request` (tagged `agent:N`) as an
+ordinary-looking prompt - and already let a remote client reply to it with
+an ordinary `approval.reply` - but the daemon had nothing to route that
+reply *to*: `dispatch.ts` only ever forwarded `approval.reply` to `gate.reply()`,
+which does not know about task-board approvals and reports them as
+foreign/unapplied. `dispatch_task_approval.ts` closes that gap: an
+`approval.reply` whose `callId` matches `tasks.activeApprovalCallId()` is
+routed to `tasks.answerActiveApproval()` instead of falling through to the
+gate. No new frame type, no client change beyond what `joule attach` already
+did - the daemon just finishes wiring a path that was half-built.
+
+### The enumerated check
+
+Everything #85, #118, #77, #117, #106, #136 and #126 named, checked against
+this pass rather than assumed:
+
+- **#85 session resume** - see `--continue`, above. Live-verified against
+  the real configured model, not just the stub: a turn, `ctrl-d`, a second
+  `joule --continue` in the same workspace showing the resumed banner and
+  the prior turn's prompt and reply.
+- **#118 memory** - `/memory` is client-local (`memory_ui.ts`), touches no
+  daemon-owned state, already worked unchanged through `joule attach` and
+  works unchanged through the converged path for the same reason.
+- **#77 tasks/subagents** - text streaming already worked through the
+  daemon (`TaskBoard.poll` emits ordinary tagged frames); the approval gap
+  above is now closed. `/tasks` list/cancel is daemon round-trip request/
+  response, unchanged, covered by `daemon-commands-harness`.
+- **#117 plan mode** - briefing injection moved server-side
+  (`dispatch_mode.ts`), offer/accept/reject is client-side frame sends
+  (`attach_plan.ts`), covered by `dispatch_mode.test.ts`'s new tests
+  asserting the briefing is injected exactly once, on the transition into
+  plan mode.
+- **#106 safe-auto** - a mode string like any other to `dispatch_mode.ts`'s
+  validation and to the welcome box's `modeDisplay`; no daemon-path-specific
+  handling exists for it to have broken.
+- **#136 approval race** - `ApprovalLog`'s reply-bookkeeping (`attach_approval.ts`)
+  is unchanged, still the client-local mirror of `Gate.reply()`/`findReply()`
+  attach.ts has always needed since it cannot import `Gate`; `share-bridge-harness`
+  re-verifies the race end to end (a paired browser and an attach-shaped
+  client both racing the same approval) as part of this pass's own
+  verification, not just the reshape's.
+- **#126 update path** - `/update`'s install flow (`update_offer.ts`) was
+  already wired into `joule attach`; the *notifier* (`startUpdateNotifier`/
+  `pollUpdateNotice`, the background "a new version is available" prompt)
+  was not, and now is, one more piece of client-local state
+  (`PendingUpdateOffer`) threaded through the same `processFrames`/
+  `drawScreen` loop as everything else.
+
+### Verification
+
+- `make clean && make build && make test` - zero `FAIL`.
+- `node scripts/verify_renderer.mjs`, `make terminal-harness`
+  (`terminal_structural_harness.py`, 174 checks against the now-daemon-backed
+  default `joule` path), `make onboarding-harness`, `make e2e`,
+  `daemon-attach-harness`, `daemon-concurrent-harness`, `attach-commands-harness`,
+  `share-bridge-harness` - all pass, unmodified, repeatedly (the
+  `terminal-harness` and `daemon-attach`/`concurrent`/`commands` runs were
+  each repeated after the detach-crash fix specifically to confirm the flake
+  it explains is gone, not just quieter).
+- `make layout-harness` (`verify_layout.py`) - 125 of 127 checks pass. Two
+  do not, deterministically, only when run as the third and fourth case in
+  that script's own size-variant sequence (never in isolation, and not
+  explained by port collision, stub-model state, or workspace reuse - all
+  checked directly): at 80x10 and 45x12, a tool-call reply to a follow-up
+  message sent after the panel/collapse tests in the same run does not
+  arrive within the 10s budget. Not root-caused within this pass's scope;
+  recorded here rather than weakened or worked around, as the two checks
+  that do not currently pass unmodified.
+- A live pty session against the real configured model (not the stub):
+  welcome box, a real turn, streamed reply, `ctrl-d` exits in under a
+  second, a second invocation in the same workspace attaches (one
+  `joule-daemon` process throughout, confirmed by process count, not just
+  by behavior), `--continue` resumes with the banner and the prior turn's
+  content, and a daemon-start failure (binary temporarily moved aside)
+  falls back to a working in-process terminal with the diagnostic line
+  described above.

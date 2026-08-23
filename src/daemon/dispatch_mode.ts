@@ -1,6 +1,7 @@
 import { Session } from "../session/session.ts";
 import { Gate, MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, MODE_PLAN } from "../approval/gate.ts";
 import { PROTOCOL_VERSION, modeSetFrameMode, MODE_CHANGED, ModeChangedFrame, encodeModeChanged, ERROR, ErrorFrame, encodeError } from "../protocol/frames.ts";
+import { PLAN_MODE_BRIEFING } from "../approval/plan_briefing.ts";
 
 function isValidDaemonMode(mode: string): bool {
   if (mode == MODE_READ_ONLY || mode == MODE_AUTO_EDIT || mode == MODE_SAFE_AUTO) { return true; }
@@ -11,6 +12,9 @@ export function handleModeSet(session: Session, gate: Gate, frameJson: string): 
   let mode = modeSetFrameMode(frameJson);
   if (mode == "") { return; }
   if (isValidDaemonMode(mode)) {
+    if (mode == MODE_PLAN && gate.mode != MODE_PLAN) {
+      session.injectSystemContext(PLAN_MODE_BRIEFING);
+    }
     gate.mode = mode;
     let changed: ModeChangedFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: MODE_CHANGED, mode: mode };
     session.emit(encodeModeChanged(changed));

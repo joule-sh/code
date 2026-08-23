@@ -1,4 +1,4 @@
-import { writeDaemonInfoAt, readDaemonInfoAt, removeDaemonInfoAt, parseDaemonInfo, portFromWorkspace, daemonSpawnCommand } from "./lifecycle.ts";
+import { writeDaemonInfoAt, readDaemonInfoAt, removeDaemonInfoAt, parseDaemonInfo, portFromWorkspace, daemonSpawnCommand, daemonBinNameFor } from "./lifecycle.ts";
 
 function freshInfoPath(name: string): string {
   return "/tmp/daemon-lifecycle-test-" + name + "/info.json";
@@ -46,8 +46,23 @@ test("two different workspaces usually land on different default ports", () => {
 });
 
 test("daemonSpawnCommand backgrounds the daemon and does not block the caller", () => {
-  let cmd = daemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log");
+  let cmd = daemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", false, "/opt/joule-code/bin/joule-daemon");
   expect(cmd.indexOf("nohup") >= 0);
   expect(cmd.indexOf("disown") >= 0);
   expect(cmd.indexOf("JOULE_DAEMON_PORT=9100") >= 0);
+  expect(cmd.indexOf("JOULE_DAEMON_RESUME") < 0);
+  expect(cmd.indexOf("/opt/joule-code/bin/joule-daemon") >= 0);
+});
+
+test("daemonSpawnCommand carries a resume flag through as an env var when asked", () => {
+  let cmd = daemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", true, "/opt/joule-code/bin/joule-daemon");
+  expect(cmd.indexOf("JOULE_DAEMON_RESUME=1") >= 0);
+});
+
+test("daemonBinNameFor sits next to the running joule executable when its path is known", () => {
+  expect(daemonBinNameFor("/opt/joule-code/bin/joule") == "/opt/joule-code/bin/joule-daemon");
+});
+
+test("daemonBinNameFor falls back to a workspace-relative path when the running executable's path is unknown", () => {
+  expect(daemonBinNameFor("") == "bin/joule-daemon");
 });

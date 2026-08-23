@@ -1,5 +1,4 @@
-import { Connection, sendText, closeConnection } from "../vendor/websocket/client.ts";
-import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
+import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { PROTOCOL_VERSION, ERROR, ErrorFrame, encodeError, frameType } from "../protocol/frames.ts";
 import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, maxSeqSeen, pushBounded, parseMailboxLine, nonEmptyLines, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
 import { configureAttachWorker, currentAttachSocket, attachReceiveLoop } from "./attach_worker.ts";
@@ -176,11 +175,6 @@ export class DaemonClient {
   detach(): void {
     if (!this.attaching) { return; }
     this.detachRequested = true;
-    let sock = currentAttachSocket();
-    if (sock.length > 0) {
-      let conn: Connection = { socket: sock[0], ok: true, buffer: "", open: true, error: "" };
-      closeConnection(conn, CLOSE_NORMAL, "client detached");
-    }
     this.attaching = false;
     this.socketReady = false;
   }
