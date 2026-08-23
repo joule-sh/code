@@ -5,6 +5,13 @@ import { PAGE_JS_MARKDOWN } from "./page_js_markdown.ts";
 import { PAGE_JS_CLIENT } from "./page_js_client.ts";
 
 export const WEB_PAGE_PATH: string = "/";
+export const FRAMES_ASSET_PATH: string = "/web/frames.js";
+
+// The frame vocabulary on its own, for a page this relay does not serve.
+// One copy exists, and handing it out is what stops a second being written.
+export function renderFramesAsset(): string {
+  return PAGE_JS_FRAMES + PAGE_JS_MARKDOWN;
+}
 
 function configScript(wsBrowserPort: int): string {
   return "window.__JOULE_CONFIG__ = { wsPort: " + `${wsBrowserPort}` + " };";
