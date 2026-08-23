@@ -28,24 +28,33 @@ function freePort() {
   });
 }
 
-function waitForPort(port, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  const attempt = () =>
-    new Promise((resolve) => {
-      const sock = net.createConnection(port, "127.0.0.1");
-      sock.once("connect", () => {
-        sock.end();
-        resolve(true);
-      });
-      sock.once("error", () => resolve(false));
+function probePort(port) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection(port, "127.0.0.1");
+    sock.once("connect", () => {
+      sock.end();
+      resolve(true);
     });
-  return (async () => {
-    while (Date.now() < deadline) {
-      if (await attempt()) return true;
-      await sleep(50);
-    }
-    return false;
-  })();
+    sock.once("error", () => resolve(false));
+  });
+}
+
+async function waitForPort(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probePort(port)) return true;
+    await sleep(50);
+  }
+  return false;
+}
+
+async function waitForPortClosed(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await probePort(port))) return true;
+    await sleep(50);
+  }
+  return false;
 }
 
 async function waitForMatch(getText, regex, timeoutMs, label) {
@@ -99,6 +108,102 @@ function seedRepo(repoDir) {
   runSync("git", ["-c", "user.email=e2e@example.com", "-c", "user.name=e2e", "commit", "-q", "-m", "seed"], repoDir);
 }
 
+const DAEMON_INFO_DIR = path.join(os.homedir(), ".config", "joule-code", "daemon");
+const residue = [];
+
+function daemonInfoNames() {
+  try { return fs.readdirSync(DAEMON_INFO_DIR).filter((n) => n.endsWith(".json")); }
+  catch { return []; }
+}
+
+function daemonInfoFor(workspace, skip) {
+  for (const name of daemonInfoNames()) {
+    if (skip && skip.has(name)) continue;
+    const file = path.join(DAEMON_INFO_DIR, name);
+    try {
+      const info = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (info && info.workspace === workspace) {
+        return { file, log: file.replace(/\.json$/, ".log"), port: info.port };
+      }
+    } catch { }
+  }
+  return null;
+}
+
+async function waitForDaemonInfo(workspace, timeoutMs, skip) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = daemonInfoFor(workspace, skip);
+    if (found) return found;
+    await sleep(100);
+  }
+  return null;
+}
+
+async function openAttach(port) {
+  const conn = await connect("127.0.0.1", port, `/attach/${crypto.randomUUID()}/ws`, {});
+  const state = { hello: null, stopping: false };
+  conn.onMessage((raw) => {
+    try {
+      const f = JSON.parse(raw);
+      if (f.type === "session.hello" && state.hello === null) state.hello = f.workspace;
+      if (f.type === "daemon.stopping") state.stopping = true;
+    } catch { }
+  });
+  conn.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && state.hello === null) await sleep(25);
+  return { conn, state };
+}
+
+async function reapPort(port, what, label) {
+  if (!port) return;
+  if (await waitForPortClosed(port, 5000)) return;
+  const stragglers = pidsListeningOn(port);
+  for (const pid of stragglers) {
+    try { process.kill(Number(pid), "SIGKILL"); } catch { }
+  }
+  residue.push(`${label}: ${what} kept 127.0.0.1:${port} open after the run, killed ${stragglers.join(",") || "nothing"}`);
+  console.error("LEAK: " + residue[residue.length - 1]);
+}
+
+function pidsListeningOn(port) {
+  const r = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+  if (r.status !== 0 || !r.stdout) return [];
+  return r.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+async function reapDaemon(daemon, workspace, label, clean) {
+  if (!daemon) daemon = daemonInfoFor(workspace);
+  if (!daemon) return;
+  try {
+    const { conn, state } = await openAttach(daemon.port);
+    if (state.hello === workspace) {
+      conn.send(JSON.stringify({ v: 1, seq: 0, type: "daemon.stop" }));
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !state.stopping) await sleep(25);
+    }
+    conn.close();
+  } catch { }
+
+  if (!(await waitForPortClosed(daemon.port, 5000))) {
+    const stragglers = pidsListeningOn(daemon.port);
+    for (const pid of stragglers) {
+      try { process.kill(Number(pid), "SIGKILL"); } catch { }
+    }
+    residue.push(`${label}: the daemon for ${workspace} on 127.0.0.1:${daemon.port} ignored daemon.stop, killed ${stragglers.join(",") || "nothing"}`);
+    console.error("LEAK: " + residue[residue.length - 1]);
+  }
+  if (pidsListeningOn(daemon.port).length === 0) {
+    try { fs.rmSync(daemon.file, { force: true }); } catch { }
+  }
+  if (clean) {
+    try { fs.rmSync(daemon.log, { force: true }); } catch { }
+  } else {
+    console.error(label + ": left the daemon log at " + daemon.log);
+  }
+}
+
 async function runScenario(name, approve) {
   const failures = [];
   const ok = (cond, label) => {
@@ -123,7 +228,8 @@ async function runScenario(name, approve) {
   const termLog = path.join(workDir, "terminal.log");
   fs.writeFileSync(termLog, "");
 
-  let stub, relay, term;
+  let stub, relay, term, daemon;
+  let completed = false;
   try {
     stub = spawnBg(path.join(REPO_ROOT, "bin/stub_model"), [], {
       env: { ...process.env, E2E_STUB_PORT: String(ports.stub), E2E_STUB_LOG: stubLog },
@@ -142,6 +248,7 @@ async function runScenario(name, approve) {
     if (!(await waitForPort(ports.ws, 5000))) throw new Error(name + ": relay terminal ws port did not start");
     if (!(await waitForPort(ports.wsBrowser, 5000))) throw new Error(name + ": relay browser ws port did not start");
 
+    const knownDaemons = new Set(daemonInfoNames());
     term = spawnBg("script", ["-qec", `${REPO_ROOT}/bin/joule --share`, termLog], {
       cwd: repoDir,
       env: {
@@ -161,6 +268,12 @@ async function runScenario(name, approve) {
 
     const codeMatch = await waitForMatch(() => termBuf, /attached - code (\S+) -/, 10000, name + ": terminal pairing code");
     const code = codeMatch[1];
+
+    daemon = await waitForDaemonInfo(repoDir, 10000, knownDaemons);
+    if (!daemon) {
+      throw new Error(name + ": no daemon registered itself for " + repoDir + ", the client attached to someone else's");
+    }
+    console.log("ok: " + name + ": daemon for this run is on 127.0.0.1:" + daemon.port);
 
     const userId = crypto.randomUUID();
     const pairResp = await fetch(`http://127.0.0.1:${ports.http}/pair`, {
@@ -223,10 +336,22 @@ async function runScenario(name, approve) {
     }
 
     browser.close();
+    completed = true;
   } finally {
+    const clean = completed && failures.length === 0;
+    await reapDaemon(daemon, repoDir, name, clean);
     killTree(term);
     killTree(relay);
     killTree(stub);
+    await reapPort(ports.http, "the relay", name);
+    await reapPort(ports.ws, "the relay", name);
+    await reapPort(ports.wsBrowser, "the relay", name);
+    await reapPort(ports.stub, "the stub model", name);
+    if (clean) {
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { }
+    } else {
+      console.error(name + ": left " + workDir + " in place for inspection");
+    }
   }
 
   return failures;
@@ -239,6 +364,7 @@ async function main() {
   results.push(...(await runScenario("guard", false)));
   const elapsedMs = Date.now() - start;
   console.log(`e2e finished in ${elapsedMs}ms`);
+  results.push(...residue);
   if (results.length > 0) {
     console.error(`${results.length} check(s) failed: ${results.join("; ")}`);
     process.exit(1);
@@ -248,5 +374,6 @@ async function main() {
 
 main().catch((e) => {
   console.error("crashed: " + (e && e.stack ? e.stack : e));
+  for (const r of residue) console.error("residue: " + r);
   process.exit(1);
 });
