@@ -1,5 +1,7 @@
 export type MailboxEntry = { recvAt: i64, tag: string, payload: string };
 
+const MAILBOX_READ_CHUNK: int = 65536;
+
 function parseI64(s: string): i64 {
   let out: i64 = 0;
   let i: int = 0;
@@ -73,25 +75,71 @@ export function readAllMailboxEntries(path: string): MailboxEntry[] {
 
 export class MailboxReader {
   path: string;
-  seen: int;
+  fd: int;
+  pos: int;
+  pending: string;
 
   constructor(path: string) {
     this.path = path;
-    this.seen = 0;
+    this.fd = -1;
+    this.pos = 0;
+    this.pending = "";
+  }
+
+  attach(): bool {
+    if (this.fd >= 0) { return true; }
+    if (this.path == "") { return false; }
+    let opened: int = -1;
+    try { opened = fs.openSync(this.path, "r"); } catch { return false; }
+    if (opened < 0) { return false; }
+    this.fd = opened;
+    this.pos = 0;
+    this.pending = "";
+    return true;
+  }
+
+  close(): void {
+    if (this.fd < 0) { return; }
+    try { fs.closeSync(this.fd); } catch { }
+    this.fd = -1;
+    this.pos = 0;
+    this.pending = "";
+  }
+
+  readForward(): string {
+    let parts: string[] = [];
+    let more = true;
+    while (more) {
+      let chunk = "";
+      try { chunk = fs.readSync(this.fd, MAILBOX_READ_CHUNK); } catch { chunk = ""; }
+      if (chunk.length == 0) {
+        more = false;
+      } else {
+        parts.push(chunk);
+        this.pos = this.pos + chunk.length;
+      }
+    }
+    return parts.join("");
   }
 
   drainNew(): MailboxEntry[] {
-    let content = "";
-    try { content = fs.readFileSync(this.path); } catch { return []; }
-    let lines = completeLines(content);
-    if (lines.length <= this.seen) { return []; }
-    let out: MailboxEntry[] = [];
-    let i = this.seen;
-    while (i < lines.length) {
-      out.push(parseMailboxLine(lines[i]));
-      i = i + 1;
+    if (!this.attach()) { return []; }
+    let size: int = this.pos;
+    try { size = fs.statSync(this.path).size; } catch { size = this.pos; }
+    if (size < this.pos) { this.pending = ""; }
+    let grown = this.readForward();
+    if (grown == "") { return []; }
+    let buffered = this.pending + grown;
+    let end = buffered.lastIndexOf("\n");
+    if (end < 0) {
+      this.pending = buffered;
+      return [];
     }
-    this.seen = lines.length;
+    this.pending = buffered.slice(end + 1, buffered.length);
+    let out: MailboxEntry[] = [];
+    for (const raw of buffered.slice(0, end).split("\n")) {
+      if (raw != "") { out.push(parseMailboxLine(raw)); }
+    }
     return out;
   }
 }

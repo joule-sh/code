@@ -29,6 +29,7 @@ export function pusherLoop(peer: Peer, since: int): int {
     }
     process.sleep(PUSH_POLL_MS);
   }
+  reader.close();
   return pushed;
 }
 
