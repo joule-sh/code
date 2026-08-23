@@ -1,4 +1,4 @@
-import { runInstallOnceWith, verifyDownloadedJoule, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
+import { runInstallOnceWith, verifyDownloadedJoule, refusalReason, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
 import { MIN_BINARY_BYTES } from "./archive.ts";
 import { PLATFORM_LINUX_X64 } from "./platform.ts";
 
@@ -58,13 +58,14 @@ function baseHappyRun(reportedVersion: string): (cmd: string, args: string[]) =>
       return shell(0, "", "");
     }
     if (cmd == "tar" && args[0] == "-tzf") {
-      return shell(0, "code-" + TARGET + "/joule\ncode-" + TARGET + "/relay\n", "");
+      return shell(0, "code-" + TARGET + "/joule\ncode-" + TARGET + "/relay\ncode-" + TARGET + "/joule-daemon\n", "");
     }
     if (cmd == "tar" && args[0] == "-xzf") {
       let innerDir = lastArg(args) + "/code-" + TARGET;
       fs.mkdirSync(innerDir, true);
       fs.writeFileSync(innerDir + "/joule", validJouleBytes());
       fs.writeFileSync(innerDir + "/relay", "fake-relay-binary");
+      fs.writeFileSync(innerDir + "/joule-daemon", "fake-daemon-binary");
       return shell(0, "", "");
     }
     return shell(0, "joule " + reportedVersion + "\n", "");
@@ -118,6 +119,7 @@ test("a full successful install lands the new version alongside the old one and 
   expect(result.toVersion == "0.6.2");
   expect(fs.existsSync(root + "/0.6.2/joule"));
   expect(fs.existsSync(root + "/0.6.2/relay"));
+  expect(fs.existsSync(root + "/0.6.2/joule-daemon"));
   expect(fs.existsSync(oldVersionDir + "/joule"));
   expect(fs.readlinkSync(bin + "/joule") == root + "/0.6.2/joule");
   expect(fs.readlinkSync(bin + "/relay") == root + "/0.6.2/relay");
@@ -218,6 +220,13 @@ test("verifyDownloadedJoule rejects a binary that reports a different version th
   expect(!v.ok);
   expect(v.error.indexOf("reports version 0.1.9") >= 0);
   fs.rmSync(p, false);
+});
+
+test("a binary that will not start is quoted in one line, without the shell's own noise around it", () => {
+  let p = "/opt/.joule-code/0.2.0/joule";
+  expect(refusalReason(p, 127, p + ": 1: exec: " + p + ": not found", "") == "exit 127: not found");
+  expect(refusalReason(p, 127, p + ": /lib/x86_64-linux-gnu/libc.so.6: version GLIBC_2.36 not found\n", "") == "exit 127: /lib/x86_64-linux-gnu/libc.so.6: version GLIBC_2.36 not found");
+  expect(refusalReason(p, 1, "", "") == "exit 1");
 });
 
 test("verifyDownloadedJoule accepts a well-formed, runnable, correctly-versioned binary", () => {
