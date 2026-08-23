@@ -111,6 +111,22 @@ jobs:
           echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: node --version && npm --version
+      # A real editor window is an Electron window, so this runner needs a
+      # display and the GTK stack behind it. Both runners take jobs, so the
+      # check runs every time and installs only what is actually missing.
+      - name: Make sure this runner can open an editor window
+        run: |
+          missing=""
+          command -v Xvfb >/dev/null || missing="xvfb"
+          for lib in libgtk-3.so.0 libnss3.so libasound.so.2 libgbm.so.1 libxkbfile.so.1 libsecret-1.so.0 libatk-bridge-2.0.so.0 libcups.so.2; do
+            ldconfig -p | grep -q "$lib" || missing="$missing $lib"
+          done
+          if [ -z "$missing" ]; then echo "already provisioned"; exit 0; fi
+          echo "missing:$missing"
+          . /etc/os-release && echo "on $PRETTY_NAME"
+          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y -qq --no-install-recommends \
+            xvfb libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxkbfile1 libsecret-1-0 libatk-bridge2.0-0t64 libcups2t64
       - run: make editor-window-harness
       - if: always()
         run: pkill -f 'Xvfb :' || true
