@@ -1,0 +1,102 @@
+import { Session } from "../session/session.ts";
+import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
+import { Message, ProviderReply, Provider, ToolResult, ToolRegistry, ApprovalGate, ApprovalDecision } from "../session/types.ts";
+import { LiveProvider, CancelWatch, TurnTracker } from "../providers/live.ts";
+import { TaskManager } from "../tasks/manager.ts";
+import { SessionWorker } from "./session_worker.ts";
+import { inboxDir } from "./paths.ts";
+import { appendInbound } from "./inbox.ts";
+import { PROTOCOL_VERSION, DaemonStopFrame, encodeDaemonStop } from "../protocol/frames.ts";
+
+class Echoer {
+  run(tool: string, args: string): ToolResult {
+    let r: ToolResult = { ok: true, output: "", truncated: false };
+    return r;
+  }
+}
+
+class EchoProvider {
+  ask(history: Message[], onDelta: (text: string) => void): ProviderReply {
+    let r: ProviderReply = { text: "ok", calls: [], failed: false, errorCode: "", errorMessage: "", tokens: 0 };
+    return r;
+  }
+}
+
+function allowAll(): ApprovalGate {
+  return { check: (callId: string, tool: string, summary: string, args: string): ApprovalDecision => {
+    let d: ApprovalDecision = { allow: true };
+    return d;
+  } };
+}
+
+function newSession(): Session {
+  let ep = new EchoProvider();
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => ep.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  return new Session("/repo", "agent", provider, tools, allowAll());
+}
+
+function newWorker(runtimeDir: string): SessionWorker {
+  let session = newSession();
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let live = new LiveProvider({ baseUrl: "http://x", model: "m", apiKey: "k" }, [], new CancelWatch(), -1, new TurnTracker());
+  let tasks = new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit");
+  return new SessionWorker(runtimeDir, session, gate, live, tasks);
+}
+
+function freshRuntimeDir(name: string): string {
+  let dir = "/tmp/daemon-session-worker-test-" + name;
+  if (fs.existsSync(dir)) { fs.rmSync(dir, true); }
+  fs.mkdirSync(inboxDir(dir), true);
+  return dir;
+}
+
+test("a fresh worker is not stopping", () => {
+  let worker = newWorker(freshRuntimeDir("fresh"));
+  expect(!worker.shouldStop());
+  expect(worker.running);
+});
+
+test("requestStop with zero grace makes shouldStop true right away", () => {
+  let worker = newWorker(freshRuntimeDir("zero-grace"));
+  worker.requestStop(0);
+  expect(worker.shouldStop());
+});
+
+test("requestStop with a positive grace does not stop immediately", () => {
+  let worker = newWorker(freshRuntimeDir("graced"));
+  worker.requestStop(60000);
+  expect(!worker.shouldStop());
+});
+
+test("requestStop only latches the first deadline it is given", () => {
+  let worker = newWorker(freshRuntimeDir("latch"));
+  worker.requestStop(0);
+  let firstDeadline = worker.stopAt;
+  worker.requestStop(60000);
+  expect(worker.stopAt == firstDeadline);
+});
+
+test("stop() ends the loop immediately regardless of grace", () => {
+  let worker = newWorker(freshRuntimeDir("stop-now"));
+  worker.stop();
+  expect(!worker.running);
+});
+
+test("drainOnce sees a daemon.stop frame from the inbox and requests a stop", () => {
+  let dir = freshRuntimeDir("drain-stop");
+  let worker = newWorker(dir);
+  let f: DaemonStopFrame = { v: PROTOCOL_VERSION, seq: 0, type: "daemon.stop" };
+  appendInbound(dir, "conn-a", encodeDaemonStop(f));
+  worker.drainOnce();
+  expect(worker.stopAt != 0);
+});
+
+test("drainOnce does not request a stop for an ordinary input frame", () => {
+  let dir = freshRuntimeDir("drain-input");
+  let worker = newWorker(dir);
+  appendInbound(dir, "conn-a", "{\"v\":1,\"seq\":0,\"type\":\"input\",\"text\":\"hi\"}");
+  worker.drainOnce();
+  expect(worker.stopAt == 0);
+});
