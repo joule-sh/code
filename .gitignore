@@ -10,3 +10,4 @@ src/relay/relay
 .lumen-*.zig
 src/vendor/tty/tty_shim.o
 scripts/__pycache__/
+/dist/

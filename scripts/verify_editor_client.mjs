@@ -14,6 +14,7 @@ const STUB = path.join(REPO_ROOT, "bin", "stub_model");
 const editorSrc = (name) => pathToFileURL(path.join(REPO_ROOT, "editor", "src", name)).href;
 const { EditorSession } = (await import(editorSrc("session.js"))).default;
 const frames = (await import(editorSrc("frames.js"))).default;
+const binary = (await import(editorSrc("binary.js"))).default;
 
 let failures = 0;
 const cleanups = [];
@@ -290,12 +291,92 @@ async function oneDaemonPerFolderBody(name, ws) {
   second.detach();
 }
 
+function makeBareWorkspace(name) {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-" + name + "-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-home-" + name + "-"));
+  const env = { ...process.env, HOME: home };
+  const dispose = () => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  };
+  cleanups.push(dispose);
+  return { workspace, home, env, dispose };
+}
+
+function daemonRecordCount(home) {
+  try {
+    return fs.readdirSync(path.join(home, ".config", "joule-code", "daemon")).filter((f) => f.endsWith(".json")).length;
+  } catch (e) {
+    void e;
+    return 0;
+  }
+}
+
+async function failedAttach(ws, bin) {
+  const session = new EditorSession({
+    workspaceRoot: ws.workspace,
+    jouleBin: bin,
+    env: ws.env,
+    connId: crypto.randomBytes(8).toString("hex"),
+  });
+  await session.attach({});
+  return session;
+}
+
+function writeFakeJoule(dir, versionLine) {
+  const bin = path.join(dir, "fake-joule");
+  fs.writeFileSync(bin, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"" + versionLine + "\"; exit 0; fi\necho \"the preflight should have stopped before this\" >&2\nexit 3\n");
+  fs.chmodSync(bin, 0o755);
+  return bin;
+}
+
+async function scenarioBinaryPreflight() {
+  const name = "binary-preflight";
+  const ws = makeBareWorkspace("e");
+  try {
+    await binaryPreflightBody(name, ws);
+  } finally {
+    ws.dispose();
+  }
+}
+
+async function binaryPreflightBody(name, ws) {
+  const missing = await failedAttach(ws, path.join(ws.workspace, "no-such-joule"));
+  ok(missing.state === "failed", name + ": attaching without a joule binary fails instead of hanging on a dead panel");
+  ok(missing.problem === "missing", name + ": the failure is reported as a missing binary");
+  ok(missing.detail.includes("not installed") && missing.detail.includes(binary.INSTALL_URL), name + ": the message says joule is missing and points at the install");
+  ok(!missing.detail.includes("ENOENT"), name + ": the message is not a raw spawn error");
+  ok(daemonRecordCount(ws.home) === 0, name + ": nothing was spawned for a binary that does not exist");
+
+  const old = await failedAttach(ws, writeFakeJoule(ws.workspace, "joule 0.1.0"));
+  ok(old.state === "failed" && old.problem === "outdated", name + ": a binary older than the minimum is refused before any frame is read");
+  ok(old.detail.includes("0.1.0") && old.detail.includes(binary.MINIMUM_BINARY_VERSION), name + ": the message names both the version found and the version needed");
+  ok(daemonRecordCount(ws.home) === 0, name + ": no daemon was started through an unsupported binary");
+
+  const notJoule = await failedAttach(ws, writeFakeJoule(ws.workspace, "something else entirely"));
+  ok(notJoule.state === "failed" && notJoule.problem === "unusable", name + ": a binary that does not answer --version as joule is refused");
+
+  const current = await binary.checkBinary({ jouleBin: JOULE, env: ws.env, cwd: ws.workspace });
+  ok(current.ok === true, name + ": the joule built from this tree passes the preflight");
+  ok(current.version !== "", name + ": the preflight read a version out of the binary it will drive");
+
+  const newer = await binary.checkBinary({ jouleBin: writeFakeJoule(ws.workspace, "joule 99.0.0"), env: ws.env, cwd: ws.workspace });
+  ok(newer.ok === true, name + ": a binary newer than the minimum is accepted");
+
+  const onWindows = await binary.checkBinary({ jouleBin: JOULE, env: ws.env, cwd: ws.workspace, platform: "win32" });
+  ok(onWindows.ok === false && onWindows.problem === "platform", name + ": the extension refuses to drive a joule on Windows, where none is built");
+  ok(onWindows.message.includes("173"), name + ": the Windows message names the ticket the gate waits on");
+  ok(binary.unsupportedPlatform("win32") !== "", name + ": the panel is gated shut on Windows before anything is clicked");
+  ok(binary.unsupportedPlatform("linux") === "", name + ": nothing is gated on a platform a joule is built for");
+}
+
 async function main() {
   try {
     await scenarioApproveInEditor();
     await scenarioApprovalRace();
     await scenarioCloseMidTurn();
     await scenarioOneDaemonPerFolder();
+    await scenarioBinaryPreflight();
   } finally {
     for (const fn of cleanups) { fn(); }
   }
@@ -304,7 +385,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  console.log("PASS: the editor client drove a daemon session, approved natively, shared it with a second client, and left nothing behind");
+  console.log("PASS: the editor client drove a daemon session, approved natively, shared it with a second client, refused a binary it cannot drive, and left nothing behind");
 }
 
 main().catch((e) => {

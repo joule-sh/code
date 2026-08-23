@@ -4,6 +4,7 @@ const { EventEmitter } = require("node:events");
 const frames = require("./frames.js");
 const { Conversation } = require("./conversation.js");
 const { DaemonLink, ensureDaemon, findDaemonInfo } = require("./daemon_link.js");
+const { checkBinary } = require("./binary.js");
 
 const STATE_IDLE = "idle";
 const STATE_STARTING = "starting";
@@ -23,8 +24,11 @@ class EditorSession extends EventEmitter {
     this.link = null;
     this.state = STATE_IDLE;
     this.detail = "";
+    this.problem = "";
+    this.help = null;
     this.port = 0;
     this.spawned = false;
+    this.binaryVersion = "";
     this.conversation.on("change", () => this.emit("change"));
   }
 
@@ -38,10 +42,24 @@ class EditorSession extends EventEmitter {
     this.emit("change");
   }
 
+  fail(problem, message, help) {
+    this.problem = problem;
+    this.help = help || null;
+    this.setState(STATE_FAILED, message);
+  }
+
   async attach(options) {
     const opts = options || {};
     if (this.state === STATE_STARTING || this.state === STATE_ATTACHED) { return; }
+    this.problem = "";
+    this.help = null;
     this.setState(STATE_STARTING, "");
+    const check = await checkBinary({ jouleBin: this.jouleBin, env: this.env, cwd: this.workspaceRoot });
+    if (!check.ok) {
+      this.fail(check.problem, check.message, { url: check.helpUrl, label: check.helpLabel });
+      return;
+    }
+    this.binaryVersion = check.version;
     let report;
     try {
       report = await ensureDaemon(this.workspaceRoot, {
@@ -50,7 +68,7 @@ class EditorSession extends EventEmitter {
         resume: !!opts.resume,
       });
     } catch (e) {
-      this.setState(STATE_FAILED, String(e && e.message ? e.message : e));
+      this.fail("daemon", String(e && e.message ? e.message : e), null);
       return;
     }
     this.port = report.port;
@@ -121,6 +139,7 @@ class EditorSession extends EventEmitter {
       workspaceRoot: this.workspaceRoot,
       state: this.state,
       detail: this.detail,
+      problem: this.problem,
       port: this.port,
       spawnedByThisWindow: this.spawned,
       daemonAlreadyRunning: info !== null,

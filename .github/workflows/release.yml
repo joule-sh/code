@@ -78,17 +78,29 @@ jobs:
           path: code-${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
+  extension:
+    runs-on: [self-hosted, diff]
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --version
+      - run: node scripts/package_editor.mjs --version "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-editor-extension
+          path: dist/*.vsix
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, extension]
     runs-on: [self-hosted, diff]
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: code-*
           merge-multiple: true
-      - run: ls -l code-*.tar.gz
+      - run: ls -l code-*.tar.gz *.vsix
       - run: |
-          gh release create "$GITHUB_REF_NAME" code-*.tar.gz \
+          gh release create "$GITHUB_REF_NAME" code-*.tar.gz *.vsix \
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

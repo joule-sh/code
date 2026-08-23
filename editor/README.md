@@ -6,18 +6,51 @@ approvals rendered as native cards instead of terminal text.
 
 The design decisions - workspace-to-daemon mapping, trust level, where tools
 run, lifecycle, and what is reused from the terminal client rather than
-rewritten - are in [`../docs/04-editor.md`](../docs/04-editor.md).
+rewritten - are in
+[docs/04-editor.md](https://github.com/joule-sh/code/blob/main/docs/04-editor.md).
 
-## Running it
-
-There is no build step and no dependencies. Open this repository in VS Code
-and run the extension in an Extension Development Host, or symlink `editor/`
-into `~/.vscode/extensions/`.
+## What it needs
 
 `joule` must be on `PATH`, or `joule.path` must point at it. The daemon is
 started through that binary, so it has to be the same install a terminal
-would use. Credentials are whatever `joule` already has - the extension never
-reads, stores or forwards an API key.
+would use. Install it with the one-liner in
+[the repository README](https://github.com/joule-sh/code#install).
+Credentials are whatever `joule` already has - the extension never reads,
+stores or forwards an API key.
+
+The extension needs **joule 0.13.0 or newer**: 0.13.0 is the release that
+first shipped `daemon-ensure` and the attach socket this client talks to.
+Attaching runs `joule --version` first and refuses to go further when the
+binary is missing, is not a joule, or is older than that, so a mismatch is
+one sentence in the panel rather than a session that dies on the first frame
+it does not recognise. A binary built from a checkout reports `dev` and is
+taken at its word.
+
+There is **no Windows build of `joule` yet**
+([#173](https://github.com/joule-sh/code/issues/173)). The extension is
+plain JavaScript and loads on Windows, but it has nothing to drive there, so
+it says so instead of opening a panel that can never attach. Opening the
+folder through WSL or Remote-SSH works today: `extensionKind` is
+`workspace`, so the extension runs on the remote side, next to the `joule`
+and the files.
+
+## Installing
+
+Every release attaches `joule-editor-<version>.vsix` to
+[its GitHub release](https://github.com/joule-sh/code/releases), cut from the
+same tag as the binaries. Install it with
+
+```sh
+code --install-extension joule-editor-<version>.vsix
+```
+
+or from the Extensions view, through _Install from VSIX_. It is not on the
+Visual Studio Marketplace or Open VSX yet.
+
+To work on the extension instead, open this repository in VS Code and run it
+in an Extension Development Host, or symlink `editor/` into
+`~/.vscode/extensions/`. There is no build step and no runtime dependencies;
+packaging is the only thing that fetches a tool.
 
 ## Settings
 
@@ -38,6 +71,7 @@ person makes rather than something a window does on open.
 | `extension.js` | activation, commands |
 | `src/chat_panel.js` | the webview host, folder picking |
 | `src/session.js` | one folder's daemon session |
+| `src/binary.js` | the preflight: is there a joule here, and can this build drive it |
 | `src/daemon_link.js` | attach, resume, reconnect |
 | `src/conversation.js` | frames to a chat view model, approval state |
 | `src/frames.js` | **generated** - see below |
@@ -59,4 +93,21 @@ copying it. Do not edit it by hand.
 make editor-frames   # regenerate after changing page_js_frames.ts
 make editor-check    # fails if it has drifted, plus syntax checks
 make editor-harness  # the end-to-end check, no browser automation
+make editor-package  # build dist/joule-editor-<version>.vsix
 ```
+
+## Packaging and the version
+
+`make editor-package` writes `dist/joule-editor-<version>.vsix` through
+`@vscode/vsce`, pinned by `scripts/package_editor.mjs` and fetched with
+`npx` so nothing is vendored into the repository.
+
+The version in `package.json` is `0.0.0` in the tree and is never edited by
+hand, for the same reason `src/version.ts` says `dev`: the tag is the one
+source of truth, and a number kept in a file is a number that drifts from the
+binaries it is supposed to match. `scripts/package_editor.mjs` takes the
+version from `--version` or from `GITHUB_REF_NAME`, writes it into a copy of
+the manifest for the length of the packaging run, and restores the file
+afterwards, so a local build never leaves the tree dirty. The release
+workflow packages the extension in the same run as the binaries, from the
+same tag, and attaches the `.vsix` to the same release.
