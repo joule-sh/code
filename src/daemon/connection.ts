@@ -2,7 +2,7 @@ import { Peer, send, closePeer, serveWebSocket } from "../vendor/websocket/serve
 import { CLOSE_PROTOCOL_ERROR } from "../vendor/websocket/frame.ts";
 import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, SHARE_REQUEST, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
 import { connIdFromPath, isSafeConnId } from "./paths.ts";
-import { appendInbound } from "./inbox.ts";
+import { appendInbound, appendClosed } from "./inbox.ts";
 import { newBroadcastReader } from "./broadcast.ts";
 
 export const PUSH_POLL_MS: int = 60;
@@ -63,6 +63,9 @@ export function daemonOnMessage(peer: Peer, message: string): void {
 
 export function daemonOnClose(peer: Peer, graceful: bool): void {
   if (peer.path == "" && graceful) { return; }
+  let connId = connIdFromPath(peer.path);
+  if (!isSafeConnId(connId)) { return; }
+  appendClosed(g_runtimeDir, connId);
 }
 
 export function runDaemonWebSocket(port: int, runtimeDir: string): void {

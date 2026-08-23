@@ -18,6 +18,7 @@ import { RelayUplink } from "./relay_uplink.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
 import { appendBroadcast } from "./broadcast.ts";
 import { runDaemonWebSocket } from "./connection.ts";
+import { sweepInbox } from "./inbox.ts";
 import { inboxDir, daemonRuntimeDir } from "./paths.ts";
 import { writeDaemonInfo, removeDaemonInfo } from "./lifecycle.ts";
 import { VERSION } from "../version.ts";
@@ -61,6 +62,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let runtimeDir = daemonRuntimeDir(workspaceRoot);
   fs.mkdirSync(runtimeDir, true);
   fs.mkdirSync(inboxDir(runtimeDir), true);
+  sweepInbox(runtimeDir);
 
   let registry = new ToolsRegistry(workspaceRoot);
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
