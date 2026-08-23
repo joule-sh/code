@@ -1,15 +1,12 @@
 import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { PROTOCOL_VERSION, ERROR, ErrorFrame, encodeError, frameType } from "../protocol/frames.ts";
-import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, maxSeqSeen, pushBounded, parseMailboxLine, nonEmptyLines, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, maxSeqSeen, pushBounded, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
 import { configureAttachWorker, currentAttachSocket, attachReceiveLoop } from "./attach_worker.ts";
+import { attachMailboxPath, openAttachMailbox, reapAttachMailbox, drainAttachMailbox } from "./attach_mailbox.ts";
 
 function noticeFrame(code: string, message: string): ErrorFrame {
   let f: ErrorFrame = { v: PROTOCOL_VERSION, seq: 0, type: ERROR, code: code, message: message };
   return f;
-}
-
-function mailboxPathFor(tmpDir: string, connId: string): string {
-  return tmpDir + "/joule-attach-" + connId + ".mailbox";
 }
 
 export class DaemonClient {
@@ -70,13 +67,13 @@ export class DaemonClient {
     this.lastSeq = 0;
     this.outbound = [];
     this.overflowed = false;
-    this.mailboxPath = mailboxPathFor(this.tmpDir, this.connId);
+    this.mailboxPath = attachMailboxPath(this.tmpDir, this.connId);
     this.mailboxSeen = 0;
     this.backoffMs = BACKOFF_START_MS;
     this.nextRetryAt = 0;
     this.inboundQueue = [];
 
-    try { fs.writeFileSync(this.mailboxPath, ""); } catch { }
+    openAttachMailbox(this.mailboxPath);
     configureAttachWorker(this.host, this.port, this.connId, -1, this.mailboxPath);
     Worker.run(attachReceiveLoop);
   }
@@ -129,12 +126,8 @@ export class DaemonClient {
   }
 
   drainMailbox(): void {
-    let content = "";
-    try { content = fs.readFileSync(this.mailboxPath); } catch { return; }
-    let lines = nonEmptyLines(content);
-    let i = this.mailboxSeen;
-    while (i < lines.length) {
-      let parsed = parseMailboxLine(lines[i]);
+    let read = drainAttachMailbox(this.mailboxPath, this.mailboxSeen);
+    for (const parsed of read.lines) {
       if (parsed.tag == TAG_FRAME) {
         this.lastSeq = maxSeqSeen(this.lastSeq, parsed.payload);
         this.inboundQueue.push(parsed.payload);
@@ -143,9 +136,8 @@ export class DaemonClient {
       } else if (parsed.tag == TAG_DISCONNECTED || parsed.tag == TAG_CONNECT_FAILED) {
         this.onDisconnected(parsed.payload);
       }
-      i = i + 1;
     }
-    this.mailboxSeen = lines.length;
+    this.mailboxSeen = read.seen;
   }
 
   maybeReconnect(): void {
@@ -172,11 +164,19 @@ export class DaemonClient {
     return out;
   }
 
+  reapMailbox(): bool {
+    let path = this.mailboxPath;
+    this.mailboxPath = "";
+    this.mailboxSeen = 0;
+    return reapAttachMailbox(path);
+  }
+
   detach(): void {
     if (!this.attaching) { return; }
     this.detachRequested = true;
     this.attaching = false;
     this.socketReady = false;
+    this.reapMailbox();
   }
 
   disconnect(): void {
@@ -185,5 +185,6 @@ export class DaemonClient {
     this.socketReady = false;
     let sock = currentAttachSocket();
     if (sock.length > 0) { sock[0].close(); }
+    this.reapMailbox();
   }
 }

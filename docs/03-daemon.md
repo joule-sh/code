@@ -108,6 +108,20 @@ daemon is built to never do that, from three pieces:
    websocket path (`/attach/<id>/ws`), so the daemon never needs a shared
    counter or registry to hand out ids - one fewer thing that would have had
    to be a shared `Map`.
+4. **The client side of the handoff is the same idiom, mirrored.** A client
+   runs its own receive thread (`src/daemon/attach_worker.ts`), which appends
+   frames and connection-state markers to `<tmpDir>/joule-attach-<id>.mailbox`
+   while the owning thread drains it from a line cursor
+   (`src/daemon/attach_mailbox.ts`). The owner opens that file at `connect()`
+   and reaps it at `detach()` or `disconnect()`, the two places it has
+   decided it is finished: after either, `attaching` is false, so
+   `maybeReconnect()` will never come back to the file, and the next
+   `connect()` mints a fresh id and a fresh path. A dropped socket is not one
+   of those places - the file and the cursor both survive it, so a client
+   that reconnects under the same id still reads its whole backlog. The
+   receive thread appends only to a file that is already there, so a thread
+   still winding down after the reap cannot recreate the file it is writing
+   to; the owner creating the file at `connect()` is what makes that safe.
 
 Two things surfaced building this that are worth naming plainly, because
 they cost real time and would cost the next person the same:
