@@ -1,0 +1,118 @@
+import { RelayOwner } from "./relay_owner.ts";
+import { appendMailbox, findMailboxEntry } from "../tasks/mailbox.ts";
+import { commandsLogPath, resultsLogPath, sessionDir } from "./relay_paths.ts";
+import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, ConnectCommand, encodeConnectCommand, decodeConnectResult, DetachCommand, encodeDetachCommand, decodeDetachResult } from "./store_commands.ts";
+
+const BASE_TIME: i64 = 1700000000000;
+
+function freshRuntimeDir(name: string): string {
+  let dir = "/tmp/relay-owner-test-" + name;
+  if (fs.existsSync(dir)) { fs.rmSync(dir, true); }
+  fs.mkdirSync(dir, true);
+  return dir;
+}
+
+test("handleCreate makes a session and a pairing code, and creates its runtime dir", () => {
+  let owner = new RelayOwner(freshRuntimeDir("create"));
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME };
+  let result = decodeCreateResult(owner.handleCreate(encodeCreateCommand(cmd)));
+  expect(result != null);
+  if (result != null) {
+    expect(result.sessionId != "");
+    expect(result.secret != "");
+    expect(result.code.length == 6);
+    expect(fs.existsSync(sessionDir(owner.runtimeDir, result.sessionId)));
+  }
+});
+
+test("handlePair binds a code to a uuid, handleConnect then authorizes that uuid as the browser", () => {
+  let owner = new RelayOwner(freshRuntimeDir("pair-connect"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  expect(created != null);
+  if (created != null) {
+    let pairCmd: PairCommand = { kind: CMD_PAIR, code: created.code, userId: "user-1", now: BASE_TIME + 10 };
+    let paired = decodePairResult(owner.handlePair(encodePairCommand(pairCmd)));
+    expect(paired != null);
+    if (paired != null) {
+      expect(paired.status == "ok");
+      expect(paired.sessionId == created.sessionId);
+    }
+
+    let connectCmd: ConnectCommand = { kind: CMD_CONNECT, sessionId: created.sessionId, role: ROLE_BROWSER_CMD, credential: "user-1", now: BASE_TIME + 20 };
+    let connected = decodeConnectResult(owner.handleConnect(encodeConnectCommand(connectCmd)));
+    expect(connected != null);
+    if (connected != null) { expect(connected.ok); }
+
+    let wrongUser: ConnectCommand = { kind: CMD_CONNECT, sessionId: created.sessionId, role: ROLE_BROWSER_CMD, credential: "user-2", now: BASE_TIME + 30 };
+    let refused = decodeConnectResult(owner.handleConnect(encodeConnectCommand(wrongUser)));
+    expect(refused != null);
+    if (refused != null) {
+      expect(!refused.ok);
+      expect(refused.refusal == "wrong_user");
+    }
+  }
+});
+
+test("handleConnect authorizes the terminal role by secret", () => {
+  let owner = new RelayOwner(freshRuntimeDir("terminal-connect"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  expect(created != null);
+  if (created != null) {
+    let ok: ConnectCommand = { kind: CMD_CONNECT, sessionId: created.sessionId, role: ROLE_TERMINAL_CMD, credential: created.secret, now: BASE_TIME + 5 };
+    let okResult = decodeConnectResult(owner.handleConnect(encodeConnectCommand(ok)));
+    expect(okResult != null);
+    if (okResult != null) { expect(okResult.ok); }
+
+    let bad: ConnectCommand = { kind: CMD_CONNECT, sessionId: created.sessionId, role: ROLE_TERMINAL_CMD, credential: "wrong-secret", now: BASE_TIME + 6 };
+    let refused = decodeConnectResult(owner.handleConnect(encodeConnectCommand(bad)));
+    expect(refused != null);
+    if (refused != null) {
+      expect(!refused.ok);
+      expect(refused.refusal == "unauthorized");
+    }
+  }
+});
+
+test("handleDetach removes the session and its runtime directory", () => {
+  let owner = new RelayOwner(freshRuntimeDir("detach"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  expect(created != null);
+  if (created != null) {
+    expect(fs.existsSync(sessionDir(owner.runtimeDir, created.sessionId)));
+
+    let detachCmd: DetachCommand = { kind: CMD_DETACH, sessionId: created.sessionId };
+    let result = decodeDetachResult(owner.handleDetach(encodeDetachCommand(detachCmd)));
+    expect(result != null);
+    if (result != null) { expect(result.removed); }
+    expect(!fs.existsSync(sessionDir(owner.runtimeDir, created.sessionId)));
+
+    let again = decodeDetachResult(owner.handleDetach(encodeDetachCommand(detachCmd)));
+    expect(again != null);
+    if (again != null) { expect(!again.removed); }
+  }
+});
+
+test("drainOnce answers a command it finds in the mailbox, tagged by the caller's reqId", () => {
+  let dir = freshRuntimeDir("drain");
+  let owner = new RelayOwner(dir);
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME };
+  appendMailbox(commandsLogPath(dir), "req-1", encodeCreateCommand(cmd));
+
+  let handled = owner.drainOnce();
+  expect(handled == 1);
+
+  let resultJson = findMailboxEntry(resultsLogPath(dir), "req-1");
+  let result = decodeCreateResult(resultJson);
+  expect(result != null);
+  if (result != null) { expect(result.sessionId != ""); }
+});
+
+test("sweepTick removes a session once it has been idle past the TTL", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sweep"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  expect(created != null);
+  if (created != null) {
+    owner.sweepTick(BASE_TIME + 31 * 60 * 1000);
+    expect(owner.store.find(created.sessionId) == null);
+  }
+});

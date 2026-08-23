@@ -1,6 +1,7 @@
-import { SessionStore, PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
-import { generateCode, generateSecret, generateSessionId } from "./pairing.ts";
+import { PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
 import { renderWebPage, WEB_PAGE_PATH } from "./web/web_page.ts";
+import { StoreCaller } from "./relay_rpc.ts";
+import { CMD_CREATE, CMD_PAIR, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult } from "./store_commands.ts";
 
 export type RelayHttpRequest = { method: string, path: string, body: string, headers: Map<string, string> };
 export type RelayHttpResponse = { status: int, body: string, ok: bool, headers: Map<string, string> };
@@ -46,7 +47,7 @@ function parsePair(body: string): PairRequest | null {
   }
 }
 
-function handleCreateSession(store: SessionStore, req: RelayHttpRequest, now: i64): RelayHttpResponse {
+function handleCreateSession(caller: StoreCaller, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let createReq = parseCreateSession(req.body);
   if (createReq == null) {
     return errorResponse(400, "malformed request body");
@@ -54,12 +55,14 @@ function handleCreateSession(store: SessionStore, req: RelayHttpRequest, now: i6
   if (createReq.workspace == "" || createReq.model == "") {
     return errorResponse(400, "workspace and model are required");
   }
-  let sessionId = generateSessionId();
-  let secret = generateSecret();
-  let code = generateCode();
-  let created = store.create(sessionId, secret, createReq.workspace, createReq.model, code, now);
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: createReq.workspace, model: createReq.model, now: now };
+  let resultJson = caller(encodeCreateCommand(cmd));
+  let created = decodeCreateResult(resultJson);
+  if (created == null) {
+    return errorResponse(503, "relay owner did not answer in time");
+  }
   let resp: CreateSessionResponse = {
-    sessionId: created.sessionId, secret: created.secret, code: created.code, expiresAt: created.codeExpiresAt,
+    sessionId: created.sessionId, secret: created.secret, code: created.code, expiresAt: created.expiresAt,
   };
   return jsonResponse(200, JSON.stringify(resp));
 }
@@ -70,7 +73,7 @@ function statusForPairFailure(status: string): int {
   return 400;
 }
 
-function handlePair(store: SessionStore, req: RelayHttpRequest, now: i64): RelayHttpResponse {
+function handlePair(caller: StoreCaller, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let userId = req.headers.get("x-user") ?? "";
   if (userId == "") {
     return errorResponse(401, "missing x-user");
@@ -82,7 +85,12 @@ function handlePair(store: SessionStore, req: RelayHttpRequest, now: i64): Relay
   if (pairReq.code == "") {
     return errorResponse(400, "malformed request body");
   }
-  let outcome = store.pairByCode(pairReq.code, userId, now);
+  let cmd: PairCommand = { kind: CMD_PAIR, code: pairReq.code, userId: userId, now: now };
+  let resultJson = caller(encodePairCommand(cmd));
+  let outcome = decodePairResult(resultJson);
+  if (outcome == null) {
+    return errorResponse(503, "relay owner did not answer in time");
+  }
   if (outcome.status != PAIR_OK) {
     return errorResponse(statusForPairFailure(outcome.status), outcome.status);
   }
@@ -94,18 +102,17 @@ function handleWebPage(wsBrowserPort: int): RelayHttpResponse {
   return htmlResponse(200, renderWebPage(wsBrowserPort));
 }
 
-export function makeHttpHandler(store: SessionStore, wsBrowserPort: int): (req: RelayHttpRequest) => RelayHttpResponse {
+export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int): (req: RelayHttpRequest) => RelayHttpResponse {
   return (req: RelayHttpRequest) => {
     let now: i64 = Date.now();
-    store.sweepIdle(now);
     if (req.method == "GET" && req.path == WEB_PAGE_PATH) {
       return handleWebPage(wsBrowserPort);
     }
     if (req.method == "POST" && req.path == "/sessions") {
-      return handleCreateSession(store, req, now);
+      return handleCreateSession(caller, req, now);
     }
     if (req.method == "POST" && req.path == "/pair") {
-      return handlePair(store, req, now);
+      return handlePair(caller, req, now);
     }
     return errorResponse(404, "not found");
   };

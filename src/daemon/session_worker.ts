@@ -3,6 +3,7 @@ import { Gate } from "../approval/gate.ts";
 import { LiveProvider } from "../providers/live.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { RelayInputBridge } from "../terminal/relay_bridge.ts";
+import { ShareController } from "./share_controller.ts";
 import { InboxDrain } from "./inbox.ts";
 import { dispatchDaemonFrame } from "./dispatch.ts";
 
@@ -19,6 +20,7 @@ export class SessionWorker {
   inbox: InboxDrain;
   running: bool;
   stopAt: i64;
+  relayUplinkSlot: ShareController[];
 
   constructor(runtimeDir: string, session: Session, gate: Gate, live: LiveProvider, tasks: TaskManager) {
     this.runtimeDir = runtimeDir;
@@ -30,12 +32,23 @@ export class SessionWorker {
     this.inbox = new InboxDrain(runtimeDir);
     this.running = true;
     this.stopAt = 0;
+    this.relayUplinkSlot = [];
+  }
+
+  setRelayUplink(uplink: ShareController): void {
+    this.relayUplinkSlot = [uplink];
+  }
+
+  currentUplink(): ShareController | null {
+    if (this.relayUplinkSlot.length == 0) { return null; }
+    return this.relayUplinkSlot[0];
   }
 
   drainOnce(): int {
     let frames = this.inbox.drainAll();
+    let inboxUplink = this.currentUplink();
     for (const f of frames) {
-      let wantsStop = dispatchDaemonFrame(this.session, this.gate, this.live, this.tasks, this.bridge, f);
+      let wantsStop = dispatchDaemonFrame(this.session, this.gate, this.live, this.tasks, this.bridge, inboxUplink, f);
       if (wantsStop) { this.requestStop(STOP_GRACE_MS); }
     }
     return frames.length;
@@ -44,6 +57,17 @@ export class SessionWorker {
   tick(): void {
     this.drainOnce();
     this.tasks.poll(this.session);
+    this.pollRelayUplink();
+  }
+
+  pollRelayUplink(): void {
+    let activeUplink = this.currentUplink();
+    if (activeUplink != null) { activeUplink.tick(this.session, this.gate, this.bridge); }
+  }
+
+  pollForApproval(): void {
+    this.drainOnce();
+    this.pollRelayUplink();
   }
 
   requestStop(graceMs: int): void {

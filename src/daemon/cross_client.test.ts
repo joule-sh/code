@@ -73,7 +73,7 @@ test("a mode.set dispatched on the daemon's session reaches two independent broa
   let readerForClientB = newBroadcastReader(dir);
 
   let f: ModeSetFrame = { v: PROTOCOL_VERSION, seq: 0, type: "mode.set", mode: "full-auto" };
-  dispatchDaemonFrame(session, gate, live, tasks, bridge, encodeModeSet(f));
+  dispatchDaemonFrame(session, gate, live, tasks, bridge, null, encodeModeSet(f));
 
   let seenByA = readerForClientA.drainNew();
   let seenByB = readerForClientB.drainNew();
@@ -98,7 +98,7 @@ test("a model.set dispatched on the daemon's session reaches a broadcast reader 
   let bridge = new RelayInputBridge();
 
   let f: ModelSetFrame = { v: PROTOCOL_VERSION, seq: 0, type: "model.set", model: "shared-model" };
-  dispatchDaemonFrame(session, gate, live, tasks, bridge, encodeModelSet(f));
+  dispatchDaemonFrame(session, gate, live, tasks, bridge, null, encodeModelSet(f));
 
   let lateJoiningReader = newBroadcastReader(dir);
   let seen = lateJoiningReader.drainNew();

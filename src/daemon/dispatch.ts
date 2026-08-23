@@ -3,10 +3,12 @@ import { Gate } from "../approval/gate.ts";
 import { LiveProvider } from "../providers/live.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { RelayInputBridge, dispatchInboundFrame } from "../terminal/relay_bridge.ts";
+import { ShareController } from "./share_controller.ts";
 import { handleModeSet } from "./dispatch_mode.ts";
 import { handleModelSet } from "./dispatch_model.ts";
 import { handleTasksRequest } from "./dispatch_tasks.ts";
-import { frameType, PROTOCOL_VERSION, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, DaemonStoppingFrame, encodeDaemonStopping } from "../protocol/frames.ts";
+import { handleShareRequest } from "./dispatch_share.ts";
+import { frameType, PROTOCOL_VERSION, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, DaemonStoppingFrame, encodeDaemonStopping, SHARE_REQUEST } from "../protocol/frames.ts";
 
 function handleDaemonStop(session: Session): void {
   let stopping: DaemonStoppingFrame = {
@@ -16,13 +18,14 @@ function handleDaemonStop(session: Session): void {
   session.emit(encodeDaemonStopping(stopping));
 }
 
-export function dispatchDaemonFrame(session: Session, gate: Gate, live: LiveProvider, tasks: TaskManager, bridge: RelayInputBridge, frameJson: string): bool {
+export function dispatchDaemonFrame(session: Session, gate: Gate, live: LiveProvider, tasks: TaskManager, bridge: RelayInputBridge, uplink: ShareController | null, frameJson: string): bool {
   let t = frameType(frameJson);
 
   if (t == MODE_SET) { handleModeSet(session, gate, frameJson); return false; }
   if (t == MODEL_SET) { handleModelSet(session, live, frameJson); return false; }
   if (t == TASKS_REQUEST) { handleTasksRequest(session, tasks, frameJson); return false; }
   if (t == DAEMON_STOP) { handleDaemonStop(session); return true; }
+  if (t == SHARE_REQUEST) { handleShareRequest(session, uplink, live.cfg.model); return false; }
 
   dispatchInboundFrame(session, gate, bridge, frameJson);
   return false;

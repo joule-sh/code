@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, TASKS_RESPONSE, DAEMON_STOP, DAEMON_STOPPING, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, ModeSetFrame, ModeChangedFrame, ModelSetFrame, ModelChangedFrame, TasksRequestFrame, TasksResponseFrame, DaemonStopFrame, DaemonStoppingFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, encodeModeSet, decodeModeSet, encodeModeChanged, decodeModeChanged, encodeModelSet, decodeModelSet, encodeModelChanged, decodeModelChanged, encodeTasksRequest, decodeTasksRequest, encodeTasksResponse, decodeTasksResponse, encodeDaemonStop, decodeDaemonStop, encodeDaemonStopping, decodeDaemonStopping, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, TASKS_RESPONSE, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, SHARE_STARTED, SHARE_FAILED, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, ModeSetFrame, ModeChangedFrame, ModelSetFrame, ModelChangedFrame, TasksRequestFrame, TasksResponseFrame, DaemonStopFrame, DaemonStoppingFrame, ShareRequestFrame, ShareStartedFrame, ShareFailedFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, encodeModeSet, decodeModeSet, encodeModeChanged, decodeModeChanged, encodeModelSet, decodeModelSet, encodeModelChanged, decodeModelChanged, encodeTasksRequest, decodeTasksRequest, encodeTasksResponse, decodeTasksResponse, encodeDaemonStop, decodeDaemonStop, encodeDaemonStopping, decodeDaemonStopping, encodeShareRequest, decodeShareRequest, encodeShareStarted, decodeShareStarted, encodeShareFailed, decodeShareFailed, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
 
 test("SESSION_HELLO round-trips", () => {
   let f: SessionHelloFrame = { v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO, sessionId: "s1", workspace: "/repo", model: "gpt", mode: "agent", protocol: 1 };
@@ -143,6 +143,28 @@ test("DAEMON_STOPPING round-trips", () => {
   expect(back!.reason == "an attached client asked the daemon to stop");
 });
 
+test("SHARE_REQUEST round-trips", () => {
+  let f: ShareRequestFrame = { v: PROTOCOL_VERSION, seq: 21, type: SHARE_REQUEST };
+  let back = decodeShareRequest(encodeShareRequest(f));
+  expect(back != null);
+  expect(back!.type == SHARE_REQUEST);
+});
+
+test("SHARE_STARTED round-trips", () => {
+  let f: ShareStartedFrame = { v: PROTOCOL_VERSION, seq: 22, type: SHARE_STARTED, code: "ABCDEF", url: "https://joule.sh/w/ABCDEF" };
+  let back = decodeShareStarted(encodeShareStarted(f));
+  expect(back != null);
+  expect(back!.code == "ABCDEF");
+  expect(back!.url == "https://joule.sh/w/ABCDEF");
+});
+
+test("SHARE_FAILED round-trips", () => {
+  let f: ShareFailedFrame = { v: PROTOCOL_VERSION, seq: 23, type: SHARE_FAILED, error: "relay refused: 503" };
+  let back = decodeShareFailed(encodeShareFailed(f));
+  expect(back != null);
+  expect(back!.error == "relay refused: 503");
+});
+
 test("the new session-state and lifecycle frame types are known", () => {
   expect(isKnownType(MODE_SET));
   expect(isKnownType(MODE_CHANGED));
@@ -152,6 +174,9 @@ test("the new session-state and lifecycle frame types are known", () => {
   expect(isKnownType(TASKS_RESPONSE));
   expect(isKnownType(DAEMON_STOP));
   expect(isKnownType(DAEMON_STOPPING));
+  expect(isKnownType(SHARE_REQUEST));
+  expect(isKnownType(SHARE_STARTED));
+  expect(isKnownType(SHARE_FAILED));
 });
 
 test("unknown frame type is not fatal", () => {

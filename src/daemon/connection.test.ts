@@ -1,5 +1,5 @@
 import { isAcceptedInboundType } from "./connection.ts";
-import { INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, RESUME, SESSION_HELLO, TEXT_DELTA } from "../protocol/frames.ts";
+import { INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, SHARE_REQUEST, RESUME, SESSION_HELLO, TEXT_DELTA } from "../protocol/frames.ts";
 
 test("client-to-daemon frame types are accepted", () => {
   expect(isAcceptedInboundType(INPUT));
@@ -9,6 +9,7 @@ test("client-to-daemon frame types are accepted", () => {
   expect(isAcceptedInboundType(MODEL_SET));
   expect(isAcceptedInboundType(TASKS_REQUEST));
   expect(isAcceptedInboundType(DAEMON_STOP));
+  expect(isAcceptedInboundType(SHARE_REQUEST));
 });
 
 test("RESUME is handled separately, not through the accepted-inbound path", () => {

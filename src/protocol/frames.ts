@@ -21,6 +21,9 @@ export const TASKS_REQUEST: string = "tasks.request";
 export const TASKS_RESPONSE: string = "tasks.response";
 export const DAEMON_STOP: string = "daemon.stop";
 export const DAEMON_STOPPING: string = "daemon.stopping";
+export const SHARE_REQUEST: string = "share.request";
+export const SHARE_STARTED: string = "share.started";
+export const SHARE_FAILED: string = "share.failed";
 
 export const REASON_DONE: string = "done";
 export const REASON_CANCELLED: string = "cancelled";
@@ -52,6 +55,9 @@ export type TasksRequestFrame = { v: int, seq: int, type: string, arg: string };
 export type TasksResponseFrame = { v: int, seq: int, type: string, text: string };
 export type DaemonStopFrame = { v: int, seq: int, type: string };
 export type DaemonStoppingFrame = { v: int, seq: int, type: string, reason: string };
+export type ShareRequestFrame = { v: int, seq: int, type: string };
+export type ShareStartedFrame = { v: int, seq: int, type: string, code: string, url: string };
+export type ShareFailedFrame = { v: int, seq: int, type: string, error: string };
 
 export function encodeSessionHello(f: SessionHelloFrame): string { return JSON.stringify(f); }
 export function encodeTurnStart(f: TurnStartFrame): string { return JSON.stringify(f); }
@@ -74,6 +80,9 @@ export function encodeTasksRequest(f: TasksRequestFrame): string { return JSON.s
 export function encodeTasksResponse(f: TasksResponseFrame): string { return JSON.stringify(f); }
 export function encodeDaemonStop(f: DaemonStopFrame): string { return JSON.stringify(f); }
 export function encodeDaemonStopping(f: DaemonStoppingFrame): string { return JSON.stringify(f); }
+export function encodeShareRequest(f: ShareRequestFrame): string { return JSON.stringify(f); }
+export function encodeShareStarted(f: ShareStartedFrame): string { return JSON.stringify(f); }
+export function encodeShareFailed(f: ShareFailedFrame): string { return JSON.stringify(f); }
 
 export function decodeSessionHello(text: string): SessionHelloFrame | null {
   try { return JSON.parse<SessionHelloFrame>(text); } catch { return null; }
@@ -137,6 +146,15 @@ export function decodeDaemonStop(text: string): DaemonStopFrame | null {
 }
 export function decodeDaemonStopping(text: string): DaemonStoppingFrame | null {
   try { return JSON.parse<DaemonStoppingFrame>(text); } catch { return null; }
+}
+export function decodeShareRequest(text: string): ShareRequestFrame | null {
+  try { return JSON.parse<ShareRequestFrame>(text); } catch { return null; }
+}
+export function decodeShareStarted(text: string): ShareStartedFrame | null {
+  try { return JSON.parse<ShareStartedFrame>(text); } catch { return null; }
+}
+export function decodeShareFailed(text: string): ShareFailedFrame | null {
+  try { return JSON.parse<ShareFailedFrame>(text); } catch { return null; }
 }
 
 function rawFieldValue(body: string, key: string): string {
@@ -224,6 +242,7 @@ export function isKnownType(t: string): bool {
   if (t == APPROVAL_REPLY_RESULT) { return true; }
   if (t == MODE_SET || t == MODE_CHANGED || t == MODEL_SET || t == MODEL_CHANGED) { return true; }
   if (t == TASKS_REQUEST || t == TASKS_RESPONSE || t == DAEMON_STOP || t == DAEMON_STOPPING) { return true; }
+  if (t == SHARE_REQUEST || t == SHARE_STARTED || t == SHARE_FAILED) { return true; }
   return false;
 }
 

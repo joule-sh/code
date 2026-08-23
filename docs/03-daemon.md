@@ -183,6 +183,100 @@ the same single-owning-thread-plus-mailbox pattern this daemon just proved
 out - not a small patch, and not attempted here. Recorded as the next piece
 of work this daemon obligates, not a nice-to-have.
 
+**Update, the relay reshape:** done, following the plan above unchanged. The
+relay's `SessionStore` (`src/relay/store.ts`) is now pairing-and-auth only -
+`SessionRecord`, the pairing rate limiter, `create`/`pairByCode`/
+`authorizeTerminal`/`authorizeBrowser`/`detachTerminal`/`sweepIdle`, nothing
+else - and it is touched by exactly one thread, `RelayOwner`
+(`src/relay/relay_owner.ts`), the same single-owning-thread shape
+`SessionWorker` already proved out for the daemon. Every `net.createServer`
+connection thread (HTTP or websocket) reaches it only through a
+commands/results mailbox (`src/relay/relay_rpc.ts`,
+`src/relay/store_commands.ts`) - the same request-then-poll-for-a-tagged-
+reply idiom `tasks/subagent_worker.ts` already used for approvals, just
+applied to pairing instead. Frame bytes never pass through the owner at all:
+`src/relay/ws.ts` writes each inbound frame straight to a per-session,
+per-direction file (`to-browser.log`, `to-terminal.log`) and a
+`Worker.run`'d pusher on the *other* role's connection tails it, mirroring
+`connection.ts`'s pusherLoop exactly except for one real asymmetry seq
+cannot paper over: only session-emitted frames (`to-browser.log`) carry a
+real monotonic seq from `session.takeSeq()`. Browser-originated frames
+(`to-browser.log`'s counterpart, `to-terminal.log`) are always encoded with
+seq 0, so that direction's pusher does not filter by seq at all - it skips
+whatever backlog already sits in the file when it starts and delivers every
+new line unconditionally. The relay's old `Ring`/500-frame cap is gone; a
+session's per-connection log files live only as long as the session does
+and are removed on detach or idle sweep, so nothing survives the relay
+process choosing to forget it, same spirit as before, just no synthetic
+cap.
+
+The daemon side is `src/daemon/relay_uplink.ts`: `RelayUplink` reuses
+`RelayClient` (`src/relay/client.ts`) completely unchanged, playing the
+relay's "terminal" role from inside the daemon instead of from a standalone
+joule process. Outbound, it tails the daemon's own broadcast log with its
+own cursor and republishes every frame; inbound, it filters
+`relay.pollInbound()` through `isDownstreamAllowed` - the same
+input/cancel/approval.reply-only check the classic relay client already
+applies - before ever calling `dispatchInboundFrame`. That filter is not
+redundant with the relay's own auth: pairing establishes who a browser is,
+not what a locally-attached client is trusted to do, and this daemon
+already lets any attached client set mode/model/tasks or ask for a stop. A
+paired browser gets exactly what spec 002 always said it got and no more,
+enforced independently of anything the relay decides to forward.
+
+`joule attach`'s `/share` sends a `share.request` frame (a new pair,
+`SHARE_REQUEST`/`SHARE_STARTED`/`SHARE_FAILED`, dispatched in
+`src/daemon/dispatch_share.ts` the same way `mode.set`/`model.set` already
+are) and the daemon answers with the pairing code and URL, or a plain
+failure reason - `ensureStarted` is idempotent, a second `/share` while
+already sharing just re-shows the existing code. `dispatch.ts` and
+`session_worker.ts` depend on a small structural type,
+`ShareController` (`src/daemon/share_controller.ts`), rather than the
+concrete `RelayUplink` class: importing `relay_uplink.ts` (and the
+`RelayClient`/vendor/websocket chain behind it) into a file compiled as its
+own `lumen test` unit hits a toolchain limitation - "no module named 'xev'
+available within module 'test'" - unrelated to what those files actually
+test. The structural type sidesteps it the same way `attach.ts` sidesteps
+lumen#29 by not importing `Gate`; `RelayUplink` itself is exercised at the
+harness level instead of as a unit.
+
+`src/relay/web/page_js_frames.ts` was not extended to render
+`mode.changed`/`tasks.response`/`daemon.stopping`/`share.started`/
+`share.failed` - a deliberate, narrower decision than full parity, matching
+the precedent already set when those first three shipped for `joule attach`
+without a browser in the picture. Unknown frame types already render as
+nothing rather than crashing (`scripts/verify_renderer.mjs` checks this),
+and none of the daemon-only frames are meaningful to show a browser that
+did not initiate the share and cannot ask for a stop or change the mode
+anyway. `renderer.ts` (the terminal side) does render `share.started`/
+`share.failed`, since that confirmation is for whoever ran `/share`.
+
+Verified with a new harness, `make share-bridge-harness`
+(`scripts/verify_share_bridge.mjs`): a real relay, a real daemon, a real
+`joule attach`-shaped websocket client and a real paired-browser-shaped
+websocket client on the same session at once. Both see the identical
+`read` tool call and the identical `approval.request`; both answer the same
+`callId` with opposite decisions close together; exactly one decision wins,
+the loser is told via `approval.reply.result` naming the decision that
+actually applied, and the workspace file reflects whichever decision won.
+This is the #136 approval race, now exercised across the relay for the
+first time rather than only between two local attach clients. `make e2e`
+(`scripts/e2e_full_stack.mjs`) and `scripts/e2e_relay_check.mjs`, which
+exercise the classic `joule --share` path against the reshaped relay
+end to end, still pass unmodified - `src/relay/client.ts`,
+`src/relay/client_worker.ts`, `src/relay/client_logic.ts`, and
+`src/terminal/terminal.ts` are byte-for-byte untouched by this pass.
+
+`/share` in `joule attach`: supportable, and now supported. It needed
+exactly the relay reshape this doc already called for - nothing about
+enabling it required weakening spec 002's two-sided consent. The human at
+the terminal still has to run `/share` (or here, send `share.request` from
+an attached client) before any code exists to redeem; a browser still needs
+both the code and a joule.sh login to pair; and once paired, a browser's
+authority is capped at input/cancel/approval-reply by `isDownstreamAllowed`
+in `relay_uplink.ts`, independent of whatever else the daemon would trust a
+local attached client to do.
+
 ## Lifecycle: what's decided, what's still open
 
 Attach-if-running works: `src/daemon/lifecycle.ts`'s info file

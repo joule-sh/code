@@ -3,16 +3,24 @@ import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
 import { Message, ProviderReply, Provider, ToolResult, ToolRegistry, ApprovalGate, ApprovalDecision } from "../session/types.ts";
 import { LiveProvider, CancelWatch, TurnTracker } from "../providers/live.ts";
 import { TaskManager } from "../tasks/manager.ts";
+import { RelayInputBridge } from "../terminal/relay_bridge.ts";
 import { SessionWorker } from "./session_worker.ts";
+import { ShareController, ShareResult } from "./share_controller.ts";
 import { inboxDir } from "./paths.ts";
 import { appendInbound } from "./inbox.ts";
-import { PROTOCOL_VERSION, DaemonStopFrame, encodeDaemonStop } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, DaemonStopFrame, encodeDaemonStop, ShareRequestFrame, encodeShareRequest, frameType, SHARE_FAILED } from "../protocol/frames.ts";
 
 class Echoer {
   run(tool: string, args: string): ToolResult {
     let r: ToolResult = { ok: true, output: "", truncated: false };
     return r;
   }
+}
+
+class FrameCapture {
+  frames: string[];
+  constructor() { this.frames = []; }
+  add(frameJson: string): void { this.frames.push(frameJson); }
 }
 
 class EchoProvider {
@@ -50,6 +58,16 @@ function freshRuntimeDir(name: string): string {
   if (fs.existsSync(dir)) { fs.rmSync(dir, true); }
   fs.mkdirSync(inboxDir(dir), true);
   return dir;
+}
+
+function fakeUplink(): ShareController {
+  return {
+    ensureStarted: (workspaceRoot: string, model: string) => {
+      let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://joule.sh/w/ABCDEF", error: "" };
+      return r;
+    },
+    tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => {},
+  };
 }
 
 test("a fresh worker is not stopping", () => {
@@ -99,4 +117,37 @@ test("drainOnce does not request a stop for an ordinary input frame", () => {
   appendInbound(dir, "conn-a", "{\"v\":1,\"seq\":0,\"type\":\"input\",\"text\":\"hi\"}");
   worker.drainOnce();
   expect(worker.stopAt == 0);
+});
+
+test("a fresh worker has no relay uplink until one is set", () => {
+  let worker = newWorker(freshRuntimeDir("no-uplink"));
+  expect(worker.currentUplink() == null);
+});
+
+test("setRelayUplink makes currentUplink return it", () => {
+  let worker = newWorker(freshRuntimeDir("set-uplink"));
+  worker.setRelayUplink(fakeUplink());
+  expect(worker.currentUplink() != null);
+});
+
+test("pollForApproval drains the inbox without touching task polling, and tolerates no uplink", () => {
+  let dir = freshRuntimeDir("poll-for-approval");
+  let worker = newWorker(dir);
+  appendInbound(dir, "conn-a", "{\"v\":1,\"seq\":0,\"type\":\"input\",\"text\":\"hi\"}");
+  worker.pollForApproval();
+  expect(worker.stopAt == 0);
+});
+
+test("a share.request with no uplink set answers share.failed rather than crashing", () => {
+  let dir = freshRuntimeDir("drain-share-no-uplink");
+  let worker = newWorker(dir);
+  let cap = new FrameCapture();
+  worker.session.subscribe((f: string) => cap.add(f));
+
+  let f: ShareRequestFrame = { v: PROTOCOL_VERSION, seq: 0, type: "share.request" };
+  appendInbound(dir, "conn-a", encodeShareRequest(f));
+  worker.drainOnce();
+
+  expect(cap.frames.length > 0);
+  expect(frameType(cap.frames[cap.frames.length - 1]) == SHARE_FAILED);
 });

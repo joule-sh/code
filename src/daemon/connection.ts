@@ -1,6 +1,6 @@
 import { Peer, send, closePeer, serveWebSocket } from "../vendor/websocket/server.ts";
 import { CLOSE_PROTOCOL_ERROR } from "../vendor/websocket/frame.ts";
-import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
+import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUEST, DAEMON_STOP, SHARE_REQUEST, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
 import { connIdFromPath, isSafeConnId } from "./paths.ts";
 import { appendInbound } from "./inbox.ts";
 import { newBroadcastReader } from "./broadcast.ts";
@@ -41,6 +41,7 @@ function sinceFromResume(message: string): int {
 export function isAcceptedInboundType(t: string): bool {
   if (t == INPUT || t == CANCEL || t == APPROVAL_REPLY) { return true; }
   if (t == MODE_SET || t == MODEL_SET || t == TASKS_REQUEST || t == DAEMON_STOP) { return true; }
+  if (t == SHARE_REQUEST) { return true; }
   return false;
 }
 

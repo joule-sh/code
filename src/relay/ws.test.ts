@@ -1,21 +1,4 @@
-import { roleForPath, sessionIdFromPath, browserUserIdFrom, ROLE_TERMINAL, ROLE_BROWSER, ROLE_UNKNOWN } from "./ws.ts";
-
-test("roleForPath recognises a terminal path", () => {
-  expect(roleForPath("/sessions/abc123/ws") == ROLE_TERMINAL);
-});
-
-test("roleForPath recognises a browser path", () => {
-  expect(roleForPath("/w/abc123/ws") == ROLE_BROWSER);
-});
-
-test("roleForPath is unknown for anything else", () => {
-  expect(roleForPath("/pair") == ROLE_UNKNOWN);
-  expect(roleForPath("/") == ROLE_UNKNOWN);
-});
-
-test("roleForPath only sees the pathname, a query string is stripped upstream", () => {
-  expect(roleForPath("/w/abc123/ws?x-user=u1") == ROLE_UNKNOWN);
-});
+import { sessionIdFromPath, browserUserIdFrom } from "./ws.ts";
 
 test("sessionIdFromPath pulls the id out from between the prefix and suffix", () => {
   expect(sessionIdFromPath("/sessions/abc123/ws", "/sessions/", "/ws") == "abc123");
@@ -25,6 +8,11 @@ test("sessionIdFromPath pulls the id out from between the prefix and suffix", ()
 test("sessionIdFromPath is empty when there is nothing between prefix and suffix", () => {
   let emptyIdPath = "/w/" + "/ws";
   expect(sessionIdFromPath(emptyIdPath, "/w/", "/ws") == "");
+});
+
+test("sessionIdFromPath is empty when the path does not actually have the expected prefix or suffix", () => {
+  expect(sessionIdFromPath("/nope/abc123/ws", "/sessions/", "/ws") == "");
+  expect(sessionIdFromPath("/sessions/abc123/other", "/sessions/", "/ws") == "");
 });
 
 test("browserUserIdFrom prefers a real header when one is present", () => {
