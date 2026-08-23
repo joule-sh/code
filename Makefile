@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness bench-mailbox clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -83,6 +83,9 @@ attach-commands-harness: build bin/stub_model
 
 share-bridge-harness: build bin/stub_model
 	node scripts/verify_share_bridge.mjs
+
+console-association-harness: build bin/stub_model
+	node scripts/verify_console_association.mjs
 
 bin/mailbox_bench: $(ALL_TS)
 	mkdir -p bin

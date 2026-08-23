@@ -1,7 +1,7 @@
 import { RelayOwner } from "./relay_owner.ts";
 import { appendMailbox, findMailboxEntry } from "../tasks/mailbox.ts";
 import { commandsLogPath, resultsLogPath, sessionDir } from "./relay_paths.ts";
-import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, ConnectCommand, encodeConnectCommand, decodeConnectResult, DetachCommand, encodeDetachCommand, decodeDetachResult } from "./store_commands.ts";
+import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, ConnectCommand, encodeConnectCommand, decodeConnectResult, DetachCommand, encodeDetachCommand, decodeDetachResult, ListMineCommand, encodeListMineCommand, decodeListMineResult } from "./store_commands.ts";
 
 const BASE_TIME: i64 = 1700000000000;
 
@@ -12,10 +12,14 @@ function freshRuntimeDir(name: string): string {
   return dir;
 }
 
+function unowned(workspace: string, now: i64): CreateCommand {
+  let c: CreateCommand = { kind: CMD_CREATE, workspace: workspace, model: "gpt", now: now, accountId: "", accountEmail: "" };
+  return c;
+}
+
 test("handleCreate makes a session and a pairing code, and creates its runtime dir", () => {
   let owner = new RelayOwner(freshRuntimeDir("create"));
-  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME };
-  let result = decodeCreateResult(owner.handleCreate(encodeCreateCommand(cmd)));
+  let result = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
   expect(result != null);
   if (result != null) {
     expect(result.sessionId != "");
@@ -27,7 +31,7 @@ test("handleCreate makes a session and a pairing code, and creates its runtime d
 
 test("handlePair binds a code to a uuid, handleConnect then authorizes that uuid as the browser", () => {
   let owner = new RelayOwner(freshRuntimeDir("pair-connect"));
-  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
   expect(created != null);
   if (created != null) {
     let pairCmd: PairCommand = { kind: CMD_PAIR, code: created.code, userId: "user-1", now: BASE_TIME + 10 };
@@ -55,7 +59,7 @@ test("handlePair binds a code to a uuid, handleConnect then authorizes that uuid
 
 test("handleConnect authorizes the terminal role by secret", () => {
   let owner = new RelayOwner(freshRuntimeDir("terminal-connect"));
-  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
   expect(created != null);
   if (created != null) {
     let ok: ConnectCommand = { kind: CMD_CONNECT, sessionId: created.sessionId, role: ROLE_TERMINAL_CMD, credential: created.secret, now: BASE_TIME + 5 };
@@ -75,7 +79,7 @@ test("handleConnect authorizes the terminal role by secret", () => {
 
 test("handleDetach removes the session and its runtime directory", () => {
   let owner = new RelayOwner(freshRuntimeDir("detach"));
-  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
   expect(created != null);
   if (created != null) {
     expect(fs.existsSync(sessionDir(owner.runtimeDir, created.sessionId)));
@@ -95,8 +99,7 @@ test("handleDetach removes the session and its runtime directory", () => {
 test("drainOnce answers a command it finds in the mailbox, tagged by the caller's reqId", () => {
   let dir = freshRuntimeDir("drain");
   let owner = new RelayOwner(dir);
-  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME };
-  appendMailbox(commandsLogPath(dir), "req-1", encodeCreateCommand(cmd));
+  appendMailbox(commandsLogPath(dir), "req-1", encodeCreateCommand(unowned("/repo", BASE_TIME)));
 
   let handled = owner.drainOnce();
   expect(handled == 1);
@@ -109,10 +112,42 @@ test("drainOnce answers a command it finds in the mailbox, tagged by the caller'
 
 test("sweepTick removes a session once it has been idle past the TTL", () => {
   let owner = new RelayOwner(freshRuntimeDir("sweep"));
-  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand({ kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME })));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
   expect(created != null);
   if (created != null) {
     owner.sweepTick(BASE_TIME + 31 * 60 * 1000);
     expect(owner.store.find(created.sessionId) == null);
+  }
+});
+
+test("handleCreate stores the accountId and accountEmail the caller already resolved", () => {
+  let owner = new RelayOwner(freshRuntimeDir("create-owned"));
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com" };
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(cmd)));
+  expect(created != null);
+  if (created != null) {
+    let rec = owner.store.find(created.sessionId);
+    expect(rec != null);
+    if (rec != null) {
+      expect(rec.accountId == "acct-1");
+      expect(rec.accountEmail == "a@example.com");
+    }
+  }
+});
+
+test("handleListMine returns only the caller's own sessions, and an unowned session appears for no one", () => {
+  let owner = new RelayOwner(freshRuntimeDir("list-mine"));
+  let mine: CreateCommand = { kind: CMD_CREATE, workspace: "/mine", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com" };
+  let other: CreateCommand = { kind: CMD_CREATE, workspace: "/other", model: "gpt", now: BASE_TIME, accountId: "acct-2", accountEmail: "b@example.com" };
+  owner.handleCreate(encodeCreateCommand(mine));
+  owner.handleCreate(encodeCreateCommand(other));
+  owner.handleCreate(encodeCreateCommand(unowned("/nobody", BASE_TIME)));
+
+  let listCmd: ListMineCommand = { kind: "list_mine", accountId: "acct-1" };
+  let result = decodeListMineResult(owner.handleListMine(encodeListMineCommand(listCmd)));
+  expect(result != null);
+  if (result != null) {
+    expect(result.sessions.length == 1);
+    expect(result.sessions[0].workspace == "/mine");
   }
 });

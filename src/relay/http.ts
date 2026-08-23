@@ -1,10 +1,13 @@
 import { PAIR_OK, PAIR_NOT_FOUND, PAIR_RATE_LIMITED } from "./store.ts";
 import { renderWebPage, WEB_PAGE_PATH } from "./web/web_page.ts";
 import { StoreCaller } from "./relay_rpc.ts";
-import { CMD_CREATE, CMD_PAIR, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult } from "./store_commands.ts";
+import { CMD_CREATE, CMD_PAIR, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, rawFieldValue, CMD_LIST_MINE, ListMineCommand, encodeListMineCommand, decodeListMineResult } from "./store_commands.ts";
+import { AccountVerifyResult, VERIFY_OK } from "./account_verify.ts";
 
 export type RelayHttpRequest = { method: string, path: string, body: string, headers: Map<string, string> };
 export type RelayHttpResponse = { status: int, body: string, ok: bool, headers: Map<string, string> };
+
+export type AccountVerifier = (secret: string) => AccountVerifyResult;
 
 type CreateSessionRequest = { workspace: string, model: string };
 type CreateSessionResponse = { sessionId: string, secret: string, code: string, expiresAt: i64 };
@@ -32,11 +35,9 @@ function errorResponse(status: int, message: string): RelayHttpResponse {
 }
 
 function parseCreateSession(body: string): CreateSessionRequest | null {
-  try {
-    return JSON.parse<CreateSessionRequest>(body);
-  } catch {
-    return null;
-  }
+  if (!body.trim().startsWith("{")) { return null; }
+  let req: CreateSessionRequest = { workspace: rawFieldValue(body, "workspace"), model: rawFieldValue(body, "model") };
+  return req;
 }
 
 function parsePair(body: string): PairRequest | null {
@@ -47,7 +48,16 @@ function parsePair(body: string): PairRequest | null {
   }
 }
 
-function handleCreateSession(caller: StoreCaller, req: RelayHttpRequest, now: i64): RelayHttpResponse {
+function resolveAccount(verifyAccount: AccountVerifier, body: string): AccountVerifyResult {
+  let secret = rawFieldValue(body, "credentialSecret");
+  if (secret == "") {
+    let none: AccountVerifyResult = { status: "", accountId: "", accountEmail: "" };
+    return none;
+  }
+  return verifyAccount(secret);
+}
+
+function handleCreateSession(caller: StoreCaller, verifyAccount: AccountVerifier, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let createReq = parseCreateSession(req.body);
   if (createReq == null) {
     return errorResponse(400, "malformed request body");
@@ -55,7 +65,10 @@ function handleCreateSession(caller: StoreCaller, req: RelayHttpRequest, now: i6
   if (createReq.workspace == "" || createReq.model == "") {
     return errorResponse(400, "workspace and model are required");
   }
-  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: createReq.workspace, model: createReq.model, now: now };
+  let account = resolveAccount(verifyAccount, req.body);
+  let accountId = account.status == VERIFY_OK ? account.accountId : "";
+  let accountEmail = account.status == VERIFY_OK ? account.accountEmail : "";
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: createReq.workspace, model: createReq.model, now: now, accountId: accountId, accountEmail: accountEmail };
   let resultJson = caller(encodeCreateCommand(cmd));
   let created = decodeCreateResult(resultJson);
   if (created == null) {
@@ -98,21 +111,38 @@ function handlePair(caller: StoreCaller, req: RelayHttpRequest, now: i64): Relay
   return jsonResponse(200, JSON.stringify(resp));
 }
 
+function handleListMine(caller: StoreCaller, req: RelayHttpRequest): RelayHttpResponse {
+  let accountId = req.headers.get("x-user") ?? "";
+  if (accountId == "") {
+    return errorResponse(401, "missing x-user");
+  }
+  let cmd: ListMineCommand = { kind: CMD_LIST_MINE, accountId: accountId };
+  let resultJson = caller(encodeListMineCommand(cmd));
+  let result = decodeListMineResult(resultJson);
+  if (result == null) {
+    return errorResponse(503, "relay owner did not answer in time");
+  }
+  return jsonResponse(200, JSON.stringify(result));
+}
+
 function handleWebPage(wsBrowserPort: int): RelayHttpResponse {
   return htmlResponse(200, renderWebPage(wsBrowserPort));
 }
 
-export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int): (req: RelayHttpRequest) => RelayHttpResponse {
+export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier): (req: RelayHttpRequest) => RelayHttpResponse {
   return (req: RelayHttpRequest) => {
     let now: i64 = Date.now();
     if (req.method == "GET" && req.path == WEB_PAGE_PATH) {
       return handleWebPage(wsBrowserPort);
     }
     if (req.method == "POST" && req.path == "/sessions") {
-      return handleCreateSession(caller, req, now);
+      return handleCreateSession(caller, verifyAccount, req, now);
     }
     if (req.method == "POST" && req.path == "/pair") {
       return handlePair(caller, req, now);
+    }
+    if (req.method == "GET" && req.path == "/sessions/mine") {
+      return handleListMine(caller, req);
     }
     return errorResponse(404, "not found");
   };

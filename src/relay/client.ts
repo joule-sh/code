@@ -6,7 +6,7 @@ import { configureWorker, currentSocket, receiveLoop } from "./client_worker.ts"
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
 
-type CreateSessionRequest = { workspace: string, model: string };
+type CreateSessionRequest = { workspace: string, model: string, credentialSecret: string };
 type SessionCreated = { sessionId: string, secret: string, code: string, expiresAt: i64 };
 
 function noticeFrame(code: string, message: string): ErrorFrame {
@@ -20,6 +20,7 @@ export class RelayClient {
   wsPort: int;
   webBaseUrl: string;
   tmpDir: string;
+  credentialSecret: string;
 
   sessionId: string;
   secret: string;
@@ -49,6 +50,7 @@ export class RelayClient {
     this.wsPort = wsPort;
     this.webBaseUrl = webBaseUrl;
     this.tmpDir = tmpDir;
+    this.credentialSecret = "";
     this.sessionId = "";
     this.secret = "";
     this.code = "";
@@ -77,7 +79,7 @@ export class RelayClient {
       return already;
     }
 
-    let req: CreateSessionRequest = { workspace: workspace, model: model };
+    let req: CreateSessionRequest = { workspace: workspace, model: model, credentialSecret: this.credentialSecret };
     let headers = new Map<string, string>();
     headers.set("Content-Type", "application/json");
     let url = "http://" + this.host + ":" + `${this.httpPort}` + "/sessions";

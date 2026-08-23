@@ -1,4 +1,5 @@
-import { loadConfig } from "../providers/config.ts";
+import { loadConfig, loadServerBase } from "../providers/config.ts";
+import { loadCredential } from "../auth/credentials.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
@@ -100,8 +101,10 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 
   let worker = new SessionWorker(runtimeDir, session, gate, live, tasks);
 
+  let serverBase = loadServerBase(argv);
+  let credentialSecret = loadCredential(serverBase).secret;
   let relayCfg = loadRelayConfig();
-  let uplink = new RelayUplink(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir, runtimeDir);
+  let uplink = new RelayUplink(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir, runtimeDir, credentialSecret);
   worker.setRelayUplink(uplink.asShareController());
 
   gate.setOnPoll(() => { worker.pollForApproval(); });
