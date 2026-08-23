@@ -512,6 +512,7 @@ def run_ctrl_c_exit_scenario():
     finally:
         if session is not None:
             session.close()
+        reap_daemon(work_dir)
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
@@ -580,6 +581,39 @@ def start_stub_session(prefix, rows=24, cols=80):
     return work_dir, stub_proc, PtySession([JOULE_BIN], joule_env, repo_dir, rows=rows, cols=cols)
 
 
+def reap_daemon(work_dir, home_dir=None):
+    """Stop the daemon this scenario started, before its workspace goes away.
+
+    Each scenario runs joule in work_dir/repo with HOME set to work_dir/home, and
+    joule starts a daemon that outlives the pty the scenario closes. The daemon picks
+    its port by hashing the workspace path into a 400 port range, and it registers
+    itself under HOME, so a daemon left over from an earlier scenario is invisible to
+    the next scenario's port-collision check and simply squats a port. A later
+    scenario that hashes onto that port reaches a stranger rather than a daemon of its
+    own, and then reports something other than what the scenario asserts on.
+
+    joule --stop is the product's own path for this: it reads the info file, refuses
+    to stop a daemon that is serving a different workspace, and waits for the
+    acknowledgement.
+    """
+    repo_dir = os.path.join(work_dir, "repo")
+    if home_dir is None:
+        home_dir = os.path.join(work_dir, "home")
+    if not os.path.isdir(repo_dir):
+        return
+    env = dict(os.environ)
+    env["HOME"] = home_dir
+    import subprocess
+    try:
+        subprocess.run(
+            [JOULE_BIN, "--stop"],
+            cwd=repo_dir, env=env, timeout=20,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
 def stop_stub_session(work_dir, stub_proc, session):
     if session is not None:
         session.close()
@@ -591,6 +625,7 @@ def stop_stub_session(work_dir, stub_proc, session):
             stub_proc.kill()
         except Exception:
             pass
+    reap_daemon(work_dir)
     shutil.rmtree(work_dir, ignore_errors=True)
 
 
@@ -751,6 +786,13 @@ def run_resume_scenario():
                 stub_proc.kill()
             except Exception:
                 pass
+        # both workspaces ran under work_dir/home, so both daemons registered
+        # themselves there: reap them before that HOME is removed.
+        reap_daemon(work_dir)
+        try:
+            reap_daemon(empty_work_dir, os.path.join(work_dir, "home"))
+        except NameError:
+            pass
         shutil.rmtree(work_dir, ignore_errors=True)
         try:
             shutil.rmtree(empty_work_dir, ignore_errors=True)
@@ -1083,6 +1125,7 @@ def run_scenario():
                 stub_proc.kill()
             except Exception:
                 pass
+        reap_daemon(work_dir)
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
