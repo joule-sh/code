@@ -9,6 +9,9 @@ var TOOL_RESULT = "tool.result";
 var APPROVAL_REQUEST = "approval.request";
 var TURN_END = "turn.end";
 var ERROR_FRAME = "error";
+var NOTICE_FRAME = "notice";
+var LEVEL_INFO = "info";
+var LEVEL_WARN = "warn";
 var INPUT_FRAME = "input";
 var CANCEL_FRAME = "cancel";
 var APPROVAL_REPLY_FRAME = "approval.reply";
@@ -288,6 +291,10 @@ function renderFrameText(frameJson, prevKind) {
   if (kind === ERROR_FRAME) {
     return "\n! " + f.code + ": " + f.message;
   }
+  if (kind === NOTICE_FRAME) {
+    if (f.level === LEVEL_WARN) { return "\n! " + f.message; }
+    return "\n" + f.message;
+  }
   if (kind === APPROVAL_REPLY_RESULT) {
     if (f.applied) { return ""; }
     return "\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
@@ -298,8 +305,12 @@ function renderFrameText(frameJson, prevKind) {
 function isKnownFrameType(t) {
   if (t === SESSION_HELLO || t === TURN_START || t === TEXT_DELTA || t === TOOL_CALL) { return true; }
   if (t === TOOL_RESULT || t === APPROVAL_REQUEST || t === TURN_END || t === ERROR_FRAME) { return true; }
-  if (t === APPROVAL_REPLY_RESULT) { return true; }
+  if (t === APPROVAL_REPLY_RESULT || t === NOTICE_FRAME) { return true; }
   return false;
+}
+
+function noticeLineClass(level) {
+  return level === LEVEL_WARN ? "line-warn" : "line-notice";
 }
 
 function isDaemonBroadcastType(t) {
