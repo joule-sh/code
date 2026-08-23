@@ -191,6 +191,7 @@ export function renderFrame(frameJson: string, prevKind: string): string {
   if (kind == APPROVAL_REPLY_RESULT) {
     let f = decodeApprovalReplyResult(frameJson);
     if (f == null) { return ""; }
+    if (f.applied) { return ""; }
     return "\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
   }
 

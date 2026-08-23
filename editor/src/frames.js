@@ -1,4 +1,5 @@
-export const PAGE_JS_FRAMES: string = `
+var FRAMES_GENERATED_FROM = "src/relay/web/page_js_frames.ts";
+
 var PROTOCOL_VERSION = 1;
 var SESSION_HELLO = "session.hello";
 var TURN_START = "turn.start";
@@ -37,8 +38,8 @@ function decodeFrame(text) {
 }
 
 function diffLinesJs(oldText, newText) {
-  var a = oldText.split("\\n");
-  var b = newText.split("\\n");
+  var a = oldText.split("\n");
+  var b = newText.split("\n");
   if (a.length > 4000 || b.length > 4000) { return null; }
 
   var start = 0;
@@ -128,7 +129,7 @@ function renderDiffRowsJs(rows) {
       lines.push(gutter + "   " + r.text);
     }
   }
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 var DIFF_DISPLAY_MAX_ROWS = 400;
@@ -166,20 +167,20 @@ function diffBlockForCallJs(tool, args) {
   if (counts.added === 0 && counts.removed === 0) { return ""; }
   var body = renderDiffRowsJs(rows);
   if (body === "") { return ""; }
-  return "\\n" + body;
+  return "\n" + body;
 }
 
 var TOOL_OUTPUT_COLLAPSE_HEAD_LINES = 6;
 var TOOL_OUTPUT_COLLAPSE_MIN_LINES = 10;
 
 function planToolOutputCollapseJs(output) {
-  var rows = output.split("\\n");
+  var rows = output.split("\n");
   if (rows.length <= TOOL_OUTPUT_COLLAPSE_MIN_LINES) {
     return { head: output, body: "", hidden: 0 };
   }
   return {
-    head: rows.slice(0, TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\\n"),
-    body: rows.slice(TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\\n"),
+    head: rows.slice(0, TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\n"),
+    body: rows.slice(TOOL_OUTPUT_COLLAPSE_HEAD_LINES).join("\n"),
     hidden: rows.length - TOOL_OUTPUT_COLLAPSE_HEAD_LINES
   };
 }
@@ -209,7 +210,7 @@ function approvalOptionRowJs(index, selected, tool) {
 function approvalOptionsBlockJs(tool, selected) {
   var out = "";
   for (var i = 0; i < APPROVAL_OPTION_COUNT; i++) {
-    out += "\\n" + approvalOptionRowJs(i, selected, tool);
+    out += "\n" + approvalOptionRowJs(i, selected, tool);
   }
   return out;
 }
@@ -259,37 +260,37 @@ function renderFrameText(frameJson, prevKind) {
 
   if (kind === TEXT_DELTA) {
     var deltaText = typeof f.text === "string" ? f.text : "";
-    if (prevKind !== TEXT_DELTA) { return "\\n" + deltaText; }
+    if (prevKind !== TEXT_DELTA) { return "\n" + deltaText; }
     return deltaText;
   }
   if (kind === TOOL_CALL) {
     var diffPath = diffableToolPathJs(f.tool, f.args);
     if (diffPath !== "") {
-      return "\\n  -> " + f.tool + " " + diffPath + diffBlockForCallJs(f.tool, f.args);
+      return "\n  -> " + f.tool + " " + diffPath + diffBlockForCallJs(f.tool, f.args);
     }
-    return "\\n  -> " + f.tool + " " + f.args;
+    return "\n  -> " + f.tool + " " + f.args;
   }
   if (kind === TOOL_RESULT) {
     var status = f.ok ? "ok" : "failed";
     var out = f.output;
     if (f.truncated) { out = out + " (truncated)"; }
-    return "\\n     " + status + ": " + out;
+    return "\n     " + status + ": " + out;
   }
   if (kind === APPROVAL_REQUEST) {
     var approvalDiff = diffBlockForCallJs(f.tool, f.args);
-    return "\\n  ? " + f.summary + " [" + f.detail + "] " + approvalDiff + approvalOptionsBlockJs(f.tool, APPROVAL_OPTION_ALLOW);
+    return "\n  ? " + f.summary + " [" + f.detail + "] " + approvalDiff + approvalOptionsBlockJs(f.tool, APPROVAL_OPTION_ALLOW);
   }
   if (kind === TURN_END) {
-    if (f.reason === REASON_CANCELLED) { return "\\n(cancelled)\\n"; }
-    if (f.reason === REASON_ERROR) { return "\\n(error)\\n"; }
-    return "\\n";
+    if (f.reason === REASON_CANCELLED) { return "\n(cancelled)\n"; }
+    if (f.reason === REASON_ERROR) { return "\n(error)\n"; }
+    return "\n";
   }
   if (kind === ERROR_FRAME) {
-    return "\\n! " + f.code + ": " + f.message;
+    return "\n! " + f.code + ": " + f.message;
   }
   if (kind === APPROVAL_REPLY_RESULT) {
     if (f.applied) { return ""; }
-    return "\\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
+    return "\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
   }
   return "";
 }
@@ -306,4 +307,49 @@ function isDaemonBroadcastType(t) {
   if (t === DAEMON_STOPPING || t === SHARE_STARTED || t === SHARE_FAILED) { return true; }
   return false;
 }
-`;
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+  FRAMES_GENERATED_FROM,
+  PROTOCOL_VERSION,
+  SESSION_HELLO,
+  TURN_START,
+  TEXT_DELTA,
+  TOOL_CALL,
+  TOOL_RESULT,
+  APPROVAL_REQUEST,
+  TURN_END,
+  ERROR_FRAME,
+  INPUT_FRAME,
+  CANCEL_FRAME,
+  APPROVAL_REPLY_FRAME,
+  APPROVAL_REPLY_RESULT,
+  RESUME_FRAME,
+  REASON_DONE,
+  REASON_CANCELLED,
+  REASON_ERROR,
+  DECISION_ALLOW,
+  DECISION_DENY,
+  DECISION_ALWAYS,
+  MODE_CHANGED,
+  MODEL_CHANGED,
+  TASKS_RESPONSE,
+  DAEMON_STOPPING,
+  SHARE_STARTED,
+  SHARE_FAILED,
+  APPROVAL_OPTION_ALLOW,
+  APPROVAL_OPTION_ALWAYS,
+  APPROVAL_OPTION_DENY,
+  decodeFrame,
+  diffLinesJs,
+  diffCountsJs,
+  diffableToolPathJs,
+  renderFrameText,
+  isKnownFrameType,
+  isDaemonBroadcastType,
+  encodeInputFrame,
+  encodeCancelFrame,
+  encodeApprovalReplyFrame,
+  encodeResumeFrame,
+  };
+}

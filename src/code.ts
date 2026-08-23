@@ -2,6 +2,7 @@ import { VERSION } from "./version.ts";
 import { runDemo } from "./demo/demo.ts";
 import { runTerminal } from "./terminal/terminal.ts";
 import { runAttach, runDaemonJoule, runStop } from "./terminal/attach.ts";
+import { ENSURE_COMMAND, hasEnsureCommand, runDaemonEnsure } from "./daemon/ensure_cli.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -28,6 +29,8 @@ if (hasFlagIn(currentArgs(), "--version")) {
   runDemo();
 } else if (hasFlagIn(currentArgs(), "--stop")) {
   runStop(currentArgs());
+} else if (hasEnsureCommand(currentArgs())) {
+  runDaemonEnsure(currentArgs());
 } else if (hasFlagIn(currentArgs(), "attach")) {
   runAttach(currentArgs());
 } else if (!runDaemonJoule(currentArgs())) {
@@ -47,4 +50,9 @@ test("hasFlagIn is false when the flag is absent", () => {
 test("hasFlagIn finds attach among other args", () => {
   expect(hasFlagIn(["prog", "attach"], "attach"));
   expect(!hasFlagIn(["prog"], "attach"));
+});
+
+test("the daemon-ensure subcommand is recognised and is not confused with attach", () => {
+  expect(hasEnsureCommand(["joule", ENSURE_COMMAND]));
+  expect(!hasFlagIn([ENSURE_COMMAND], "attach"));
 });
