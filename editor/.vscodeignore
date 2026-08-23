@@ -1,5 +1,6 @@
 .vscodeignore
 .gitignore
+media/probe.js
 node_modules/**
 **/*.vsix
 **/.DS_Store
