@@ -184,6 +184,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
         daemonStopped = true;
       }
       if (t == TURN_END && !tagged1) { maybeOfferPlanDecision(planPending, planTracker, approvalLog.mode, sb, f); }
+      drawScreen(sb, input, approvalLog.mode, rk);
     }
     return daemonStopped;
   };
@@ -222,8 +223,6 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       let diags = client.drainDiagnostics();
       for (const d of diags) {
         appendFrame(sb, rk, d);
-      }
-      if (frames.length > 0 || diags.length > 0) {
         drawScreen(sb, input, approvalLog.mode, rk);
       }
       pollUpdateNotice(notifier, updateOffer, sb, input, approvalLog.mode, rk);
