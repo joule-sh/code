@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness bench-mailbox clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -13,7 +13,7 @@ LUMEN_FLAGS ?=
 # modes are quadratic, so raising this costs time faster than it looks.
 BENCH_ENTRIES ?= 2000
 
-build: bin/joule bin/relay
+build: bin/joule bin/relay bin/joule-daemon
 
 src/vendor/tty/tty_shim.o: src/vendor/tty/tty_shim.c
 	cc -c src/vendor/tty/tty_shim.c -o src/vendor/tty/tty_shim.o
@@ -28,6 +28,11 @@ bin/relay: $(ALL_TS)
 	lumen compile $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
 
+bin/joule-daemon: $(ALL_TS)
+	mkdir -p bin
+	lumen compile $(LUMEN_FLAGS) src/daemon/daemon_main.ts
+	mv daemon_main bin/joule-daemon
+
 bin/stub_model: $(ALL_TS)
 	mkdir -p bin
 	lumen compile $(LUMEN_FLAGS) src/e2e/stub_model.ts
@@ -39,11 +44,14 @@ release: src/vendor/tty/tty_shim.o
 	mv code bin/joule
 	lumen compile --release-fast $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
+	lumen compile --release-fast $(LUMEN_FLAGS) src/daemon/daemon_main.ts
+	mv daemon_main bin/joule-daemon
 
 test: src/vendor/tty/tty_shim.o
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
 	lumen test src/e2e/stub_model.ts
+	lumen test src/daemon/daemon_main.ts
 	for f in $(TEST_TS); do lumen test $$f || exit 1; done
 
 e2e: build bin/stub_model
@@ -58,6 +66,12 @@ layout-harness: build bin/stub_model
 onboarding-harness: build bin/stub_model
 	python3 scripts/verify_onboarding.py
 
+daemon-concurrent-harness: build bin/stub_model
+	node scripts/verify_daemon_concurrent_clients.mjs
+
+daemon-attach-harness: build bin/stub_model
+	python3 scripts/verify_attach_pty.py
+
 bin/mailbox_bench: $(ALL_TS)
 	mkdir -p bin
 	lumen compile $(LUMEN_FLAGS) src/bench/mailbox_bench.ts
@@ -71,4 +85,4 @@ bench-mailbox: bin/mailbox_bench
 	BENCH_MODE=concurrent BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
 
 clean:
-	rm -rf bin code relay src/vendor/tty/tty_shim.o
+	rm -rf bin code relay daemon_main src/vendor/tty/tty_shim.o

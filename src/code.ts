@@ -1,6 +1,7 @@
 import { VERSION } from "./version.ts";
 import { runDemo } from "./demo/demo.ts";
 import { runTerminal } from "./terminal/terminal.ts";
+import { runAttach } from "./terminal/attach.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -25,6 +26,8 @@ if (hasFlagIn(currentArgs(), "--version")) {
   console.log("joule " + VERSION);
 } else if (hasFlagIn(currentArgs(), "--demo")) {
   runDemo();
+} else if (hasFlagIn(currentArgs(), "attach")) {
+  runAttach(currentArgs());
 } else {
   runTerminal(currentArgs());
 }
@@ -37,4 +40,9 @@ test("hasFlagIn finds --version among other args", () => {
 test("hasFlagIn is false when the flag is absent", () => {
   expect(!hasFlagIn(["prog"], "--version"));
   expect(!hasFlagIn(["prog", "foo"], "--version"));
+});
+
+test("hasFlagIn finds attach among other args", () => {
+  expect(hasFlagIn(["prog", "attach"], "attach"));
+  expect(!hasFlagIn(["prog"], "attach"));
 });
