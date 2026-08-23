@@ -85,6 +85,31 @@ for v0's one-terminal-one-browser-per-session scope, not a fix for a relay
 serving many sessions' connections concurrently on one port, which needs
 the upstream fix.
 
+**Since fixed upstream, and the ceiling is gone.** lumen#11 was fixed in
+[lumen@4053a5a](https://github.com/lumen-lang-org/lumen/commit/4053a5a) and
+first shipped in `v0.6.3`; `net.createServer` now hands each accepted
+connection to an `xev.ThreadPool` worker, the same treatment
+`http.createServer` got, so `accept()` loops back immediately while earlier
+connections are still being served. The serial loop survives only on
+`wasm32-wasi`, which has no OS threads and is not a target we build. CI has
+pinned `v0.7.1` since before any of this was in doubt. Verified directly
+against `bin/relay`: three terminals and three browsers, on the two
+WebSocket ports, all handshake in single-digit milliseconds and carry
+frames in both directions simultaneously, and the identical tree built with
+the pre-fix compiler fails on the second connection to either port
+([#161](https://github.com/joule-sh/code/issues/161)). The three-port split
+still ships - one listener per role is a clean enough shape on its own
+terms - but it is no longer load-bearing, and nothing about serving many
+sessions on shared ports is blocked by the runtime. What is still real, and
+is the constraint worth designing against, is that `PeerRegistry` and
+`SessionStore` are shaped for exactly one terminal peer and one browser
+peer per session.
+
+Anything built on `net.createServer` now also gets the trade-off that comes
+with a thread pool: a handler genuinely runs on several OS threads at once,
+so shared mutable state in a handler is a real data race rather than a
+theoretical one.
+
 Separately, `packages/websocket`'s handshake parses every header off the
 upgrade request and then keeps only five of them -- fine for a package with
 no caller needing the rest, wrong for a relay that trusts a proxy-set
@@ -394,9 +419,9 @@ script already used, rather than writing a second one.
 hand-rolled HTTP/1.1 parser and chunked-transfer response writer
 (`src/e2e/stub_http.ts`), the same shape `relay/http_transport.ts` uses and
 for the same reason - `http.createServer`'s thread pool is what
-lumen#12 needed to reproduce, and a server that only ever holds one
-connection at a time (`net.createServer`'s own limit, lumen#11) sidesteps it
-entirely rather than risking it in new code. `src/e2e/stub_script.ts` builds
+lumen#12 needed to reproduce, and at the time `net.createServer` held one
+connection at a time (lumen#11, since fixed) and so sidestepped it entirely
+rather than risking it in new code. `src/e2e/stub_script.ts` builds
 three fixed, scripted SSE response bodies (read the file, propose a fix via
 the `run` tool, close out) keyed purely by a request counter - no history
 parsing needed, since each scenario is one turn against a freshly started
