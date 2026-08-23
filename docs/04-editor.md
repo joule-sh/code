@@ -206,6 +206,10 @@ runner VS Code publishes for this: it downloads a real VS Code, opens a window
 on a throwaway workspace under its own `HOME` and `TMPDIR`, and runs the suite
 inside the extension host, where the `vscode` API is the real one. On Linux the
 runner starts its own Xvfb when `DISPLAY` is unset and kills it on the way out.
+The VS Code version is pinned, and the download is cached in
+`~/.cache/joule-editor-window` - outside the checkout, because `actions/checkout`
+cleans ignored files and a cold runner would otherwise pull 330MB every push.
+`JOULE_VSCODE_CACHE` moves it.
 Two windows run in sequence, each with its own workspace, `HOME`, daemon and
 stub model, because the stub reuses one tool call id and a second turn in one
 session would be answered from the first turn's memory rather than from a

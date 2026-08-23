@@ -12,8 +12,9 @@ const JOULE = path.join(REPO_ROOT, "bin", "joule");
 const STUB = path.join(REPO_ROOT, "bin", "stub_model");
 const EXTENSION = path.join(REPO_ROOT, "editor");
 const SUITE = path.join(HERE, "suite.js");
-const CACHE = path.join(HERE, ".vscode-test");
+const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache", "joule-editor-window");
 const VSCODE_VERSION = "1.134.0";
+const DOWNLOAD_IDLE_MS = 120000;
 const SCENARIOS = ["conversation", "close-mid-turn"];
 
 const teardown = [];
@@ -167,13 +168,15 @@ async function runScenario(scenario) {
   };
   teardown.push(cleanup);
 
-  note("scenario " + scenario + " in " + dirs.workspace + ", stub model on :" + stubPort);
+  note("scenario " + scenario + " in " + dirs.workspace + ", stub model on :" + stubPort
+    + ", VS Code " + VSCODE_VERSION + " from " + CACHE);
 
   let launchFailure = null;
   try {
     await runTests({
       version: VSCODE_VERSION,
       cachePath: CACHE,
+      timeout: DOWNLOAD_IDLE_MS,
       extensionDevelopmentPath: EXTENSION,
       extensionTestsPath: SUITE,
       extensionTestsEnv: env,

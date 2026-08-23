@@ -85,16 +85,30 @@ function probe(panel, message, timeoutMs) {
   });
 }
 
-async function webviewReady(panel, timeoutMs) {
+function watchForHello(panel) {
+  const seen = { hello: false };
+  panel.on("probe", (reply) => {
+    if (reply.id === "probe-hello") { seen.hello = true; }
+  });
+  return seen;
+}
+
+async function webviewReady(panel, hello, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && !hello.hello) { await sleep(100); }
+  if (!hello.hello) {
+    say("  the webview never ran a line of script, so nothing was painted to read");
+    return false;
+  }
   while (Date.now() < deadline) {
     try {
-      await probe(panel, { op: "read", selector: "body" }, 2000);
+      await probe(panel, { op: "read", selector: "body" }, 5000);
       return true;
     } catch (e) {
       void e;
     }
   }
+  say("  the webview ran the probe but never answered a message posted to it");
   return false;
 }
 
@@ -158,6 +172,7 @@ async function openPanel() {
     throw new Error("the extension exported no panel");
   }
   ok(panel.probing === true, "the panel is running in test mode, so its webview carries the probe script");
+  const hello = watchForHello(panel);
 
   const folders = vscode.workspace.workspaceFolders || [];
   ok(folders.length === 1 && real(folders[0].uri.fsPath) === real(WORKSPACE),
@@ -175,7 +190,7 @@ async function openPanel() {
   ok(panel.view !== null, "opening the joule view in the activity bar built the panel's webview");
   if (panel.view === null) { throw new Error("the joule view never resolved a webview"); }
   panel.view.show(true);
-  ok(await webviewReady(panel, 60000), "the panel's webview loaded its scripts and answers from the editor window");
+  ok(await webviewReady(panel, hello, 120000), "the panel's webview loaded its scripts and answers from the editor window");
   ok(panel.view.visible === true, "the joule view is the visible one in the side bar");
   return panel;
 }

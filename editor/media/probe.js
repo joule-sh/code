@@ -31,9 +31,27 @@
     reply.detail = "unknown probe op " + msg.op;
   }
 
+  let announced = 0;
+  let announcing = null;
+
+  function hello() {
+    announced += 1;
+    api.postMessage({ kind: "probe.result", id: "probe-hello", ok: true, found: 0, texts: [], detail: "the probe is running in the webview" });
+    if (announced > 480 && announcing !== null) {
+      clearInterval(announcing);
+      announcing = null;
+    }
+  }
+
+  announcing = setInterval(hello, 250);
+
   window.addEventListener("message", function (event) {
     const msg = event.data;
     if (!msg || msg.kind !== "probe") { return; }
+    if (announcing !== null) {
+      clearInterval(announcing);
+      announcing = null;
+    }
     const reply = { kind: "probe.result", id: msg.id, ok: true, found: 0, texts: [], detail: "" };
     try {
       const found = matching(msg.selector);
@@ -45,4 +63,6 @@
     }
     api.postMessage(reply);
   });
+
+  hello();
 })();
