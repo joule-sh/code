@@ -1,5 +1,5 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
-import { loadConfig, loadServerBase } from "../providers/config.ts";
+import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -50,7 +50,7 @@ export function runTerminal(argv: string[]): void {
     let onboarded = runOnboarding();
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
   }
-  let serverBase = loadServerBase(argv);
+  let server = loadServerOrigin(argv);
   let workspaceRoot = process.cwd();
   let resume = resolveResume(argv, workspaceRoot);
   let updateNotifier = startUpdateNotifier(); let updateOffer = new PendingUpdateOffer(); let updateInstall = new PendingUpdateInstall();
@@ -214,7 +214,7 @@ export function runTerminal(argv: string[]): void {
   process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR + ENABLE_MOUSE_REPORTING);
   rawEnable(STDIN);
 
-  sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, serverBase));
+  sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   if (resume.note != "") { sb.append(resume.note); }
   drawScreen(sb, input, gate.mode, rk);
@@ -395,12 +395,12 @@ export function runTerminal(argv: string[]): void {
     }
 
     if (cmd.kind == CMD_LOGIN) {
-      runLogin(sb, input, gate.mode, rk, serverBase);
+      runLogin(sb, input, gate.mode, rk, server, cmd.arg);
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
-    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(serverBase)); drawScreen(sb, input, gate.mode, rk); continue; }
+    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(server.base, cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_CAT) {
       sb.append(catText(workspaceRoot, cmd.arg));

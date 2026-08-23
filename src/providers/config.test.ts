@@ -1,4 +1,4 @@
-import { resolveConfig, parseConfigFile, saveConfigFile, loadConfigFile, ConfigFile } from "./config.ts";
+import { resolveConfig, parseConfigFile, saveConfigFile, loadConfigFile, withServer, ConfigFile } from "./config.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/config-test-" + name;
@@ -93,4 +93,25 @@ test("saveConfigFile round-trips the updateCheck toggle", () => {
   let loaded = loadConfigFile(target);
 
   expect(loaded.updateCheck == "off");
+});
+
+test("withServer replaces only the server, carrying the provider settings through untouched", () => {
+  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off" };
+  let updated = withServer(existing, "https://joule.internal");
+  expect(updated.server == "https://joule.internal");
+  expect(updated.baseUrl == existing.baseUrl);
+  expect(updated.model == existing.model);
+  expect(updated.apiKey == existing.apiKey);
+  expect(updated.updateCheck == existing.updateCheck);
+});
+
+test("a config written with a chosen server reads back with it, and keeps the rest", () => {
+  let root = freshRoot("withserver");
+  let target = root + "/config.json";
+  let existing: ConfigFile = { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "sk-1", server: "", updateCheck: "" };
+  saveConfigFile(target, withServer(existing, "https://joule.internal"));
+  let back = loadConfigFile(target);
+  expect(back.server == "https://joule.internal");
+  expect(back.apiKey == "sk-1");
+  expect(back.model == "deepseek-chat");
 });

@@ -1,4 +1,4 @@
-.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness bench-mailbox clean
+.PHONY: build release test e2e terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -65,6 +65,9 @@ layout-harness: build bin/stub_model
 
 onboarding-harness: build bin/stub_model
 	python3 scripts/verify_onboarding.py
+
+login-server-harness: build bin/stub_model
+	python3 scripts/verify_login_server.py
 
 daemon-concurrent-harness: build bin/stub_model
 	node scripts/verify_daemon_concurrent_clients.mjs

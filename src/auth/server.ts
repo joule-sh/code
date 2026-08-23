@@ -156,3 +156,36 @@ export function insecureAllowed(envValue: string): bool {
   let text = envValue.trim().toLowerCase();
   return text == "1" || text == "true" || text == "yes";
 }
+
+export const SERVER_FROM_FLAG: string = "flag";
+export const SERVER_FROM_ENV: string = "env";
+export const SERVER_FROM_FILE: string = "file";
+export const SERVER_FROM_DEFAULT: string = "default";
+
+export type ServerOrigin = { base: string, source: string };
+
+export function serverSource(flagServer: string, envServer: string, fileServer: string): string {
+  if (flagServer.trim() != "") { return SERVER_FROM_FLAG; }
+  if (envServer.trim() != "") { return SERVER_FROM_ENV; }
+  if (fileServer.trim() != "") { return SERVER_FROM_FILE; }
+  return SERVER_FROM_DEFAULT;
+}
+
+export function serverOrigin(flagServer: string, envServer: string, fileServer: string): ServerOrigin {
+  let origin: ServerOrigin = {
+    base: resolveServer(flagServer, envServer, fileServer),
+    source: serverSource(flagServer, envServer, fileServer),
+  };
+  return origin;
+}
+
+export function serverPinned(source: string): bool {
+  return source == SERVER_FROM_FLAG || source == SERVER_FROM_ENV;
+}
+
+export function serverSourceLabel(source: string): string {
+  if (source == SERVER_FROM_FLAG) { return "the --server flag"; }
+  if (source == SERVER_FROM_ENV) { return SERVER_ENV; }
+  if (source == SERVER_FROM_FILE) { return "the config file"; }
+  return "the built-in default";
+}

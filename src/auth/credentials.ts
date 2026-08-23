@@ -135,3 +135,24 @@ export function accountLabel(c: Credential): string {
   if (c.accountId != "") { return c.accountId; }
   return "an unnamed account";
 }
+
+export function serversIn(text: string, exclude: string): string[] {
+  let skip = normalizeServer(exclude);
+  let out: string[] = [];
+  for (const line of text.split("\n")) {
+    let c = parseCredentialLine(line);
+    if (c.secret == "") { continue; }
+    let base = normalizeServer(c.server);
+    if (base == "" || base == skip) { continue; }
+    let seen = false;
+    for (const known of out) {
+      if (known == base) { seen = true; }
+    }
+    if (!seen) { out.push(base); }
+  }
+  return out;
+}
+
+export function otherServers(exclude: string): string[] {
+  return serversIn(readCredentialsFile(credentialsPath()), exclude);
+}

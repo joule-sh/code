@@ -18,7 +18,8 @@ import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_L
 import { catText } from "./cat.ts";
 import { runLogin, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
-import { loadConfig, loadServerBase } from "../providers/config.ts";
+import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { ServerOrigin } from "../auth/server.ts";
 import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
@@ -44,7 +45,7 @@ export function runDaemonJoule(argv: string[]): bool {
   }
   let cfg = loadConfig(argv);
   if (cfg.apiKey == "") { return false; }
-  let serverBase = loadServerBase(argv);
+  let serverBase = loadServerOrigin(argv);
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, wantsResume);
   if (!result.client.socketReady) {
@@ -70,7 +71,7 @@ export function runAttach(argv: string[]): void {
   }
 
   let cfg = loadConfig(argv);
-  let serverBase = loadServerBase(argv);
+  let serverBase = loadServerOrigin(argv);
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, wantsResume);
   if (!result.client.socketReady) {
@@ -106,7 +107,7 @@ class ClientState {
   }
 }
 
-function runClientLoop(argv: string[], workspaceRoot: string, initialModel: string, serverBase: string, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
+function runClientLoop(argv: string[], workspaceRoot: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
   let client = result.client;
   let sb = new Scrollback();
   let input = new InputLine();
@@ -192,7 +193,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR + ENABLE_MOUSE_REPORTING);
   rawEnable(STDIN);
 
-  sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase));
+  sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase.base));
   if (announceDaemon) {
     sb.append("\n" + styleBanner("joule attach - connected to a daemon at " + workspaceRoot));
     sb.append("\n" + styleBanner("type a request, /help for commands, ctrl-d to detach"));
@@ -362,12 +363,12 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (cmd.kind == CMD_LOGIN) {
-      runLogin(sb, input, approvalLog.mode, rk, serverBase);
+      runLogin(sb, input, approvalLog.mode, rk, serverBase, cmd.arg);
       drawScreen(sb, input, approvalLog.mode, rk);
       continue;
     }
 
-    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(serverBase)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
+    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(serverBase.base, cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
     if (cmd.kind == CMD_CAT) {
       sb.append(catText(workspaceRoot, cmd.arg));

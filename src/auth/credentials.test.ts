@@ -1,4 +1,4 @@
-import { Credential, emptyCredential, parseCredentialLine, credentialLine, findCredentialIn, removeCredentialIn, upsertCredentialIn, loadCredentialFrom, saveCredentialTo, forgetCredentialIn, credentialSource, accountLabel, SOURCE_ENV, SOURCE_JOULE, SOURCE_FILE, SOURCE_NONE } from "./credentials.ts";
+import { Credential, emptyCredential, parseCredentialLine, credentialLine, findCredentialIn, removeCredentialIn, upsertCredentialIn, loadCredentialFrom, saveCredentialTo, forgetCredentialIn, credentialSource, accountLabel, serversIn, SOURCE_ENV, SOURCE_JOULE, SOURCE_FILE, SOURCE_NONE } from "./credentials.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/credentials-test-" + name;
@@ -144,4 +144,27 @@ test("accountLabel, the text shown to the user, never contains the secret", () =
   let shown = accountLabel(c);
   expect(shown.indexOf("SECRET-DO-NOT-LEAK-93af1") < 0);
   expect(credentialLine(c).indexOf("SECRET-DO-NOT-LEAK-93af1") >= 0);
+});
+
+test("serversIn lists every server holding a credential, apart from the one asked about", () => {
+  let text = credentialLine(credFor("https://joule.sh", "s1")) + "\n"
+    + credentialLine(credFor("https://joule.internal", "s2")) + "\n"
+    + credentialLine(credFor("http://192.168.1.9:8080", "s3")) + "\n";
+  let others = serversIn(text, "https://joule.sh");
+  expect(others.length == 2);
+  expect(others[0] == "https://joule.internal");
+  expect(others[1] == "http://192.168.1.9:8080");
+});
+
+test("serversIn matches the excluded server after normalizing, and never repeats one", () => {
+  let text = credentialLine(credFor("https://joule.internal", "s1")) + "\n"
+    + credentialLine(credFor("https://Joule.Internal/", "s2")) + "\n"
+    + credentialLine(credFor("HTTPS://JOULE.SH", "s3")) + "\n";
+  expect(serversIn(text, "https://joule.sh/").length == 1);
+  expect(serversIn(text, "https://joule.sh/")[0] == "https://joule.internal");
+});
+
+test("serversIn ignores blank lines and entries with no secret", () => {
+  let text = "\n{}\n" + credentialLine(credFor("https://joule.sh", "")) + "\n";
+  expect(serversIn(text, "https://other.example").length == 0);
 });
