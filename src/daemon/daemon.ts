@@ -13,6 +13,8 @@ import { TaskManager } from "../tasks/manager.ts";
 import { wireForegroundRunner } from "../tools/run_foreground.ts";
 import { TaskRunner } from "../tasks/types.ts";
 import { SessionWorker } from "./session_worker.ts";
+import { RelayUplink } from "./relay_uplink.ts";
+import { loadRelayConfig } from "../relay/client_logic.ts";
 import { appendBroadcast } from "./broadcast.ts";
 import { runDaemonWebSocket } from "./connection.ts";
 import { inboxDir, daemonRuntimeDir } from "./paths.ts";
@@ -97,7 +99,12 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   wireForegroundRunner(registry);
 
   let worker = new SessionWorker(runtimeDir, session, gate, live, tasks);
-  gate.setOnPoll(() => { worker.drainOnce(); });
+
+  let relayCfg = loadRelayConfig();
+  let uplink = new RelayUplink(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir, runtimeDir);
+  worker.setRelayUplink(uplink.asShareController());
+
+  gate.setOnPoll(() => { worker.pollForApproval(); });
 
   session.subscribe((frameJson: string) => {
     appendBroadcast(runtimeDir, frameJson);

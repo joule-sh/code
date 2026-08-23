@@ -1,7 +1,5 @@
-import { frameSeq } from "../protocol/frames.ts";
 import { constantTimeEqual } from "./pairing.ts";
 
-export const RING_CAPACITY: int = 500;
 export const SESSION_IDLE_TTL_MS: i64 = 30 * 60 * 1000;
 export const CODE_TTL_MS: i64 = 10 * 60 * 1000;
 export const PAIR_RATE_LIMIT_MAX: int = 5;
@@ -15,7 +13,6 @@ export const PAIR_WRONG_CODE: string = "wrong_code";
 export const PAIR_RATE_LIMITED: string = "rate_limited";
 
 export type PairOutcome = { status: string, sessionId: string };
-export type ReplayOutcome = { ok: bool, frames: string[] };
 
 export class SessionRecord {
   sessionId: string;
@@ -40,48 +37,6 @@ export class SessionRecord {
     this.pairedUserId = "";
     this.createdAt = now;
     this.lastActivityAt = now;
-  }
-}
-
-export class Ring {
-  frames: string[];
-  capacity: int;
-
-  constructor(capacity: int) {
-    this.frames = [];
-    this.capacity = capacity;
-  }
-
-  push(frameJson: string): void {
-    this.frames.push(frameJson);
-    if (this.frames.length > this.capacity) {
-      this.frames = this.frames.slice(1);
-    }
-  }
-
-  oldestSeq(): int {
-    if (this.frames.length == 0) { return -1; }
-    return frameSeq(this.frames[0]);
-  }
-
-  replaySince(since: int): ReplayOutcome {
-    if (this.frames.length == 0) {
-      let empty: ReplayOutcome = { ok: true, frames: [] };
-      return empty;
-    }
-    let oldest = this.oldestSeq();
-    if (since >= 0 && since < oldest - 1) {
-      let gap: ReplayOutcome = { ok: false, frames: [] };
-      return gap;
-    }
-    let out: string[] = [];
-    for (const f of this.frames) {
-      if (frameSeq(f) > since) {
-        out.push(f);
-      }
-    }
-    let found: ReplayOutcome = { ok: true, frames: out };
-    return found;
   }
 }
 
@@ -116,19 +71,16 @@ export class RateLimiter {
 
 export class SessionStore {
   sessions: Map<string, SessionRecord>;
-  rings: Map<string, Ring>;
   pairLimiter: RateLimiter;
 
   constructor() {
     this.sessions = new Map<string, SessionRecord>();
-    this.rings = new Map<string, Ring>();
     this.pairLimiter = new RateLimiter(PAIR_RATE_LIMIT_MAX, PAIR_RATE_LIMIT_WINDOW_MS);
   }
 
   create(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64): SessionRecord {
     let created = new SessionRecord(sessionId, secret, workspace, model, code, now);
     this.sessions.set(sessionId, created);
-    this.rings.set(sessionId, new Ring(RING_CAPACITY));
     return created;
   }
 
@@ -188,26 +140,9 @@ export class SessionStore {
     return forAuthBrowser.pairedUserId == userId;
   }
 
-  appendFrame(sessionId: string, frameJson: string, now: i64): void {
-    let forAppend = this.rings.get(sessionId);
-    if (forAppend == null) { return; }
-    forAppend.push(frameJson);
-    this.touch(sessionId, now);
-  }
-
-  replay(sessionId: string, since: int): ReplayOutcome {
-    let forReplay = this.rings.get(sessionId);
-    if (forReplay == null) {
-      let missing: ReplayOutcome = { ok: false, frames: [] };
-      return missing;
-    }
-    return forReplay.replaySince(since);
-  }
-
   detachTerminal(sessionId: string): bool {
     let existed = this.sessions.get(sessionId) != null;
     this.sessions.delete(sessionId);
-    this.rings.delete(sessionId);
     return existed;
   }
 
@@ -222,7 +157,6 @@ export class SessionStore {
     }
     for (const id of stale) {
       this.sessions.delete(id);
-      this.rings.delete(id);
     }
     return stale.length;
   }

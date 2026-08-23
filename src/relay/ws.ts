@@ -1,31 +1,17 @@
-import { Peer, send, closePeer, serveWebSocket } from "../vendor/websocket/server.ts";
+import { Peer, send, closePeer, handleConnection } from "../vendor/websocket/server.ts";
 import { CLOSE_PROTOCOL_ERROR } from "../vendor/websocket/frame.ts";
-import { PROTOCOL_VERSION, RESUME, INPUT, CANCEL, APPROVAL_REPLY, ERROR, ErrorFrame, encodeError, decodeResume, frameType } from "../protocol/frames.ts";
-import { SessionStore } from "./store.ts";
+import { PROTOCOL_VERSION, RESUME, INPUT, CANCEL, APPROVAL_REPLY, ERROR, ErrorFrame, encodeError, decodeResume, frameType, frameSeq } from "../protocol/frames.ts";
+import { appendMailbox, MailboxReader } from "../tasks/mailbox.ts";
 import { splitPathAndQuery, queryParam } from "./query.ts";
+import { toBrowserLogPath, toTerminalLogPath } from "./relay_paths.ts";
+import { callStore } from "./relay_rpc.ts";
+import { CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, ConnectCommand, ConnectResult, encodeConnectCommand, decodeConnectResult, DetachCommand, encodeDetachCommand } from "./store_commands.ts";
 
-export const ROLE_TERMINAL: string = "terminal";
-export const ROLE_BROWSER: string = "browser";
-export const ROLE_UNKNOWN: string = "";
-
-export class PeerRegistry {
-  terminals: Map<string, Peer>;
-  browsers: Map<string, Peer>;
-
-  constructor() {
-    this.terminals = new Map<string, Peer>();
-    this.browsers = new Map<string, Peer>();
-  }
-}
-
-export function roleForPath(pathname: string): string {
-  if (pathname.startsWith("/sessions/") && pathname.endsWith("/ws")) { return ROLE_TERMINAL; }
-  if (pathname.startsWith("/w/") && pathname.endsWith("/ws")) { return ROLE_BROWSER; }
-  return ROLE_UNKNOWN;
-}
+export const PUSH_POLL_MS: int = 60;
 
 export function sessionIdFromPath(pathname: string, prefix: string, suffix: string): string {
   if (pathname.length <= prefix.length + suffix.length) { return ""; }
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) { return ""; }
   return pathname.slice(prefix.length, pathname.length - suffix.length);
 }
 
@@ -34,15 +20,10 @@ export function browserUserIdFrom(headerValue: string, query: string): string {
   return queryParam(query, "x-user");
 }
 
-function browserUserId(peer: Peer, query: string): string {
-  return browserUserIdFrom(peer.headers.get("x-user") ?? "", query);
-}
-
 function refusalMessage(code: string): string {
   if (code == "wrong_user") { return "frames are refused to a different paired uuid"; }
   if (code == "not_paired") { return "this session has not been paired to a browser yet"; }
   if (code == "session_not_found") { return "no such session"; }
-  if (code == "resume_gap") { return "the ring no longer holds frames since that seq, some frames were missed"; }
   if (code == "unsupported_frame") { return "this frame type is not accepted from a browser"; }
   return code;
 }
@@ -52,132 +33,153 @@ function sendRefusal(peer: Peer, code: string): void {
   send(peer, encodeError(err));
 }
 
-function replayTo(store: SessionStore, peer: Peer, sessionId: string, message: string): void {
+function closeCodeForRefusal(code: string): int {
+  if (code == "session_not_found") { return 4404; }
+  return 4403;
+}
+
+function sinceFromResume(message: string): int {
   let resume = decodeResume(message);
-  let since: int = -1;
-  if (resume != null) { since = resume.since; }
-  let outcome = store.replay(sessionId, since);
-  if (!outcome.ok) {
-    sendRefusal(peer, "resume_gap");
-    return;
-  }
-  for (const f of outcome.frames) {
-    send(peer, f);
-  }
+  if (resume == null) { return -1; }
+  return resume.since;
 }
 
-function handleTerminalMessage(store: SessionStore, registry: PeerRegistry, peer: Peer, message: string): void {
-  let pathname = splitPathAndQuery(peer.path).pathname;
-  let sessionId = sessionIdFromPath(pathname, "/sessions/", "/ws");
-  if (sessionId == "") {
-    closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path");
-    return;
+function connectRpc(runtimeDir: string, sessionId: string, role: string, credential: string): ConnectResult {
+  let cmd: ConnectCommand = { kind: CMD_CONNECT, sessionId: sessionId, role: role, credential: credential, now: Date.now() };
+  let resultJson = callStore(runtimeDir, encodeConnectCommand(cmd));
+  let parsed = decodeConnectResult(resultJson);
+  if (parsed == null) {
+    let timedOut: ConnectResult = { ok: false, refusal: "relay_timeout" };
+    return timedOut;
   }
-  let secret = peer.headers.get("x-relay-secret") ?? "";
-  if (!store.authorizeTerminal(sessionId, secret)) {
-    closePeer(peer, 4401, "unauthorized");
-    return;
-  }
-  registry.terminals.set(sessionId, peer);
-
-  let now: i64 = Date.now();
-  let type = frameType(message);
-  if (type == RESUME) {
-    replayTo(store, peer, sessionId, message);
-    return;
-  }
-  store.appendFrame(sessionId, message, now);
-  let browser = registry.browsers.get(sessionId);
-  if (browser != null && browser.open) {
-    send(browser, message);
-  }
+  return parsed;
 }
 
-function handleBrowserMessage(store: SessionStore, registry: PeerRegistry, peer: Peer, message: string): void {
-  let split = splitPathAndQuery(peer.path);
-  let sessionId = sessionIdFromPath(split.pathname, "/w/", "/ws");
-  if (sessionId == "") {
-    closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path");
-    return;
-  }
-  let userId = browserUserId(peer, split.query);
-  let rec = store.find(sessionId);
-  if (rec == null) {
-    sendRefusal(peer, "session_not_found");
-    closePeer(peer, 4404, "refused");
-    return;
-  }
-  if (rec.pairedUserId == "") {
-    sendRefusal(peer, "not_paired");
-    closePeer(peer, 4403, "refused");
-    return;
-  }
-  if (rec.pairedUserId != userId) {
-    sendRefusal(peer, "wrong_user");
-    closePeer(peer, 4403, "refused");
-    return;
-  }
-  registry.browsers.set(sessionId, peer);
-
-  let now: i64 = Date.now();
-  let type = frameType(message);
-  if (type == RESUME) {
-    replayTo(store, peer, sessionId, message);
-    return;
-  }
-  if (type != INPUT && type != CANCEL && type != APPROVAL_REPLY) {
-    sendRefusal(peer, "unsupported_frame");
-    return;
-  }
-  store.appendFrame(sessionId, message, now);
-  let terminal = registry.terminals.get(sessionId);
-  if (terminal != null && terminal.open) {
-    send(terminal, message);
-  }
+function detachRpc(runtimeDir: string, sessionId: string): void {
+  let cmd: DetachCommand = { kind: CMD_DETACH, sessionId: sessionId };
+  callStore(runtimeDir, encodeDetachCommand(cmd));
 }
 
-export function makeOnMessage(store: SessionStore, registry: PeerRegistry): (peer: Peer, message: string) => void {
-  return (peer: Peer, message: string) => {
-    let pathname = splitPathAndQuery(peer.path).pathname;
-    let role = roleForPath(pathname);
-    if (role == ROLE_TERMINAL) {
-      handleTerminalMessage(store, registry, peer, message);
-      return;
+function pusherLoop(peer: Peer, logPath: string, since: int, filterBySeq: bool): int {
+  let reader = new MailboxReader(logPath);
+  if (!filterBySeq) { reader.drainNew(); }
+  let watermark = since;
+  let pushed = 0;
+  while (peer.open) {
+    let entries = reader.drainNew();
+    for (const e of entries) {
+      if (filterBySeq) {
+        let seq = frameSeq(e.payload);
+        if (seq > watermark) {
+          send(peer, e.payload);
+          watermark = seq;
+          pushed = pushed + 1;
+        }
+      } else {
+        send(peer, e.payload);
+        pushed = pushed + 1;
+      }
     }
-    if (role == ROLE_BROWSER) {
-      handleBrowserMessage(store, registry, peer, message);
-      return;
-    }
-    closePeer(peer, CLOSE_PROTOCOL_ERROR, "unknown path");
-  };
+    process.sleep(PUSH_POLL_MS);
+  }
+  return pushed;
 }
 
-function handleClose(store: SessionStore, registry: PeerRegistry, peer: Peer, graceful: bool): void {
-  let pathname = splitPathAndQuery(peer.path).pathname;
-  let role = roleForPath(pathname);
-  if (role == ROLE_TERMINAL) {
-    let sessionId = sessionIdFromPath(pathname, "/sessions/", "/ws");
-    if (sessionId == "") { return; }
-    registry.terminals.delete(sessionId);
-    if (graceful) {
-      store.detachTerminal(sessionId);
-    }
-    return;
-  }
-  if (role == ROLE_BROWSER) {
-    let sessionId = sessionIdFromPath(pathname, "/w/", "/ws");
-    if (sessionId == "") { return; }
-    registry.browsers.delete(sessionId);
-    return;
+class ConnState {
+  runtimeDir: string;
+  sessionId: string;
+  authorized: bool;
+  pusherStarted: bool;
+  constructor(runtimeDir: string) {
+    this.runtimeDir = runtimeDir;
+    this.sessionId = "";
+    this.authorized = false;
+    this.pusherStarted = false;
   }
 }
 
-export function makeOnClose(store: SessionStore, registry: PeerRegistry): (peer: Peer, graceful: bool) => void {
-  return (peer: Peer, graceful: bool) => {
-    handleClose(store, registry, peer, graceful);
-  };
+export function serveTerminalWebSocket(port: int, runtimeDir: string): void {
+  net.createServer(port, (socket: Socket) => {
+    let state = new ConnState(runtimeDir);
+
+    let onMessage = (peer: Peer, message: string) => {
+      if (!state.authorized) {
+        let pathname = splitPathAndQuery(peer.path).pathname;
+        let sid = sessionIdFromPath(pathname, "/sessions/", "/ws");
+        if (sid == "") { closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path"); return; }
+        let secret = peer.headers.get("x-relay-secret") ?? "";
+        let result = connectRpc(state.runtimeDir, sid, ROLE_TERMINAL_CMD, secret);
+        if (!result.ok) { closePeer(peer, 4401, "unauthorized"); return; }
+        state.sessionId = sid;
+        state.authorized = true;
+      }
+
+      let type = frameType(message);
+      if (!state.pusherStarted) {
+        state.pusherStarted = true;
+        let since = -1;
+        if (type == RESUME) { since = sinceFromResume(message); }
+        let logPath = toTerminalLogPath(state.runtimeDir, state.sessionId);
+        Worker.run(() => { return pusherLoop(peer, logPath, since, false); });
+        if (type == RESUME) { return; }
+      } else if (type == RESUME) {
+        return;
+      }
+
+      appendMailbox(toBrowserLogPath(state.runtimeDir, state.sessionId), "F", message);
+    };
+
+    let onClose = (peer: Peer, graceful: bool) => {
+      if (!graceful || !state.authorized) { return; }
+      detachRpc(state.runtimeDir, state.sessionId);
+    };
+
+    handleConnection(socket, onMessage, onClose);
+  });
 }
 
-export function serveRelayWebSocket(port: int, store: SessionStore, registry: PeerRegistry): void {
-  serveWebSocket(port, makeOnMessage(store, registry), makeOnClose(store, registry));
+export function serveBrowserWebSocket(port: int, runtimeDir: string): void {
+  net.createServer(port, (socket: Socket) => {
+    let state = new ConnState(runtimeDir);
+
+    let onMessage = (peer: Peer, message: string) => {
+      if (!state.authorized) {
+        let split = splitPathAndQuery(peer.path);
+        let sid = sessionIdFromPath(split.pathname, "/w/", "/ws");
+        if (sid == "") { closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path"); return; }
+        let userId = browserUserIdFrom(peer.headers.get("x-user") ?? "", split.query);
+        let result = connectRpc(state.runtimeDir, sid, ROLE_BROWSER_CMD, userId);
+        if (!result.ok) {
+          sendRefusal(peer, result.refusal);
+          closePeer(peer, closeCodeForRefusal(result.refusal), "refused");
+          return;
+        }
+        state.sessionId = sid;
+        state.authorized = true;
+      }
+
+      let type = frameType(message);
+      if (!state.pusherStarted) {
+        state.pusherStarted = true;
+        let since = -1;
+        if (type == RESUME) { since = sinceFromResume(message); }
+        let logPath = toBrowserLogPath(state.runtimeDir, state.sessionId);
+        Worker.run(() => { return pusherLoop(peer, logPath, since, true); });
+        if (type == RESUME) { return; }
+      } else if (type == RESUME) {
+        return;
+      }
+
+      if (type != INPUT && type != CANCEL && type != APPROVAL_REPLY) {
+        sendRefusal(peer, "unsupported_frame");
+        return;
+      }
+
+      appendMailbox(toTerminalLogPath(state.runtimeDir, state.sessionId), "F", message);
+    };
+
+    let onClose = (peer: Peer, graceful: bool) => {};
+
+    handleConnection(socket, onMessage, onClose);
+  });
 }

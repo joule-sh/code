@@ -5,8 +5,9 @@ import { LiveProvider, CancelWatch, TurnTracker } from "../providers/live.ts";
 import { ProviderConfig } from "../providers/openai.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { RelayInputBridge } from "../terminal/relay_bridge.ts";
+import { ShareController, ShareResult } from "./share_controller.ts";
 import { dispatchDaemonFrame } from "./dispatch.ts";
-import { PROTOCOL_VERSION, frameType, DaemonStopFrame, encodeDaemonStop, DAEMON_STOPPING, decodeDaemonStopping } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, frameType, DaemonStopFrame, encodeDaemonStop, DAEMON_STOPPING, decodeDaemonStopping, ShareRequestFrame, encodeShareRequest, SHARE_STARTED, SHARE_FAILED } from "../protocol/frames.ts";
 
 class Echoer {
   run(tool: string, args: string): ToolResult {
@@ -50,6 +51,16 @@ function newTasks(): TaskManager {
   return new TaskManager("/repo", { baseUrl: "http://x", model: "start-model", apiKey: "k" }, () => "auto-edit");
 }
 
+function fakeUplink(): ShareController {
+  return {
+    ensureStarted: (workspaceRoot: string, model: string) => {
+      let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://joule.sh/w/ABCDEF", error: "" };
+      return r;
+    },
+    tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => {},
+  };
+}
+
 class FrameCapture {
   frames: string[];
   constructor() { this.frames = []; }
@@ -66,11 +77,12 @@ test("a daemon.stop frame broadcasts daemon.stopping and asks the caller to stop
   let live = newLive();
   let tasks = newTasks();
   let bridge = new RelayInputBridge();
+  let uplink = fakeUplink();
   let cap = new FrameCapture();
   session.subscribe((f: string) => cap.add(f));
 
   let f: DaemonStopFrame = { v: PROTOCOL_VERSION, seq: 0, type: "daemon.stop" };
-  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, encodeDaemonStop(f));
+  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, uplink, encodeDaemonStop(f));
 
   expect(stop);
   expect(frameType(lastFrame(cap)) == DAEMON_STOPPING);
@@ -85,10 +97,44 @@ test("input and cancel frames still fall through to the shared relay dispatch, w
   let live = newLive();
   let tasks = newTasks();
   let bridge = new RelayInputBridge();
+  let uplink = fakeUplink();
 
   let f = "{\"v\":1,\"seq\":0,\"type\":\"cancel\",\"turnId\":\"t7\"}";
-  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, f);
+  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, uplink, f);
 
   expect(!stop);
   expect(session.cancelledTurnId == "t7");
+});
+
+test("a share.request frame with a working uplink answers share.started", () => {
+  let session = newSession();
+  let gate = newGate();
+  let live = newLive();
+  let tasks = newTasks();
+  let bridge = new RelayInputBridge();
+  let uplink = fakeUplink();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => cap.add(f));
+
+  let f: ShareRequestFrame = { v: PROTOCOL_VERSION, seq: 0, type: "share.request" };
+  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, uplink, encodeShareRequest(f));
+
+  expect(!stop);
+  expect(frameType(lastFrame(cap)) == SHARE_STARTED);
+});
+
+test("a share.request frame with no uplink answers share.failed rather than a stop", () => {
+  let session = newSession();
+  let gate = newGate();
+  let live = newLive();
+  let tasks = newTasks();
+  let bridge = new RelayInputBridge();
+  let cap = new FrameCapture();
+  session.subscribe((f: string) => cap.add(f));
+
+  let f: ShareRequestFrame = { v: PROTOCOL_VERSION, seq: 0, type: "share.request" };
+  let stop = dispatchDaemonFrame(session, gate, live, tasks, bridge, null, encodeShareRequest(f));
+
+  expect(!stop);
+  expect(frameType(lastFrame(cap)) == SHARE_FAILED);
 });

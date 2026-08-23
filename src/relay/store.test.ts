@@ -1,12 +1,6 @@
-import { SessionStore, RING_CAPACITY, CODE_TTL_MS, PAIR_RATE_LIMIT_MAX, PAIR_OK, PAIR_WRONG_CODE, PAIR_EXPIRED, PAIR_USED, PAIR_RATE_LIMITED } from "./store.ts";
-import { PROTOCOL_VERSION, INPUT, InputFrame, encodeInput } from "../protocol/frames.ts";
+import { SessionStore, CODE_TTL_MS, PAIR_RATE_LIMIT_MAX, PAIR_OK, PAIR_WRONG_CODE, PAIR_EXPIRED, PAIR_USED, PAIR_RATE_LIMITED } from "./store.ts";
 
 const BASE_TIME: i64 = 1700000000000;
-
-function inputFrame(seq: int): string {
-  let f: InputFrame = { v: PROTOCOL_VERSION, seq: seq, type: INPUT, text: "hello" };
-  return encodeInput(f);
-}
 
 test("pairing happy path: the right code binds the session to the uuid", () => {
   let store = new SessionStore();
@@ -51,37 +45,6 @@ test("frames are refused to a browser uuid other than the one paired", () => {
   expect(!store.authorizeBrowser(sess.sessionId, "user-2"));
 });
 
-test("replay from a seq returns only the frames after it", () => {
-  let store = new SessionStore();
-  let sess = store.create("s6", "secret-6", "/repo", "gpt", "ABCDEF", BASE_TIME);
-  let n = 1;
-  while (n <= 5) {
-    store.appendFrame(sess.sessionId, inputFrame(n), BASE_TIME + n);
-    n = n + 1;
-  }
-  let outcome = store.replay(sess.sessionId, 2);
-  expect(outcome.ok);
-  expect(outcome.frames.length == 3);
-});
-
-test("ring eviction is reported as a gap rather than silently replayed", () => {
-  let store = new SessionStore();
-  let sess = store.create("s7", "secret-7", "/repo", "gpt", "ABCDEF", BASE_TIME);
-  let total = RING_CAPACITY + 1;
-  let n = 1;
-  while (n <= total) {
-    store.appendFrame(sess.sessionId, inputFrame(n), BASE_TIME + n);
-    n = n + 1;
-  }
-  let gapOutcome = store.replay(sess.sessionId, 0);
-  expect(!gapOutcome.ok);
-
-  let withinRing = total - 100;
-  let okOutcome = store.replay(sess.sessionId, withinRing);
-  expect(okOutcome.ok);
-  expect(okOutcome.frames.length == 100);
-});
-
 test("the pairing rate limit trips after repeated attempts for one uuid", () => {
   let store = new SessionStore();
   let sess = store.create("s8", "secret-8", "/repo", "gpt", "ABCDEF", BASE_TIME);
@@ -95,7 +58,7 @@ test("the pairing rate limit trips after repeated attempts for one uuid", () => 
   expect(limited.status == PAIR_RATE_LIMITED);
 });
 
-test("detachTerminal removes the session and its ring, and reports whether it existed", () => {
+test("detachTerminal removes the session and reports whether it existed", () => {
   let store = new SessionStore();
   let sess = store.create("s10", "secret-10", "/repo", "gpt", "ABCDEF", BASE_TIME);
   expect(store.authorizeTerminal(sess.sessionId, "secret-10"));
@@ -103,9 +66,6 @@ test("detachTerminal removes the session and its ring, and reports whether it ex
   let removed = store.detachTerminal(sess.sessionId);
   expect(removed);
   expect(!store.authorizeTerminal(sess.sessionId, "secret-10"));
-
-  let replayAfter = store.replay(sess.sessionId, -1);
-  expect(!replayAfter.ok);
 
   let removedAgain = store.detachTerminal(sess.sessionId);
   expect(!removedAgain);

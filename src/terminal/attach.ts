@@ -1,5 +1,5 @@
 import { isatty, rawEnable, rawDisable, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
-import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVAL_REQUEST, TURN_START, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, frameType, encodeInput, encodeCancel, encodeApprovalReply, decodeSessionHello, decodeApprovalRequest, decodeTurnStart, decodeModeChanged, decodeModelChanged, decodeDaemonStopping, encodeModeSet, encodeModelSet, encodeTasksRequest, encodeDaemonStop } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVAL_REQUEST, TURN_START, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, frameType, encodeInput, encodeCancel, encodeApprovalReply, decodeSessionHello, decodeApprovalRequest, decodeTurnStart, decodeModeChanged, decodeModelChanged, decodeDaemonStopping, encodeModeSet, encodeModelSet, encodeTasksRequest, encodeDaemonStop, encodeShareRequest } from "../protocol/frames.ts";
 import { InputLine, InputHistory, PendingApproval, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
@@ -107,8 +107,7 @@ function runAttachStop(workspaceRoot: string): void {
 
 function attachHelpText(): string {
   return helpText()
-    + "\n/stop-daemon    ask this workspace's daemon to stop (any attached client may; it takes effect once any in-flight turn finishes, see docs/03-daemon.md)"
-    + "\nnote: /share is not available in attach mode yet - the relay does not support multiple daemon clients pairing through it in this pass";
+    + "\n/stop-daemon    ask this workspace's daemon to stop (any attached client may; it takes effect once any in-flight turn finishes, see docs/03-daemon.md)";
 }
 
 export function runAttach(argv: string[]): void {
@@ -309,7 +308,8 @@ export function runAttach(argv: string[]): void {
     }
 
     if (cmd.kind == CMD_SHARE) {
-      sb.append("\n/share is not available in attach mode yet - run the default joule if you need to share this conversation over the relay (see docs/03-daemon.md)");
+      client.publish(encodeShareRequest({ v: PROTOCOL_VERSION, seq: 0, type: SHARE_REQUEST }));
+      sb.append("\nasking the daemon to share this session over the relay");
       drawScreen(sb, input, approvalLog.mode, rk);
       continue;
     }

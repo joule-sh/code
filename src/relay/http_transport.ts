@@ -1,4 +1,4 @@
-import { SessionStore } from "./store.ts";
+import { StoreCaller } from "./relay_rpc.ts";
 import { makeHttpHandler, RelayHttpRequest, RelayHttpResponse } from "./http.ts";
 
 const MAX_HEAD_SIZE: int = 65536;
@@ -118,7 +118,7 @@ function writeResponse(socket: Socket, resp: RelayHttpResponse): void {
   socket.close();
 }
 
-export function socketHandler(store: SessionStore, wsBrowserPort: int): (socket: Socket) => void {
+export function socketHandler(caller: StoreCaller, wsBrowserPort: int): (socket: Socket) => void {
   return (socket: Socket) => {
     let parsed = readRequest(socket);
     if (!parsed.ok) {
@@ -129,7 +129,7 @@ export function socketHandler(store: SessionStore, wsBrowserPort: int): (socket:
       }
       return;
     }
-    let handler = makeHttpHandler(store, wsBrowserPort);
+    let handler = makeHttpHandler(caller, wsBrowserPort);
     let resp = handler(parsed.req);
     writeResponse(socket, resp);
   };

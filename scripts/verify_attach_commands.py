@@ -94,8 +94,10 @@ def main():
         ok(True, "/tasks answers with the (empty) task listing from the daemon")
 
         session.write("/share\r")
-        session.wait_for("not available in attach mode", timeout=5.0)
-        ok(True, "/share states plainly that it is not available in attach mode, rather than silently doing nothing or crashing")
+        session.wait_for("asking the daemon to share this session over the relay", timeout=5.0)
+        ok(True, "/share now asks the daemon to start sharing, instead of refusing outright")
+        session.wait_for("could not attach to the relay", timeout=5.0)
+        ok(True, "with no relay reachable in this harness, the daemon reports share.failed rather than hanging or crashing")
 
         session.write("/help\r")
         session.wait_for("stop-daemon", timeout=5.0)

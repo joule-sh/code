@@ -1,4 +1,4 @@
-import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, decodeApprovalReplyResult, decodeModeChanged, decodeModelChanged, decodeTasksResponse, decodeDaemonStopping, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, APPROVAL_REPLY_RESULT, MODE_CHANGED, MODEL_CHANGED, TASKS_RESPONSE, DAEMON_STOPPING, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
+import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, decodeApprovalReplyResult, decodeModeChanged, decodeModelChanged, decodeTasksResponse, decodeDaemonStopping, decodeShareStarted, decodeShareFailed, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, APPROVAL_REPLY_RESULT, MODE_CHANGED, MODEL_CHANGED, TASKS_RESPONSE, DAEMON_STOPPING, SHARE_STARTED, SHARE_FAILED, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
 import { diffLines, diffCounts, renderDiffRows, DIFF_DISPLAY_MAX_ROWS } from "./diff.ts";
 import { DIM, REVERSE, RESET } from "./style.ts";
 import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT, PLAN_DECISION_REJECT, PLAN_DECISION_OPTION_COUNT } from "./input_state.ts";
@@ -216,6 +216,18 @@ export function renderFrame(frameJson: string, prevKind: string): string {
     let f = decodeDaemonStopping(frameJson);
     if (f == null) { return "\nthe daemon is stopping"; }
     return "\nthe daemon is stopping (" + f.reason + ")";
+  }
+
+  if (kind == SHARE_STARTED) {
+    let f = decodeShareStarted(frameJson);
+    if (f == null) { return ""; }
+    return "\nattached - code " + f.code + " - " + f.url;
+  }
+
+  if (kind == SHARE_FAILED) {
+    let f = decodeShareFailed(frameJson);
+    if (f == null) { return ""; }
+    return "\ncould not attach to the relay: " + f.error;
   }
 
   return "";
