@@ -11,3 +11,4 @@ src/relay/relay
 src/vendor/tty/tty_shim.o
 scripts/__pycache__/
 /dist/
+/gcstatic/

@@ -142,3 +142,23 @@ jobs:
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: node --version
       - run: make relay-reconnect-harness
+
+  linux-release:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.1
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: scripts/linux_static_gc.sh "$PWD/gcstatic"
+      - run: make release LUMEN_FLAGS="--link -L$PWD/gcstatic"
+      - run: scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
+      - run: |
+          ./bin/joule --version
+          ./bin/relay --version
+          ./bin/joule-daemon --version
