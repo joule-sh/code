@@ -79,6 +79,59 @@ is not about ports: a person driving a session from a terminal must not find
 the editor silently in it, so the editor says which of the two it is about to
 do before it does it.
 
+## Where the view opens (#199)
+
+**The session view is declared into the secondary side bar.**
+`contributes.viewsContainers` takes three keys in the editor this client is
+built against - `activitybar`, `panel` and `secondarySidebar` - and the third
+registers the container at the auxiliary bar, the right-hand side bar whose
+containers are the strip of icons across its top. So the placement is
+declarable after all, and the change is one key in the manifest rather than a
+window rearranging itself on first run. The container id is unchanged, and
+the icon appears in whichever bar the container ends up in.
+
+`secondarySidebar` is younger than the rest of the manifest: it arrived in
+1.104 behind a proposed API and was final in 1.106, so `engines.vscode` moves
+from `^1.85.0` to `^1.106.0`. That floor is the point rather than a side
+effect. An older editor does not fall back to the old placement - it ignores
+the key it does not know, no container is registered, and a view with no
+container of its own is dropped into the Explorer beside the file tree.
+Refusing to install is the better of the two failures.
+
+**Someone who has already moved it keeps where they put it.** A container's
+location is resolved as the stored customization first and the declared
+default only when there is none: `views.customizations` in global storage
+holds a `viewContainerLocations` entry for every container a person has
+dragged, keyed by container id, and `workbench.view.extension.joule` does not
+change here. An install where the view was dragged to the right is already
+where this change points; one where it was dragged to the panel stays in the
+panel. An install that never touched it has nothing stored and moves with the
+default, which is the one case where an upgrade relocates the view, and is
+the change the issue asks for.
+
+**The icon is the console's mark, drawn for the size the strip uses.** That
+strip renders a container's title by default and its icon when a person turns
+`workbench.secondarySideBar.showLabels` off or moves the activity bar to the
+top, and an icon there is masked at 16px against the bar's foreground colour,
+against 24px in the activity bar - so it is one shape, tinted, at half the
+size it used to be drawn for. The old outlined speech bubble was a poor thing
+to be in that strip twice over: at 16px its 1px strokes and its inner line
+silt up, and it sits directly beside the editor's own chat icon, which is
+also a speech bubble. The J and its accent - `assets/mark.svg` in the console
+- are the identity, are legible as a letter at 16, and are nobody else's
+glyph. #154 still owns the designed interface; this is the icon catching up
+with the bar it now lives in.
+
+**The two alternatives are worse.** `panel` is declarable and needs no engine
+floor, but the bottom panel is where output and terminals live: a
+conversation there is a strip under the editor rather than a column beside
+it, and it is not where comparable assistant extensions sit. Moving the
+container from code on first activation is not something the API offers -
+`vscode.moveViews` moves views into a container that already exists, and
+nothing exposed to an extension moves a container to a location - and an
+approximation built out of the workbench's own commands would be a window
+rearranging a person's layout without being asked.
+
 ## Trust level
 
 **The editor is a local client, at `joule attach`'s level, not a paired
