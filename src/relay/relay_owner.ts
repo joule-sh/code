@@ -15,15 +15,15 @@ function sessionDirNames(dir: string): string[] {
   }
 }
 
-function newestMtime(paths: string[]): i64 {
-  let best: i64 = 0;
+function logBytes(paths: string[]): i64 {
+  let total: i64 = 0;
   for (const p of paths) {
     if (!fs.existsSync(p)) { continue; }
     let st = fs.statSync(p);
-    let m: i64 = st.mtimeMs;
-    if (m > best) { best = m; }
+    let n: i64 = st.size;
+    total = total + n;
   }
-  return best;
+  return total;
 }
 
 export class RelayOwner {
@@ -31,12 +31,14 @@ export class RelayOwner {
   store: SessionStore;
   commandReader: MailboxReader;
   lastSweepAt: i64;
+  seenLogBytes: Map<string, i64>;
 
   constructor(runtimeDir: string) {
     this.runtimeDir = runtimeDir;
     this.store = new SessionStore();
     this.commandReader = new MailboxReader(commandsLogPath(runtimeDir));
     this.lastSweepAt = 0;
+    this.seenLogBytes = new Map<string, i64>();
   }
 
   handleCreate(text: string): string {
@@ -90,6 +92,7 @@ export class RelayOwner {
     let detachCmd = decodeDetachCommand(text);
     if (detachCmd == null) { return ""; }
     let removed = this.store.detachTerminal(detachCmd.sessionId);
+    this.seenLogBytes.delete(detachCmd.sessionId);
     if (fs.existsSync(sessionDir(this.runtimeDir, detachCmd.sessionId))) {
       fs.rmSync(sessionDir(this.runtimeDir, detachCmd.sessionId), true);
     }
@@ -131,11 +134,27 @@ export class RelayOwner {
     this.lastSweepAt = now;
     let ids = this.store.sessions.keys();
     for (const id of ids) {
-      let activity = newestMtime([toBrowserLogPath(this.runtimeDir, id), toTerminalLogPath(this.runtimeDir, id)]);
-      if (activity > 0) { this.store.touch(id, activity); }
+      let bytes = logBytes([toBrowserLogPath(this.runtimeDir, id), toTerminalLogPath(this.runtimeDir, id)]);
+      let seen: i64 = this.seenLogBytes.get(id) ?? -1;
+      if (seen < 0) {
+        this.seenLogBytes.set(id, bytes);
+      } else if (seen != bytes) {
+        this.seenLogBytes.set(id, bytes);
+        this.store.touch(id, now);
+      }
     }
     let stale = this.store.sweepIdle(now);
-    if (stale > 0) { this.reapMissingSessionDirs(); }
+    if (stale > 0) {
+      this.reapMissingSessionDirs();
+      this.forgetGoneSessions();
+    }
+  }
+
+  forgetGoneSessions(): void {
+    let tracked = this.seenLogBytes.keys();
+    for (const id of tracked) {
+      if (this.store.find(id) == null) { this.seenLogBytes.delete(id); }
+    }
   }
 
   reapMissingSessionDirs(): void {

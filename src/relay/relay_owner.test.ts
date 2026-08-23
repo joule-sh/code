@@ -1,6 +1,6 @@
 import { RelayOwner } from "./relay_owner.ts";
 import { appendMailbox, findMailboxEntry } from "../tasks/mailbox.ts";
-import { commandsLogPath, resultsLogPath, sessionDir } from "./relay_paths.ts";
+import { commandsLogPath, resultsLogPath, sessionDir, toBrowserLogPath } from "./relay_paths.ts";
 import { CMD_CREATE, CMD_PAIR, CMD_CONNECT, CMD_DETACH, ROLE_TERMINAL_CMD, ROLE_BROWSER_CMD, CreateCommand, encodeCreateCommand, decodeCreateResult, PairCommand, encodePairCommand, decodePairResult, ConnectCommand, encodeConnectCommand, decodeConnectResult, DetachCommand, encodeDetachCommand, decodeDetachResult, ListMineCommand, encodeListMineCommand, decodeListMineResult } from "./store_commands.ts";
 
 const BASE_TIME: i64 = 1700000000000;
@@ -149,5 +149,52 @@ test("handleListMine returns only the caller's own sessions, and an unowned sess
   if (result != null) {
     expect(result.sessions.length == 1);
     expect(result.sessions[0].workspace == "/mine");
+  }
+});
+
+test("sweepTick keeps a session whose transcript log is still growing, however long it has been running", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sweep-active"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
+  expect(created != null);
+  if (created != null) {
+    let log = toBrowserLogPath(owner.runtimeDir, created.sessionId);
+    appendMailbox(log, "F", "{\"seq\":1}");
+    owner.sweepTick(BASE_TIME + 10 * 1000);
+    expect(owner.store.find(created.sessionId) != null);
+
+    appendMailbox(log, "F", "{\"seq\":2}");
+    owner.sweepTick(BASE_TIME + 40 * 60 * 1000);
+    expect(owner.store.find(created.sessionId) != null);
+    expect(fs.existsSync(sessionDir(owner.runtimeDir, created.sessionId)));
+  }
+});
+
+test("a session that wrote frames and then went quiet is still swept once it is genuinely idle", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sweep-quiet"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
+  expect(created != null);
+  if (created != null) {
+    let log = toBrowserLogPath(owner.runtimeDir, created.sessionId);
+    appendMailbox(log, "F", "{\"seq\":1}");
+    owner.sweepTick(BASE_TIME + 10 * 1000);
+    expect(owner.store.find(created.sessionId) != null);
+
+    owner.sweepTick(BASE_TIME + 10 * 1000 + 31 * 60 * 1000);
+    expect(owner.store.find(created.sessionId) == null);
+  }
+});
+
+test("a swept session is forgotten by the activity tracker rather than tracked forever", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sweep-forget"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
+  expect(created != null);
+  if (created != null) {
+    appendMailbox(toBrowserLogPath(owner.runtimeDir, created.sessionId), "F", "{\"seq\":1}");
+    owner.sweepTick(BASE_TIME + 10 * 1000);
+    expect(owner.seenLogBytes.get(created.sessionId) != null);
+
+    owner.sweepTick(BASE_TIME + 10 * 1000 + 31 * 60 * 1000);
+    expect(owner.store.find(created.sessionId) == null);
+    expect(owner.seenLogBytes.get(created.sessionId) == null);
   }
 });

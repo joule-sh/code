@@ -13,6 +13,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 // the point of the count is to give a timing regression somewhere to show.
 const ROUNDS = Number(process.env.RELAY_RECONNECT_ROUNDS || "15");
 
+// Comfortably past the relay's SWEEP_INTERVAL_MS, so a sweep is guaranteed
+// to have run while the session was busy.
+const SWEEP_WINDOW_MS = 7000;
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -210,6 +214,40 @@ async function runWrongUserRound(ports, workspace, round) {
   await until(() => browser.closed, 2000);
 }
 
+// The relay sweeps idle sessions on a timer. A session is only idle if
+// nothing has been written to it - having produced a transcript is the
+// opposite of idle - so a session that has been talking must still be
+// there, and still be joinable, on the far side of a sweep.
+async function runSurvivesSweepRound(ports, workspace, round) {
+  const session = await newSession(ports.httpPort, ports.wsPort, workspace);
+  const backlog = emitBacklog(session, round, 2);
+  const user = `long-${round}`;
+  const paired = await fetchJson(`http://127.0.0.1:${ports.httpPort}/pair`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-user": user },
+    body: JSON.stringify({ code: session.code }),
+  });
+  if (paired.status !== 200) throw new Error("POST /pair failed: " + JSON.stringify(paired));
+
+  await sleep(SWEEP_WINDOW_MS);
+  const midMarker = `mid-${round}`;
+  session.terminal.send(JSON.stringify({ v: 1, seq: 50, type: "turn.end", reason: midMarker }));
+  backlog.push(midMarker);
+  await sleep(SWEEP_WINDOW_MS);
+
+  const browser = await openBrowser(ports.browserPort, session.sessionId, user);
+  browser.conn.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
+  const gone = await until(() => browser.frames.find((f) => f.type === "error"), 1500);
+  const seconds = (SWEEP_WINDOW_MS * 2) / 1000;
+  ok(gone === null, `round ${round}: a session that has been emitting frames is still there ${seconds}s later, got ${gone ? gone.code : "no refusal"}`);
+
+  await assertLiveBrowser(browser, session, round, backlog, `round ${round} (outlived a sweep)`);
+
+  browser.conn.close();
+  session.terminal.close();
+  await until(() => browser.closed, 2000);
+}
+
 async function main() {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-relay-reconnect-"));
   const httpPort = await freePort();
@@ -243,8 +281,10 @@ async function main() {
       await runWrongUserRound(ports, workspace, round);
     }
 
+    await runSurvivesSweepRound(ports, workspace, ROUNDS * 3 + 1);
+
     if (failures === 0) {
-      console.log(`PASS: across ${ROUNDS * 3} refusals, a browser that reconnects to the same session with no settle delay keeps its connection, is replayed its transcript, and still carries frames in both directions - a refused connection's teardown reaches only itself`);
+      console.log(`PASS: across ${ROUNDS * 3} refusals, a browser that reconnects to the same session with no settle delay keeps its connection, is replayed its transcript, and still carries frames in both directions, and a session that has been emitting frames outlives the idle sweep instead of being torn down under its browsers`);
     }
   } finally {
     relay.kill();
