@@ -36,8 +36,9 @@ curl -fsSL "$url" -o "$work/code.tar.gz"
 tar -xzf "$work/code.tar.gz" -C "$work"
 
 # All three binaries the archive carries, not just the two commands. `joule`
-# starts `joule-daemon` by looking beside itself, so an install that drops it
-# has no daemon mode at all.
+# resolves `joule-daemon` beside its own real path, so an install that dropped
+# it had no daemon mode at all. It needs no link of its own; nothing runs it by
+# name, and a link here would go stale the next time /update moves the others.
 binaries="joule relay joule-daemon"
 
 target="$install_root/$version"
@@ -62,12 +63,11 @@ for bin in $binaries; do
 done
 
 mkdir -p "$bin_dir"
-for bin in $binaries; do
-  ln -sf "$target/$bin" "$bin_dir/$bin"
-done
+ln -sf "$target/joule" "$bin_dir/joule"
+ln -sf "$target/relay" "$bin_dir/relay"
 
 echo "joule: installed $("$bin_dir/joule" --version) to $target"
-echo "joule: linked joule, relay and joule-daemon into $bin_dir"
+echo "joule: linked $bin_dir/joule and $bin_dir/relay"
 
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
