@@ -1,4 +1,5 @@
 import { sessionKeyFor } from "../session/persistence.ts";
+import { detectRunningExePath } from "../update/install_detect.ts";
 
 export type DaemonInfo = { workspace: string, port: int, startedAt: string };
 
@@ -63,12 +64,23 @@ export function portFromWorkspace(workspaceRoot: string, base: int, spread: int)
   return base + (sum % spread);
 }
 
-export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string): string {
-  return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " nohup bin/joule-daemon >" + logPath + " 2>&1 & disown";
+export function daemonBinNameFor(runningExePath: string): string {
+  if (runningExePath == "") { return "bin/joule-daemon"; }
+  return path.dirname(runningExePath) + "/joule-daemon";
 }
 
-export function daemonSpawnArgs(workspaceRoot: string, port: int, logPath: string): string[] {
-  return ["-c", daemonSpawnCommand(workspaceRoot, port, logPath)];
+export function defaultDaemonBinPath(): string {
+  return daemonBinNameFor(detectRunningExePath());
+}
+
+export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+  let resumeEnv = "";
+  if (resumeFlag) { resumeEnv = "JOULE_DAEMON_RESUME=1 "; }
+  return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + " >" + logPath + " 2>&1 & disown";
+}
+
+export function daemonSpawnArgs(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string[] {
+  return ["-c", daemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath)];
 }
 
 export function daemonLogPath(workspaceRoot: string): string {

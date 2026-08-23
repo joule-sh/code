@@ -1,8 +1,9 @@
 import { Session } from "../session/session.ts";
-import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
+import { Gate, MODE_AUTO_EDIT, MODE_PLAN } from "../approval/gate.ts";
 import { Message, ProviderReply, Provider, ToolResult, ToolRegistry, ApprovalGate, ApprovalDecision } from "../session/types.ts";
 import { handleModeSet } from "./dispatch_mode.ts";
 import { PROTOCOL_VERSION, ModeSetFrame, encodeModeSet, MODE_CHANGED, decodeModeChanged, ERROR, decodeError, frameType } from "../protocol/frames.ts";
+import { PLAN_MODE_BRIEFING } from "../approval/plan_briefing.ts";
 
 class Echoer {
   run(tool: string, args: string): ToolResult {
@@ -77,4 +78,30 @@ test("an invalid mode.set frame is rejected with an error frame, and the mode is
   let err = decodeError(lastFrame(cap));
   expect(err != null);
   if (err != null) { expect(err.code == "mode.invalid"); }
+});
+
+test("transitioning into plan mode injects the plan briefing as system context", () => {
+  let session = newSession();
+  let gate = newGate();
+  let before = session.history.length;
+
+  let f: ModeSetFrame = { v: PROTOCOL_VERSION, seq: 0, type: "mode.set", mode: MODE_PLAN };
+  handleModeSet(session, gate, encodeModeSet(f));
+
+  expect(gate.mode == MODE_PLAN);
+  expect(session.history.length == before + 1);
+  let injected = session.history[session.history.length - 1];
+  expect(injected.text == PLAN_MODE_BRIEFING);
+});
+
+test("setting plan mode while already in plan mode does not inject the briefing again", () => {
+  let session = newSession();
+  let gate = newGate();
+  gate.mode = MODE_PLAN;
+  let before = session.history.length;
+
+  let f: ModeSetFrame = { v: PROTOCOL_VERSION, seq: 0, type: "mode.set", mode: MODE_PLAN };
+  handleModeSet(session, gate, encodeModeSet(f));
+
+  expect(session.history.length == before);
 });

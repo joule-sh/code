@@ -143,6 +143,12 @@ export class TaskBoard {
     return a[0].tool;
   }
 
+  activeApprovalCallId(): string {
+    let a = this.activeApproval();
+    if (a.length == 0) { return ""; }
+    return a[0].localCallId;
+  }
+
   activeApprovalSelected(): int {
     let a = this.activeApproval();
     if (a.length == 0) { return 0; }

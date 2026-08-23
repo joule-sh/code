@@ -1,7 +1,7 @@
 import { VERSION } from "./version.ts";
 import { runDemo } from "./demo/demo.ts";
 import { runTerminal } from "./terminal/terminal.ts";
-import { runAttach } from "./terminal/attach.ts";
+import { runAttach, runDaemonJoule, runStop } from "./terminal/attach.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -26,9 +26,11 @@ if (hasFlagIn(currentArgs(), "--version")) {
   console.log("joule " + VERSION);
 } else if (hasFlagIn(currentArgs(), "--demo")) {
   runDemo();
+} else if (hasFlagIn(currentArgs(), "--stop")) {
+  runStop(currentArgs());
 } else if (hasFlagIn(currentArgs(), "attach")) {
   runAttach(currentArgs());
-} else {
+} else if (!runDaemonJoule(currentArgs())) {
   runTerminal(currentArgs());
 }
 

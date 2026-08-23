@@ -7,8 +7,7 @@ import { PendingPlanDecision, PLAN_DECISION_ACCEPT, PLAN_DECISION_OPTION_COUNT, 
 import { planDecisionOptionsBlock, planDecisionOptionRow } from "./renderer.ts";
 import { styleBanner, stylePrompt } from "./style.ts";
 import { decodeTurnEnd, REASON_DONE } from "../protocol/frames.ts";
-
-const PLAN_MODE_BRIEFING: string = "Plan mode is active. Investigate with read, list, grep, and safe read-only shell commands run through run - writes, edits, and any other shell command are refused automatically, so do not expect to make changes yet. Once you understand enough, reply with a concrete, step by step plan for the change: which files, what approach, in what order. Do not start implementing. The user will accept or reject this plan before any work begins.";
+import { PLAN_MODE_BRIEFING } from "../approval/plan_briefing.ts";
 
 const PLAN_APPROVED_MESSAGE: string = "The plan above is approved. Proceed to implement it.";
 
@@ -52,8 +51,7 @@ function answerPlanDecision(pending: PendingPlanDecision, gate: Gate, session: S
   pending.close();
   if (index != PLAN_DECISION_ACCEPT) { return; }
   gate.mode = priorMode;
-  sb.append("
-" + stylePrompt("> ") + PLAN_APPROVED_MESSAGE);
+  sb.append("\n" + stylePrompt("> ") + PLAN_APPROVED_MESSAGE);
   bridge.runNow(session, PLAN_APPROVED_MESSAGE);
 }
 

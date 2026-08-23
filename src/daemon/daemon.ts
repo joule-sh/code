@@ -85,8 +85,11 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
   session.injectSystemContext(loadProjectInstructions(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
-  let prior = loadWorkspaceSession(workspaceRoot);
-  if (prior != null) { session.history = prior.history; }
+  let resumeRequested = (process.env("JOULE_DAEMON_RESUME") ?? "") == "1";
+  if (resumeRequested) {
+    let prior = loadWorkspaceSession(workspaceRoot);
+    if (prior != null) { session.history = prior.history; }
+  }
   sessionBox.set(session);
   live.setSession(session);
 
@@ -123,7 +126,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let hello: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
     sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: cfg.model,
-    mode: session.mode, protocol: PROTOCOL_VERSION,
+    mode: gate.mode, protocol: PROTOCOL_VERSION,
   };
   appendBroadcast(runtimeDir, encodeSessionHello(hello));
 

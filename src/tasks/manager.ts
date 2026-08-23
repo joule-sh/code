@@ -79,6 +79,10 @@ export class TaskManager {
     return this.board.activeApprovalTool();
   }
 
+  activeApprovalCallId(): string {
+    return this.board.activeApprovalCallId();
+  }
+
   activeApprovalSelected(): int {
     return this.board.activeApprovalSelected();
   }
