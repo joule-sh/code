@@ -4,12 +4,14 @@ import { InputLine, clip } from "./input_state.ts";
 import { TurnStatusTracker, drawScreen } from "./screen.ts";
 import { stylePrompt, styleBanner, wrap, DIM } from "./style.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
-import { checkServer, insecureAllowed, normalizeServer, SERVER_OK, INSECURE_ENV } from "../auth/server.ts";
+import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSourceLabel, ServerOrigin, SERVER_OK, INSECURE_ENV, DEFAULT_SERVER } from "../auth/server.ts";
 import { loginUrl, exchangeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
-import { credentialsPath, loadCredential, saveCredential, forgetCredential, accountLabel } from "../auth/credentials.ts";
+import { credentialsPath, loadCredential, saveCredential, forgetCredential, accountLabel, otherServers } from "../auth/credentials.ts";
+import { rememberServer, configFilePath } from "../providers/config.ts";
 
 const STDIN: int = 0;
 const MAX_ATTEMPTS: int = 3;
+const LIST_LIMIT: int = 3;
 
 export function browserCommand(url: string): string {
   let quoted = shellQuoteSingle(url);
@@ -72,13 +74,61 @@ export function retryable(outcome: string): bool {
   return outcome == EX_BAD_CODE || outcome == EX_UNKNOWN;
 }
 
-function introduce(sb: Scrollback, base: string, url: string): void {
+export function loginTarget(origin: ServerOrigin, requested: string): string {
+  if (requested.trim() != "") { return requested.trim(); }
+  return origin.base;
+}
+
+export function serverListNote(lead: string, servers: string[]): string {
+  if (servers.length == 0) { return ""; }
+  let shown = "";
+  let i = 0;
+  while (i < servers.length && i < LIST_LIMIT) {
+    if (i > 0) { shown = shown + ", "; }
+    shown = shown + servers[i];
+    i = i + 1;
+  }
+  if (servers.length > LIST_LIMIT) {
+    shown = shown + " and " + `${servers.length - LIST_LIMIT}` + " more";
+  }
+  return "\n" + wrap(DIM, lead + " " + shown);
+}
+
+export function serverHint(origin: ServerOrigin, requested: string): string {
+  if (serverPinned(origin.source)) {
+    return "\n" + wrap(DIM, "this address comes from " + serverSourceLabel(origin.source)
+      + ", which outranks anything /login is told, so it stays the one joule uses.");
+  }
+  if (requested.trim() != "") { return ""; }
+  return "\n" + wrap(DIM, "a different Joule server? /login <url> signs in there and keeps it.");
+}
+
+export function chosenServerNote(origin: ServerOrigin, base: string): string {
+  if (serverPinned(origin.source)) {
+    return "\n" + wrap(DIM, "the credential is kept for " + base + ", but joule still talks to "
+      + origin.base + " here, because " + serverSourceLabel(origin.source) + " sets it.");
+  }
+  return "\n" + wrap(DIM, "joule now uses " + base + ", written to " + configFilePath()
+    + ". /login " + DEFAULT_SERVER + " goes back.");
+}
+
+function keepServer(sb: Scrollback, origin: ServerOrigin, base: string): void {
+  if (base == origin.base) { return; }
+  if (!serverPinned(origin.source)) { rememberServer(base); }
+  sb.append(chosenServerNote(origin, base));
+}
+
+function introduce(sb: Scrollback, base: string, url: string, origin: ServerOrigin, requested: string): void {
   let existing = loadCredential(base);
   if (existing.secret != "") {
     sb.append("\n" + wrap(DIM, "already signed in to " + base + " as " + accountLabel(existing)
       + ". Signing in again replaces that credential."));
   }
   sb.append("\n" + styleBanner("sign in to " + base));
+  let hint = serverHint(origin, requested);
+  if (hint != "") { sb.append(hint); }
+  let known = serverListNote("also signed in to", otherServers(base));
+  if (known != "") { sb.append(known); }
   sb.append("\nopen this page, sign in, and it will show you a " + `${CODE_LENGTH}` + "-character code:");
   sb.append("\n  " + url);
   if (!openBrowser(url)) {
@@ -96,14 +146,14 @@ function announce(sb: Scrollback, base: string, email: string, scopes: string): 
   sb.append("\n" + wrap(DIM, platformNote()));
 }
 
-export function runLogin(sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker, server: string): void {
-  let check = checkServer(server, insecureAllowed(process.env(INSECURE_ENV) ?? ""));
+export function runLogin(sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker, origin: ServerOrigin, requested: string): void {
+  let check = checkServer(loginTarget(origin, requested), insecureAllowed(process.env(INSECURE_ENV) ?? ""));
   if (check.status != SERVER_OK) {
     sb.append("\n" + check.message);
     return;
   }
   let base = check.base;
-  introduce(sb, base, loginUrl(base));
+  introduce(sb, base, loginUrl(base), origin, requested);
   drawScreen(sb, input, mode, rk);
 
   let attempt = 0;
@@ -118,6 +168,7 @@ export function runLogin(sb: Scrollback, input: InputLine, mode: string, rk: Tur
     if (outcome.outcome == EX_OK) {
       saveCredential(outcome.credential);
       announce(sb, base, accountLabel(outcome.credential), outcome.credential.scopes);
+      keepServer(sb, origin, base);
       return;
     }
     sb.append("\n" + outcome.message);
@@ -130,13 +181,15 @@ export function runLogin(sb: Scrollback, input: InputLine, mode: string, rk: Tur
   sb.append("\nthat is " + `${MAX_ATTEMPTS}` + " tries. Run /login again for a fresh code.");
 }
 
-export function logoutText(server: string): string {
+export function logoutText(server: string, requested: string): string {
   let base = normalizeServer(server);
+  if (requested.trim() != "") { base = normalizeServer(requested); }
   let existing = loadCredential(base);
   if (existing.secret == "") {
-    return "\nnot signed in to " + base;
+    return "\nnot signed in to " + base + serverListNote("signed in to", otherServers(base));
   }
   forgetCredential(base);
   return "\nsigned out of " + base + ", the stored credential is gone from this machine."
-    + "\n" + wrap(DIM, "the key itself still exists on the account. Revoke it at " + base + "/platform");
+    + "\n" + wrap(DIM, "the key itself still exists on the account. Revoke it at " + base + "/platform")
+    + serverListNote("still signed in to", otherServers(base));
 }

@@ -1,6 +1,6 @@
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { ProviderConfig } from "./openai.ts";
-import { resolveServer, SERVER_ENV } from "../auth/server.ts";
+import { resolveServer, serverOrigin, ServerOrigin, SERVER_ENV } from "../auth/server.ts";
 
 export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string, updateCheck: string };
 
@@ -83,9 +83,29 @@ export function loadConfig(argv: string[]): ProviderConfig {
   return resolveConfig(flagModel, flagBaseUrl, envBaseUrl, envModel, envApiKey, file.baseUrl, file.model, file.apiKey);
 }
 
+export function loadServerOrigin(argv: string[]): ServerOrigin {
+  let flagServer = flagValue(argv, "--server");
+  let envServer = process.env(SERVER_ENV) ?? "";
+  let file = loadConfigFile(configFilePath());
+  return serverOrigin(flagServer, envServer, file.server);
+}
+
 export function loadServerBase(argv: string[]): string {
   let flagServer = flagValue(argv, "--server");
   let envServer = process.env(SERVER_ENV) ?? "";
   let file = loadConfigFile(configFilePath());
   return resolveServer(flagServer, envServer, file.server);
+}
+
+export function withServer(existing: ConfigFile, server: string): ConfigFile {
+  let file: ConfigFile = {
+    baseUrl: existing.baseUrl, model: existing.model, apiKey: existing.apiKey,
+    server: server, updateCheck: existing.updateCheck,
+  };
+  return file;
+}
+
+export function rememberServer(server: string): void {
+  let target = configFilePath();
+  saveConfigFile(target, withServer(loadConfigFile(target), server));
 }

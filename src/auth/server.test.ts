@@ -1,4 +1,4 @@
-import { normalizeServer, serverScheme, serverHost, serverAuthority, isPrivateHost, isDefaultServer, checkServer, resolveServer, insecureAllowed, DEFAULT_SERVER, SERVER_OK, SERVER_BAD_URL, SERVER_INSECURE } from "./server.ts";
+import { normalizeServer, serverScheme, serverHost, serverAuthority, isPrivateHost, isDefaultServer, checkServer, resolveServer, insecureAllowed, serverSource, serverOrigin, serverPinned, serverSourceLabel, DEFAULT_SERVER, SERVER_ENV, SERVER_OK, SERVER_BAD_URL, SERVER_INSECURE, SERVER_FROM_FLAG, SERVER_FROM_ENV, SERVER_FROM_FILE, SERVER_FROM_DEFAULT } from "./server.ts";
 
 test("normalizeServer lowercases scheme and host, drops a trailing slash", () => {
   expect(normalizeServer("HTTPS://Example.COM/") == "https://example.com");
@@ -118,4 +118,30 @@ test("insecureAllowed accepts 1, true or yes, case-insensitively, and nothing el
   expect(!insecureAllowed("0"));
   expect(!insecureAllowed("false"));
   expect(!insecureAllowed("nope"));
+});
+
+test("serverSource names which of the three overrides supplied the address", () => {
+  expect(serverSource("https://flag.example", "https://env.example", "https://file.example") == SERVER_FROM_FLAG);
+  expect(serverSource("", "https://env.example", "https://file.example") == SERVER_FROM_ENV);
+  expect(serverSource("", "", "https://file.example") == SERVER_FROM_FILE);
+  expect(serverSource("", "", "") == SERVER_FROM_DEFAULT);
+});
+
+test("serverOrigin carries the same address resolveServer picks, alongside its source", () => {
+  let o = serverOrigin("", "https://env.example", "https://file.example");
+  expect(o.base == resolveServer("", "https://env.example", "https://file.example"));
+  expect(o.source == SERVER_FROM_ENV);
+});
+
+test("a flag or env var pins the server, the config file and the default do not", () => {
+  expect(serverPinned(SERVER_FROM_FLAG));
+  expect(serverPinned(SERVER_FROM_ENV));
+  expect(!serverPinned(SERVER_FROM_FILE));
+  expect(!serverPinned(SERVER_FROM_DEFAULT));
+});
+
+test("serverSourceLabel names a pinning source the way a person set it", () => {
+  expect(serverSourceLabel(SERVER_FROM_FLAG).indexOf("--server") >= 0);
+  expect(serverSourceLabel(SERVER_FROM_ENV) == SERVER_ENV);
+  expect(serverSourceLabel(SERVER_FROM_FILE).indexOf("config file") >= 0);
 });

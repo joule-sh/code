@@ -1,4 +1,6 @@
-import { browserCommand, platformNote, retryable } from "./login_ui.ts";
+import { browserCommand, platformNote, retryable, loginTarget, serverHint, chosenServerNote, serverListNote } from "./login_ui.ts";
+import { checkServer, ServerOrigin, SERVER_OK, SERVER_INSECURE, SERVER_ENV, INSECURE_ENV, DEFAULT_SERVER, SERVER_FROM_FLAG, SERVER_FROM_ENV, SERVER_FROM_DEFAULT } from "../auth/server.ts";
+import { configFilePath } from "../providers/config.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
 import { EX_OK, EX_BAD_CODE, EX_UNKNOWN, EX_EXPIRED, EX_USED, EX_THROTTLED, EX_REFUSED, EX_UNREACHABLE, EX_NOT_JOULE, EX_NO_ACCOUNTS, EX_SERVER_ERROR, EX_REVOKED } from "../auth/exchange.ts";
 
@@ -36,4 +38,80 @@ test("retryable does not offer another attempt for outcomes a retry cannot fix",
   expect(!retryable(EX_NO_ACCOUNTS));
   expect(!retryable(EX_SERVER_ERROR));
   expect(!retryable(EX_REVOKED));
+});
+
+function originOf(base: string, source: string): ServerOrigin {
+  let o: ServerOrigin = { base: base, source: source };
+  return o;
+}
+
+test("loginTarget signs in to the resolved server when /login is given nothing", () => {
+  let o = originOf("https://joule.sh", SERVER_FROM_DEFAULT);
+  expect(loginTarget(o, "") == "https://joule.sh");
+  expect(loginTarget(o, "   ") == "https://joule.sh");
+});
+
+test("loginTarget takes the address typed after /login, trimmed", () => {
+  let o = originOf("https://joule.sh", SERVER_FROM_DEFAULT);
+  expect(loginTarget(o, "  https://joule.internal  ") == "https://joule.internal");
+});
+
+test("an address typed after /login goes through the same check as any other, so public plain http is still refused", () => {
+  let o = originOf("https://joule.sh", SERVER_FROM_DEFAULT);
+  let refused = checkServer(loginTarget(o, "http://joule.example.com"), false);
+  expect(refused.status == SERVER_INSECURE);
+  expect(refused.message.indexOf("refusing to sign in") >= 0);
+  expect(refused.message.indexOf(INSECURE_ENV) >= 0);
+});
+
+test("a private or loopback http address typed after /login is accepted without any extra step", () => {
+  let o = originOf("https://joule.sh", SERVER_FROM_DEFAULT);
+  expect(checkServer(loginTarget(o, "http://localhost:8080"), false).status == SERVER_OK);
+  expect(checkServer(loginTarget(o, "http://192.168.1.9"), false).status == SERVER_OK);
+  expect(checkServer(loginTarget(o, "http://box.internal"), false).status == SERVER_OK);
+});
+
+test("the default sign-in offers the other path without asking anything", () => {
+  let hint = serverHint(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "");
+  expect(hint.indexOf("/login <url>") >= 0);
+});
+
+test("a sign-in that already names an address does not repeat the offer", () => {
+  expect(serverHint(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "https://joule.internal") == "");
+});
+
+test("a pinned server says where it comes from rather than offering a choice it would lose", () => {
+  let env = serverHint(originOf("https://joule.sh", SERVER_FROM_ENV), "");
+  expect(env.indexOf(SERVER_ENV) >= 0);
+  expect(env.indexOf("/login <url>") < 0);
+  let flag = serverHint(originOf("https://joule.sh", SERVER_FROM_FLAG), "https://joule.internal");
+  expect(flag.indexOf("--server") >= 0);
+});
+
+test("choosing a server says it is now the one joule uses, and where that is written", () => {
+  let note = chosenServerNote(originOf("https://joule.sh", SERVER_FROM_DEFAULT), "https://joule.internal");
+  expect(note.indexOf("joule now uses https://joule.internal") >= 0);
+  expect(note.indexOf(configFilePath()) >= 0);
+  expect(note.indexOf(DEFAULT_SERVER) >= 0);
+});
+
+test("signing in elsewhere while a flag or env var pins the server keeps the credential but claims nothing more", () => {
+  let note = chosenServerNote(originOf("https://joule.sh", SERVER_FROM_ENV), "https://joule.internal");
+  expect(note.indexOf("credential is kept for https://joule.internal") >= 0);
+  expect(note.indexOf(SERVER_ENV) >= 0);
+  expect(note.indexOf("joule now uses") < 0);
+});
+
+test("serverListNote says nothing when no other server holds a credential", () => {
+  let none: string[] = [];
+  expect(serverListNote("also signed in to", none) == "");
+});
+
+test("serverListNote lists the servers it was given, folding a long tail into a count", () => {
+  let two: string[] = ["https://a.example", "https://b.example"];
+  expect(serverListNote("also signed in to", two).indexOf("also signed in to https://a.example, https://b.example") >= 0);
+  let many: string[] = ["https://a.example", "https://b.example", "https://c.example", "https://d.example", "https://e.example"];
+  let line = serverListNote("still signed in to", many);
+  expect(line.indexOf("https://c.example and 2 more") >= 0);
+  expect(line.indexOf("https://d.example") < 0);
 });
