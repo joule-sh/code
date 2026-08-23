@@ -111,6 +111,28 @@ function waitForHello(client: DaemonClient, seed: string[], ticks: int): string[
 
 export type AttachResult = { client: DaemonClient, spawned: bool, pending: string[], port: int };
 
+export function firstLine(text: string): string {
+  let trimmed = text.trim();
+  if (trimmed == "") { return ""; }
+  return trimmed.split("\n")[0].trim();
+}
+
+export function spawnFailureText(daemonBinPath: string, status: int, stderr: string): string {
+  let detail = firstLine(stderr);
+  if (detail == "" && status < 0) { detail = "it was killed before it could run"; }
+  if (detail == "") { detail = "it exited with status " + `${status}`; }
+  return "joule: " + daemonBinPath + " will not run: " + detail;
+}
+
+export function daemonBinFailure(daemonBinPath: string): string {
+  if (!fs.existsSync(daemonBinPath)) {
+    return "joule: " + daemonBinPath + " will not run: there is no such file";
+  }
+  let probe = child_process.spawnSync(daemonBinPath, ["--version"]);
+  if (probe.status == 0) { return ""; }
+  return spawnFailureText(daemonBinPath, probe.status, probe.stderr);
+}
+
 export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
   let info = readDaemonInfo(workspaceRoot);
   let taken = portsHeldByOthers(workspaceRoot);
@@ -146,8 +168,22 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     }
 
     fs.mkdirSync(daemonInfoDir(), true);
-    let args = daemonSpawnArgs(workspaceRoot, port, daemonLogPath(workspaceRoot), resumeFlag, defaultDaemonBinPath());
-    child_process.spawnSync("/bin/sh", args);
+    let daemonBinPath = defaultDaemonBinPath();
+    let binFailure = daemonBinFailure(daemonBinPath);
+    if (binFailure != "") {
+      console.log(binFailure);
+      client.disconnect();
+      let unusable: AttachResult = { client: client, spawned: false, pending: [], port: port };
+      return unusable;
+    }
+    let args = daemonSpawnArgs(workspaceRoot, port, daemonLogPath(workspaceRoot), resumeFlag, daemonBinPath);
+    let spawn = child_process.spawnSync("/bin/sh", args);
+    if (spawn.status != 0) {
+      console.log(spawnFailureText(daemonBinPath, spawn.status, spawn.stderr));
+      client.disconnect();
+      let unstarted: AttachResult = { client: client, spawned: false, pending: [], port: port };
+      return unstarted;
+    }
     let second = waitForReady(client, SPAWN_WAIT_TICKS);
     let combined: string[] = [];
     for (const f of first.frames) { combined.push(f); }

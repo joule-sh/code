@@ -6,6 +6,7 @@ import { RelayInputBridge } from "../terminal/relay_bridge.ts";
 import { ShareController } from "./share_controller.ts";
 import { InboxDrain } from "./inbox.ts";
 import { dispatchDaemonFrame } from "./dispatch.ts";
+import { logDispatched } from "./daemon_log.ts";
 
 export const SESSION_TICK_MS: int = 75;
 export const STOP_GRACE_MS: int = 400;
@@ -48,6 +49,7 @@ export class SessionWorker {
     let frames = this.inbox.drainAll();
     let inboxUplink = this.currentUplink();
     for (const f of frames) {
+      logDispatched(f);
       let wantsStop = dispatchDaemonFrame(this.session, this.gate, this.live, this.tasks, this.bridge, inboxUplink, f);
       if (wantsStop) { this.requestStop(STOP_GRACE_MS); }
     }

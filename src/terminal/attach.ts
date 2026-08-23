@@ -7,6 +7,7 @@ import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIf
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns } from "./tasks_bridge.ts";
 import { PlanOfferTracker, maybeOfferPlanDecision, tryHandlePlanDecisionArrow, tryHandlePlanDecisionEnter, tryHandlePlanDecisionChar } from "./attach_plan.ts";
 import { isNavigationKey, handleNavigationKey } from "./attach_keys.ts";
+import { TurnWatchdog } from "./attach_watchdog.ts";
 import { MODE_AUTO_EDIT, MODE_PLAN } from "./attach_slots.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox } from "./layout.ts";
@@ -124,17 +125,20 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
 
   let approvalLog = new ApprovalLog(MODE_AUTO_EDIT);
   let state = new ClientState(initialModel);
+  let watchdog = new TurnWatchdog(result.port);
 
   let setMode = (m: string) => {
     client.publish(encodeModeSet({ v: PROTOCOL_VERSION, seq: 0, type: MODE_SET, mode: m }));
   };
   let sendInput = (t: string) => {
     client.publish(encodeInput({ v: PROTOCOL_VERSION, seq: 0, type: INPUT, text: t }));
+    watchdog.noteRequestSent(Date.now());
   };
 
   let processFrames = (frames: string[], isReplay: bool): bool => {
     let daemonStopped = false;
     for (const f of frames) {
+      if (!isReplay) { watchdog.noteDaemonAnswered(); }
       let t = frameType(f);
       let tagged1 = isTaskTurnId(frameTurnId(f));
       if (tagged1) {
@@ -225,6 +229,11 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       let diags = client.drainDiagnostics();
       for (const d of diags) {
         appendFrame(sb, rk, d);
+        drawScreen(sb, input, approvalLog.mode, rk);
+      }
+      let unanswered = watchdog.takeOverdueNotice(Date.now());
+      if (unanswered != "") {
+        appendFrame(sb, rk, unanswered);
         drawScreen(sb, input, approvalLog.mode, rk);
       }
       pollUpdateNotice(notifier, updateOffer, sb, input, approvalLog.mode, rk);

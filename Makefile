@@ -1,4 +1,4 @@
-.PHONY: build release test e2e editor-frames editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -57,6 +57,22 @@ test: src/vendor/tty/tty_shim.o
 	lumen test src/e2e/stub_model.ts
 	lumen test src/daemon/daemon_main.ts
 	for f in $(TEST_TS); do lumen test $$f || exit 1; done
+
+# The same suite, minus the files that do not pass on macOS yet. Every one
+# of those is an unrelated platform gap - the permission bits a credential
+# file is written with, and how the update path recognises a managed
+# install - and each is tracked on its own ticket. Everything else runs, so
+# a new macOS-only failure anywhere in the tree still fails CI. The list is
+# meant to shrink.
+MACOS_SKIP_TS := src/auth/credentials.test.ts src/terminal/update_offer.test.ts src/update/install_detect.test.ts
+MACOS_TEST_TS := $(filter-out $(MACOS_SKIP_TS),$(TEST_TS))
+
+macos-test: src/vendor/tty/tty_shim.o
+	lumen test src/code.ts
+	lumen test src/relay/relay.ts
+	lumen test src/e2e/stub_model.ts
+	lumen test src/daemon/daemon_main.ts
+	for f in $(MACOS_TEST_TS); do lumen test $$f || exit 1; done
 
 e2e: build bin/stub_model
 	node scripts/e2e_full_stack.mjs

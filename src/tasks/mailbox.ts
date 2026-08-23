@@ -15,12 +15,22 @@ function parseI64(s: string): i64 {
   return out;
 }
 
+export function mailboxLine(recvAt: i64, tag: string, payload: string): string {
+  return `${recvAt}` + "|" + tag + "|" + payload + "\n";
+}
+
+export function appendMailboxOrReason(path: string, tag: string, payload: string): string {
+  let line = mailboxLine(Date.now(), tag, payload);
+  try {
+    fs.appendFileSync(path, line);
+  } catch {
+    return "could not write " + `${line.length}` + " bytes to " + path;
+  }
+  return "";
+}
+
 export function appendMailbox(path: string, tag: string, payload: string): void {
-  let recvAt: i64 = Date.now();
-  let fd = fs.openSync(path, "a");
-  if (fd < 0) { return; }
-  fs.writeSync(fd, `${recvAt}` + "|" + tag + "|" + payload + "\n");
-  fs.closeSync(fd);
+  appendMailboxOrReason(path, tag, payload);
 }
 
 function completeLines(content: string): string[] {

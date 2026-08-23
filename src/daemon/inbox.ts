@@ -1,4 +1,4 @@
-import { appendMailbox, MailboxReader } from "../tasks/mailbox.ts";
+import { appendMailbox, appendMailboxOrReason, MailboxReader } from "../tasks/mailbox.ts";
 import { inboxDir, inboxPath, isSafeConnId } from "./paths.ts";
 
 export const INBOX_TAG_FRAME: string = "F";
@@ -6,9 +6,9 @@ export const INBOX_TAG_CLOSED: string = "C";
 
 export type SealedInbox = { connId: string, size: int };
 
-export function appendInbound(runtimeDir: string, connId: string, frameJson: string): void {
-  if (!isSafeConnId(connId)) { return; }
-  appendMailbox(inboxPath(runtimeDir, connId), INBOX_TAG_FRAME, frameJson);
+export function appendInbound(runtimeDir: string, connId: string, frameJson: string): string {
+  if (!isSafeConnId(connId)) { return "the connection id is not one this daemon accepts"; }
+  return appendMailboxOrReason(inboxPath(runtimeDir, connId), INBOX_TAG_FRAME, frameJson);
 }
 
 export function appendClosed(runtimeDir: string, connId: string): void {
