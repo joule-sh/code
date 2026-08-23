@@ -265,6 +265,14 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
     finally:
         if session is not None:
             session.close()
+        # #171 gave the structural harness this; the same reasoning applies here,
+        # and this script needs it more. Each case starts a daemon that outlives
+        # the pty, registered under a HOME that is about to be deleted, so nothing
+        # ever stops it and it squats a port in the 400 port range until the box is
+        # rebuilt. Four cases per run is how a runner ends up carrying a hundred of
+        # them, and a later run that hashes onto one of those ports reaches a
+        # stranger instead of a daemon of its own.
+        harness.reap_daemon(work_dir)
         try:
             stub_proc.terminate()
             stub_proc.wait(timeout=3)

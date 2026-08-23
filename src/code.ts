@@ -33,8 +33,11 @@ if (hasFlagIn(currentArgs(), "--version")) {
   runDaemonEnsure(currentArgs());
 } else if (hasFlagIn(currentArgs(), "attach")) {
   runAttach(currentArgs());
-} else if (!runDaemonJoule(currentArgs())) {
-  runTerminal(currentArgs());
+} else {
+  let fallbackNotes: string[] = [];
+  if (!runDaemonJoule(currentArgs(), fallbackNotes)) {
+    runTerminal(currentArgs(), fallbackNotes);
+  }
 }
 
 test("hasFlagIn finds --version among other args", () => {

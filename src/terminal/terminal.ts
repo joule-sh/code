@@ -38,7 +38,7 @@ const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
 const WHEEL_SCROLL_LINES: int = 3;
 
-export function runTerminal(argv: string[]): void {
+export function runTerminal(argv: string[], startupNotes: string[]): void {
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
     process.exit(1);
@@ -216,6 +216,7 @@ export function runTerminal(argv: string[]): void {
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
+  for (const n of startupNotes) { sb.append("\n" + styleBanner(n)); }
   if (resume.note != "") { sb.append(resume.note); }
   drawScreen(sb, input, gate.mode, rk);
 
