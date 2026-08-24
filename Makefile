@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -133,6 +133,9 @@ console-association-harness: build bin/stub_model
 editor-frames:
 	node scripts/gen_editor_frames.mjs
 
+editor-icon:
+	node scripts/gen_editor_icon.mjs
+
 editor-check:
 	node scripts/syntax_check.mjs
 	node scripts/gen_editor_frames.mjs --check
@@ -140,6 +143,7 @@ editor-check:
 	node scripts/verify_editor_modes.mjs
 	node scripts/verify_editor_setup.mjs
 	node scripts/verify_editor_placement.mjs
+	node scripts/verify_editor_publish.mjs
 	node --check editor/extension.js
 	for f in editor/src/*.js editor/media/*.js scripts/editor_window/*.js; do node --check $$f || exit 1; done
 

@@ -1,92 +1,84 @@
-# joule for the editor
+# Joule for the editor
 
-An editor client for a joule daemon. It starts or attaches to the daemon for
-an open workspace folder and drives it over the spec 001 frames, with
-approvals rendered as native cards instead of terminal text.
+An agentic coding session in a side panel, driven by the `joule` you already
+run in a terminal. The agent reads and edits the files in your workspace, runs
+commands and makes commits **on your own machine** - the panel is a front end
+to a local daemon, not a hosted service and not a second agent.
 
-The design decisions - workspace-to-daemon mapping, trust level, where tools
-run, lifecycle, and what is reused from the terminal client rather than
-rewritten - are in
-[docs/04-editor.md](https://github.com/joule-sh/code/blob/main/docs/04-editor.md).
+A terminal and this panel can drive the same session at the same time. Change
+the model or the approval mode in either one and the other moves with it,
+because both are talking to the same daemon over the same protocol.
 
-## Where it opens
+## Before you install: this needs the joule CLI
 
-The session view opens in the **activity bar**, on the left, with the J mark
-as its icon. Nothing gates the container or the view, so the icon is there
-from the window's first paint on every editor from 1.85 up, whether or not
-the extension has activated yet.
-
-It can be dragged to the secondary side bar - the right-hand strip where the
-comparable assistant extensions sit - and the editor remembers that placement
-across restarts. An earlier release declared a right-hand default and lost
-the icon doing it (#233), so the default stays where every editor renders it
-reliably until the right-hand arrangement can come back without that cost.
-
-## What the panel shows
-
-**Before anything is configured**, a first-run screen: what joule is in one
-sentence, and the three ways it can reach a model, each as its own button
-with its own description - a joule account, your own provider key, or a
-self-hosted joule server. A missing or too-old `joule`, and a configuration
-that exists but cannot start a session, land on the same screen instead of a
-red error.
-
-**An API key is never typed into the panel.** The provider-key route opens
-`~/.config/joule-code/config.json` in the editor and says so; the extension
-reads that file only to answer "is there a key here", never its value, and
-writes nothing to it but a `server` address you asked it to remember.
-
-**In a session**, the composer carries its own controls: a chip row at the
-top of the box naming the file open beside the panel - what will be named at
-the top of the message, dismissable with a click - then the input, then the
-approval mode and the model as icon chips on a row with send at the end of
-it, and a status line beneath saying where the tools will run and what the
-current mode lets run without asking. Mode and model send the daemon's
-`mode.set` and `model.set` frames - the same thing `/mode` and `/model` do in
-a terminal - so a terminal driving the same session moves these controls too.
-
-## What it needs
-
-`joule` must be on `PATH`, or `joule.path` must point at it. The daemon is
-started through that binary, so it has to be the same install a terminal
-would use. Install it with the one-liner in
-[the repository README](https://github.com/joule-sh/code#install).
-Credentials are whatever `joule` already has - the extension never reads,
-stores or forwards an API key.
-
-The extension needs **joule 0.13.0 or newer**: 0.13.0 is the release that
-first shipped `daemon-ensure` and the attach socket this client talks to.
-Attaching runs `joule --version` first and refuses to go further when the
-binary is missing, is not a joule, or is older than that, so a mismatch is
-one sentence in the panel rather than a session that dies on the first frame
-it does not recognise. A binary built from a checkout reports `dev` and is
-taken at its word.
-
-There is **no Windows build of `joule` yet**
-([#173](https://github.com/joule-sh/code/issues/173)). The extension is
-plain JavaScript and loads on Windows, but it has nothing to drive there, so
-it says so instead of opening a panel that can never attach. Opening the
-folder through WSL or Remote-SSH works today: `extensionKind` is
-`workspace`, so the extension runs on the remote side, next to the `joule`
-and the files.
-
-## Installing
-
-Every release attaches `joule-editor-<version>.vsix` to
-[its GitHub release](https://github.com/joule-sh/code/releases), cut from the
-same tag as the binaries. Install it with
+The extension does not carry an agent. It starts and attaches to a `joule`
+daemon, so the binary has to be on the machine the workspace is on:
 
 ```sh
-code --install-extension joule-editor-<version>.vsix
+curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
-or from the Extensions view, through _Install from VSIX_. It is not on the
-Visual Studio Marketplace or Open VSX yet.
+That installs `joule` for x86_64 Linux, Apple Silicon macOS and Intel macOS.
+The extension needs **joule 0.13.0 or newer**. If `joule` is not on `PATH`,
+point [`joule.path`](#settings) at it.
 
-To work on the extension instead, open this repository in VS Code and run it
-in an Extension Development Host, or symlink `editor/` into
-`~/.vscode/extensions/`. There is no build step and no runtime dependencies;
-packaging is the only thing that fetches a tool.
+Credentials stay with the CLI. The panel never asks for an API key, never
+reads one, and never forwards one.
+
+## There is no Windows build yet
+
+**`joule` does not build for Windows**
+([#173](https://github.com/joule-sh/code/issues/173)), so on a Windows machine
+this extension installs, loads, and then tells you there is nothing for it to
+drive. Nothing about the panel will work there. That is a limitation of the
+CLI, not of the extension, and it is being worked on.
+
+**WSL works today, and is the way to use this on Windows.** Open the folder
+through WSL (or through Remote-SSH, or in a dev container): the extension
+declares itself a workspace extension, so it runs on the remote side, next to
+the Linux `joule` and next to your files. Install `joule` inside the WSL
+distribution with the one-liner above and the panel behaves exactly as it does
+on Linux.
+
+## What the panel does
+
+**It opens on a first-run screen** when nothing is configured yet: one
+sentence on what joule is, and the three ways it can reach a model - a joule
+account, your own provider key, or a self-hosted joule server - each as its
+own button. A missing `joule`, a `joule` too old to drive, and a configuration
+that cannot start a session all land here with a sentence about what to do,
+rather than a red error somewhere in the corner.
+
+**An API key is never typed into the panel.** The provider-key route opens
+`~/.config/joule-code/config.json` in the editor and says so. The extension
+reads that file only to answer "is there a key here", never its value, and
+writes nothing to it but a server address you asked it to remember.
+
+**Approvals are cards, not prompts in a scrollback.** When the agent wants to
+run a command or write a file that the current mode does not allow on its
+own, the panel shows what it wants to do and where it will run, and waits.
+
+**The composer carries the session's controls.** A chip row names the file
+open beside the panel, which is what will be quoted at the top of your
+message and can be dismissed with a click. Below the input, the approval mode
+and the model sit as chips, with a line saying where tools will run and what
+this mode lets through without asking.
+
+**It attaches, resumes and reconnects.** Close the window and the daemon keeps
+working; open it again and the panel picks the session back up.
+
+## Getting started
+
+1. Install `joule` (above) and run it once in a terminal to sign in or point
+   it at a provider.
+2. Open a folder in your editor.
+3. Open the Joule view from the activity bar, on the left.
+4. Press **Attach**.
+
+Attaching is deliberately a button rather than something that happens on
+open: a workspace's daemon may already be driven from a terminal, and joining
+it is a decision you make. Set `joule.attachOnStartup` if you would rather it
+happen every time.
 
 ## Settings
 
@@ -96,77 +88,48 @@ packaging is the only thing that fetches a tool.
 | `joule.attachOnStartup` | `false` | attach as soon as the window opens, instead of waiting for the button |
 | `joule.resumeOnStart` | `false` | when this window starts the daemon, resume the folder's previous session |
 
-`joule.attachOnStartup` is off by default on purpose: attaching can join a
-session someone is already driving from a terminal, so it is a decision a
-person makes rather than something a window does on open.
+`joule.path` must be the same install a terminal would use: the daemon is
+started and stopped through it.
 
-## Layout
+## Commands
 
-| file | what it is |
+| command | what it does |
 | --- | --- |
-| `extension.js` | activation, commands |
-| `src/chat_panel.js` | the webview host, folder picking |
-| `src/session.js` | one folder's daemon session |
-| `src/binary.js` | the preflight: is there a joule here, and can this build drive it |
-| `src/daemon_link.js` | attach, resume, reconnect |
-| `src/conversation.js` | frames to a chat view model, approval state |
-| `src/setup.js` | what this machine is configured with, without reading a key |
-| `src/onboard.js` | what each first-run route does in the editor |
-| `src/modes.js` | the approval modes and what each one lets run |
-| `src/frames.js` | **generated** - see below |
-| `src/ws.js` | the WebSocket client, shared with `scripts/` |
-| `media/` | the webview: `chat.js` renders, `first_run.js`, `transcript.js` and `composer.js` are its three screens |
+| `Joule: Attach to this workspace's session` | start or join the daemon for this folder |
+| `Joule: Detach from the session` | leave the session running and stop rendering it |
+| `Joule: Cancel the current turn` | stop the agent mid-turn |
+| `Joule: Stop this workspace's daemon` | shut the daemon down |
 
-`extension.js`, `src/chat_panel.js` and `src/onboard.js` are the only files
-that import `vscode`. Everything else is plain Node, which is how
-`scripts/verify_editor_client.mjs` drives the real client against a real
-daemon without an editor running.
+## Versions, and what happens when they disagree
 
-`src/modes.js` is the panel's copy of a vocabulary the daemon owns, so
-`scripts/verify_editor_modes.mjs` checks it against `src/approval/gate.ts`
-and the sentences `src/terminal/welcome.ts` uses, and `make editor-check`
-fails if the panel has started describing a mode differently from the
-terminal.
+The extension and the CLI are cut from the same tag, so a `0.18.0` extension
+and a `0.18.0` binary are the pair that was tested together. Attaching runs
+`joule --version` first and refuses to go further when the binary is missing,
+is not a joule, or is older than 0.13.0 - the release that first shipped the
+daemon and attach socket this panel talks to. A mismatch is one sentence in
+the panel rather than a session that dies on the first frame it does not
+recognise. A binary built from a checkout reports `dev` and is taken at its
+word.
 
-`scripts/verify_editor_setup.mjs`, in the same target, drives `src/setup.js`
-over throwaway config files: what counts as configured, which server is
-chosen, and - on every path - that neither a provider key nor an account
-credential appears anywhere in the state the panel is sent.
+## Installing without the marketplace
 
-## src/frames.js is generated
+Every release also attaches `joule-editor-<version>.vsix` to
+[its GitHub release](https://github.com/joule-sh/code/releases), cut from the
+same tag as the binaries:
 
-It is produced from `src/relay/web/page_js_frames.ts`, the one JavaScript
-definition of the frame vocabulary that #148 introduced so clients would stop
-copying it. Do not edit it by hand.
-
-```
-make editor-frames   # regenerate after changing page_js_frames.ts
-make editor-check    # fails if it has drifted, plus syntax checks
-make editor-harness  # the end-to-end check, no browser automation
-make editor-package  # build dist/joule-editor-<version>.vsix
+```sh
+code --install-extension joule-editor-<version>.vsix
 ```
 
-`make editor-window-harness` drives the panel in a real editor window and
-asserts against the DOM it painted. Two environment variables help while
-working on the interface:
+or the Extensions view, through _Install from VSIX_.
 
-```
-JOULE_EDITOR_SCENARIOS=first-run          # run one scenario instead of all three
-JOULE_EDITOR_CAPTURE=/tmp/panel           # also write what the panel rendered, as HTML
-```
+## Source, issues, and how it works
 
-## Packaging and the version
+The extension is plain JavaScript with no dependencies and no build step, in
+[`editor/`](https://github.com/joule-sh/code/tree/main/editor) of the
+[joule-sh/code](https://github.com/joule-sh/code) repository, MIT licensed.
 
-`make editor-package` writes `dist/joule-editor-<version>.vsix` through
-`@vscode/vsce`, pinned by `scripts/package_editor.mjs` and fetched with
-`npx` so nothing is vendored into the repository.
-
-The version in `package.json` is `0.0.0` in the tree and is never edited by
-hand, for the same reason `src/version.ts` says `dev`: the tag is the one
-source of truth, and a number kept in a file is a number that drifts from the
-binaries it is supposed to match. `scripts/package_editor.mjs` takes the
-version from `--version` or from `GITHUB_REF_NAME`, writes it into a copy of
-the manifest for the length of the packaging run, and restores the file
-afterwards, so a local build never leaves the tree dirty. The release
-workflow packages the extension in the same run as the binaries, from the
-same tag, and attaches the `.vsix` to the same release.
+- [Report a bug or ask for something](https://github.com/joule-sh/code/issues)
+- [How the panel is built, and why](https://github.com/joule-sh/code/blob/main/docs/04-editor.md) -
+  workspace-to-daemon mapping, trust level, where tools run, lifecycle, and
+  what is reused from the terminal client rather than rewritten
