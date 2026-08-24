@@ -16,11 +16,16 @@ const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache"
 const VSCODE_VERSION = "1.134.0";
 const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
-const SCENARIOS = [
+const ALL_SCENARIOS = [
+  { name: "first-run", version: VSCODE_VERSION },
   { name: "conversation", version: VSCODE_VERSION },
   { name: "close-mid-turn", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
 ];
+const ASKED_FOR = (process.env.JOULE_EDITOR_SCENARIOS || "").split(",").map((s) => s.trim()).filter((s) => s !== "");
+const SCENARIOS = ASKED_FOR.length === 0
+  ? ALL_SCENARIOS
+  : ALL_SCENARIOS.filter((s) => ASKED_FOR.includes(s.name));
 
 const teardown = [];
 let failed = false;
@@ -140,9 +145,11 @@ function printSuiteLog(root) {
   const file = path.join(root, "suite.log");
   if (!fs.existsSync(file)) {
     note("the suite left no log, so it never reached its first assertion");
-    return;
+    return 0;
   }
-  process.stdout.write(fs.readFileSync(file, "utf8"));
+  const text = fs.readFileSync(file, "utf8");
+  process.stdout.write(text);
+  return text.split("\n").filter((line) => line.startsWith("ok: ") || line.startsWith("FAIL")).length;
 }
 
 async function runScenario({ name: scenario, version }) {
@@ -162,6 +169,11 @@ async function runScenario({ name: scenario, version }) {
     JOULE_EDITOR_TEST_STUB_PORT: String(stubPort),
   };
   if (display !== null) { env.DISPLAY = display; }
+  if (scenario === "first-run") {
+    delete env.JOULE_CODE_BASE_URL;
+    delete env.JOULE_CODE_MODEL;
+    delete env.JOULE_CODE_API_KEY;
+  }
 
   const cleanup = () => {
     reap(dirs, env);
@@ -201,9 +213,12 @@ async function runScenario({ name: scenario, version }) {
     launchFailure = e;
   }
 
-  printSuiteLog(dirs.root);
+  const asserted = printSuiteLog(dirs.root);
   if (launchFailure !== null) {
     die(scenario + ": the editor window run failed: " + (launchFailure.message || launchFailure));
+  } else if (asserted === 0) {
+    die(scenario + ": the editor window opened and closed again without the suite asserting anything,"
+      + " so this scenario proved nothing");
   }
 
   reap(dirs, env);
@@ -237,10 +252,12 @@ async function main() {
 
   for (const scenario of SCENARIOS) {
     await runScenario(scenario);
+    await sleep(3000);
   }
 
   if (!failed) {
-    note("PASS: a real editor window opened the panel, ran a turn, approved a tool from the webview onto disk, and left no daemon behind,"
+    note("PASS: a real editor window showed an unconfigured person the first-run screen, opened the panel, ran a turn,"
+      + " drove the approval mode from the composer, approved a tool from the webview onto disk, left no daemon behind,"
       + " and an editor too old for the secondary side bar opened the same view in the activity bar");
   }
 }

@@ -14,6 +14,41 @@ body {
   overflow-y: auto;
 }
 
+.quanta {
+  display: inline-block;
+  position: relative;
+  width: 0.46em;
+  height: 0.46em;
+  margin-left: 0.16em;
+  border-radius: 23.5%;
+  background: #8b5cf6;
+  vertical-align: baseline;
+}
+
+.quanta i {
+  position: absolute;
+  top: 26.5%;
+  width: max(14.7%, 2px);
+  height: max(23.5%, 3.5px);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.quanta i:first-child { left: 26.5%; }
+.quanta i:last-child { right: 26.5%; }
+
+.wordmark {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.wordmark-version {
+  margin-left: 6px;
+  font-weight: 400;
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+
 .header {
   position: sticky;
   top: 0;
@@ -32,11 +67,19 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 1px;
+}
+
+.header-right {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .header-workspace {
-  font-weight: 600;
   overflow-wrap: anywhere;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
 }
 
 .header-meta,
@@ -61,26 +104,6 @@ body {
 .badge-failed {
   background: var(--vscode-inputValidation-errorBorder, #a1260d);
   color: #fff;
-}
-
-.gate {
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.gate-text {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-}
-
-.gate-error {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--vscode-errorForeground);
-  margin: 0;
 }
 
 .transcript {
@@ -111,7 +134,7 @@ body {
 .tool,
 .approval {
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px;
 }
 
@@ -158,6 +181,13 @@ body {
   margin-top: 6px;
 }
 
+.approval-where,
+.approval-note {
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
 .approval-actions {
   display: flex;
   gap: 6px;
@@ -179,7 +209,7 @@ body {
 .diff {
   margin-top: 6px;
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .diff-head {
@@ -266,36 +296,10 @@ body {
   font-size: 0.9em;
 }
 
-.composer {
-  position: sticky;
-  bottom: 0;
-  padding: 8px 10px;
-  background: var(--vscode-sideBar-background);
-  border-top: 1px solid var(--vscode-panel-border);
-}
-
-.composer-input {
-  width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-  padding: 6px;
-}
-
-.composer-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
 button {
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 4px;
   padding: 4px 10px;
   font-family: inherit;
   font-size: inherit;
@@ -314,6 +318,21 @@ button.secondary,
   background: var(--vscode-button-secondaryBackground);
 }
 
-button:hover {
+button.primary:hover,
+button.secondary:hover,
+.approval-button:hover {
   background: var(--vscode-button-hoverBackground);
+}
+
+button.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 0.9em;
+}
+
+button.link:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
 }

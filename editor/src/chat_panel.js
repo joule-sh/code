@@ -1,20 +1,18 @@
 const vscode = require("vscode");
-const fs = require("node:fs");
-const path = require("node:path");
+const os = require("node:os");
 const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const { EditorSession } = require("./session.js");
 const { findDaemonInfo } = require("./daemon_link.js");
-const { unsupportedPlatform } = require("./binary.js");
+const { unsupportedPlatform, checkBinary } = require("./binary.js");
+const setup = require("./setup.js");
+const onboard = require("./onboard.js");
 
 const CONN_ID_KEY = "joule.connId";
+const SETUP_TTL_MS = 2000;
 
 function nonce() {
   return crypto.randomBytes(16).toString("hex");
-}
-
-function readAsset(root, ...parts) {
-  return fs.readFileSync(path.join(root, ...parts), "utf8");
 }
 
 class ChatPanel extends EventEmitter {
@@ -24,6 +22,12 @@ class ChatPanel extends EventEmitter {
     this.view = null;
     this.session = null;
     this.folder = null;
+    this.binary = null;
+    this.checkingBinary = false;
+    this.note = "";
+    this.host = os.hostname();
+    this.setupFacts = null;
+    this.setupReadAt = 0;
     this.probing = context.extensionMode === vscode.ExtensionMode.Test;
   }
 
@@ -72,11 +76,26 @@ class ChatPanel extends EventEmitter {
     return `<script nonce="${n}" src="${uri}"></script>`;
   }
 
+  mediaTags(webview, media, n) {
+    const sheets = ["chat.css", "first_run.css", "composer.css"];
+    const scripts = ["dom.js", "first_run.js", "transcript.js", "composer.js", "chat.js"];
+    const links = sheets.map((name) => {
+      const uri = webview.asWebviewUri(vscode.Uri.joinPath(media, name));
+      return `<link rel="stylesheet" href="${uri}">`;
+    });
+    const tags = scripts.map((name) => {
+      const uri = webview.asWebviewUri(vscode.Uri.joinPath(media, name));
+      return `<script nonce="${n}" src="${uri}"></script>`;
+    });
+    return { links: links.join("\n"), scripts: tags.join("\n") };
+  }
+
   html(webview, media) {
     const n = nonce();
-    const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(media, "chat.css"));
-    const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(media, "chat.js"));
-    const framesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "src", "frames.js"));
+    const src = vscode.Uri.joinPath(this.context.extensionUri, "src");
+    const framesUri = webview.asWebviewUri(vscode.Uri.joinPath(src, "frames.js"));
+    const modesUri = webview.asWebviewUri(vscode.Uri.joinPath(src, "modes.js"));
+    const assets = this.mediaTags(webview, media, n);
     const csp = [
       "default-src 'none'",
       `style-src ${webview.cspSource}`,
@@ -84,12 +103,13 @@ class ChatPanel extends EventEmitter {
     ].join("; ");
     return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<link rel="stylesheet" href="${cssUri}">
+${assets.links}
 <title>Joule</title></head><body>
 <div id="root"></div>
 ${this.probeTag(webview, media, n)}
 <script nonce="${n}" src="${framesUri}"></script>
-<script nonce="${n}" src="${jsUri}"></script>
+<script nonce="${n}" src="${modesUri}"></script>
+${assets.scripts}
 </body></html>`;
   }
 
@@ -171,9 +191,87 @@ ${this.probeTag(webview, media, n)}
     if (msg.kind === "detach") { this.detach(); return; }
     if (msg.kind === "cancel") { this.cancel(); return; }
     if (msg.kind === "stop") { this.stopDaemon(); return; }
+    if (msg.kind === "route") { this.route(msg.route); return; }
+    if (msg.kind === "recheck") { this.recheck(); return; }
+    if (msg.kind === "help") { this.openHelp(); return; }
     if (this.session === null) { return; }
     if (msg.kind === "submit") { this.session.submit(msg.text); return; }
+    if (msg.kind === "mode") { this.session.setMode(msg.mode); return; }
+    if (msg.kind === "model") { this.pickModel(); return; }
     if (msg.kind === "answer") { this.session.answer(msg.callId, msg.decision); }
+  }
+
+  async route(kind) {
+    const folder = this.folder || this.folders()[0] || null;
+    try {
+      const note = await onboard.runRoute(kind, {
+        env: process.env,
+        jouleBin: this.jouleBin(),
+        cwd: folder === null ? undefined : folder.uri.fsPath,
+        server: this.setup().server,
+      });
+      if (note !== "") { this.note = note; }
+    } catch (e) {
+      this.note = String(e && e.message ? e.message : e);
+    }
+    this.setupReadAt = 0;
+    this.post();
+  }
+
+  recheck() {
+    this.note = "";
+    this.binary = null;
+    this.setupReadAt = 0;
+    this.post();
+  }
+
+  openHelp() {
+    const url = this.binary === null ? "" : this.binary.helpUrl;
+    if (!url) { return; }
+    vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+
+  async pickModel() {
+    if (this.session === null) { return; }
+    const current = this.session.conversation.session;
+    const typed = await vscode.window.showInputBox({
+      title: "Which model should this session use?",
+      prompt: "The same thing /model sets in a terminal. Every client on this session is told.",
+      value: current === null ? "" : current.model,
+    });
+    if (typed === undefined) { return; }
+    this.session.setModel(typed);
+  }
+
+  async ensureBinary() {
+    if (this.binary !== null || this.checkingBinary) { return; }
+    this.checkingBinary = true;
+    const folder = this.folder || this.folders()[0] || null;
+    const found = await checkBinary({
+      jouleBin: this.jouleBin(),
+      env: process.env,
+      cwd: folder === null ? undefined : folder.uri.fsPath,
+    });
+    this.checkingBinary = false;
+    this.binary = found;
+    this.post();
+  }
+
+  where() {
+    const folder = this.folder || (this.folders().length === 1 ? this.folders()[0] : null);
+    return {
+      root: folder === null ? "" : folder.uri.fsPath,
+      remote: vscode.env.remoteName || "",
+      host: this.host,
+    };
+  }
+
+  setup() {
+    const now = Date.now();
+    if (this.setupFacts !== null && now - this.setupReadAt < SETUP_TTL_MS) { return this.setupFacts; }
+    this.setupFacts = setup.setupState(process.env);
+    this.setupReadAt = now;
+    return this.setupFacts;
   }
 
   idleState(folders) {
@@ -199,7 +297,12 @@ ${this.probeTag(webview, media, n)}
       ? this.idleState(folders)
       : Object.assign(this.session.view(), { folders });
     state.blocked = blocked;
+    state.setup = this.setup();
+    state.where = this.where();
+    state.binary = this.binary;
+    state.note = this.note;
     this.view.webview.postMessage({ kind: "state", state });
+    this.ensureBinary();
   }
 
   dispose() {

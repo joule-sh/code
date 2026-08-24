@@ -17,6 +17,8 @@ var CANCEL_FRAME = "cancel";
 var APPROVAL_REPLY_FRAME = "approval.reply";
 var APPROVAL_REPLY_RESULT = "approval.reply.result";
 var RESUME_FRAME = "resume";
+var MODE_SET_FRAME = "mode.set";
+var MODEL_SET_FRAME = "model.set";
 var REASON_DONE = "done";
 var REASON_CANCELLED = "cancelled";
 var REASON_ERROR = "error";
@@ -244,6 +246,14 @@ function encodeResumeFrame(since) {
   return JSON.stringify(frameOfType(RESUME_FRAME, { since: since }));
 }
 
+function encodeModeSetFrame(mode) {
+  return JSON.stringify(frameOfType(MODE_SET_FRAME, { mode: mode }));
+}
+
+function encodeModelSetFrame(model) {
+  return JSON.stringify(frameOfType(MODEL_SET_FRAME, { model: model }));
+}
+
 function fixtureScript() {
   var out = [];
   out.push(JSON.stringify({ v: PROTOCOL_VERSION, seq: 1, type: TURN_START, turnId: "t1", prompt: "add a health endpoint and a test for it" }));
@@ -336,6 +346,11 @@ if (typeof module !== "undefined" && module.exports) {
   APPROVAL_REPLY_FRAME,
   APPROVAL_REPLY_RESULT,
   RESUME_FRAME,
+  MODE_SET_FRAME,
+  MODEL_SET_FRAME,
+  NOTICE_FRAME,
+  LEVEL_INFO,
+  LEVEL_WARN,
   REASON_DONE,
   REASON_CANCELLED,
   REASON_ERROR,
@@ -362,5 +377,7 @@ if (typeof module !== "undefined" && module.exports) {
   encodeCancelFrame,
   encodeApprovalReplyFrame,
   encodeResumeFrame,
+  encodeModeSetFrame,
+  encodeModelSetFrame,
   };
 }

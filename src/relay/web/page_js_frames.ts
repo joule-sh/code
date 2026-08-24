@@ -16,6 +16,8 @@ var CANCEL_FRAME = "cancel";
 var APPROVAL_REPLY_FRAME = "approval.reply";
 var APPROVAL_REPLY_RESULT = "approval.reply.result";
 var RESUME_FRAME = "resume";
+var MODE_SET_FRAME = "mode.set";
+var MODEL_SET_FRAME = "model.set";
 var REASON_DONE = "done";
 var REASON_CANCELLED = "cancelled";
 var REASON_ERROR = "error";
@@ -241,6 +243,14 @@ function encodeApprovalReplyFrame(callId, decision) {
 
 function encodeResumeFrame(since) {
   return JSON.stringify(frameOfType(RESUME_FRAME, { since: since }));
+}
+
+function encodeModeSetFrame(mode) {
+  return JSON.stringify(frameOfType(MODE_SET_FRAME, { mode: mode }));
+}
+
+function encodeModelSetFrame(model) {
+  return JSON.stringify(frameOfType(MODEL_SET_FRAME, { model: model }));
 }
 
 function fixtureScript() {

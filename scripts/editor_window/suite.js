@@ -4,6 +4,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { assertPlacement, expected } = require("./placement.js");
+const { panelChecks } = require("./panel_checks.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
 const ROOT = process.env.JOULE_EDITOR_TEST_ROOT || "";
@@ -11,6 +12,7 @@ const WORKSPACE = process.env.JOULE_EDITOR_TEST_WORKSPACE || "";
 const STUB = process.env.JOULE_EDITOR_TEST_STUB || "";
 const STUB_PORT = Number(process.env.JOULE_EDITOR_TEST_STUB_PORT || "0");
 const HOME = process.env.HOME || "";
+const CAPTURES = process.env.JOULE_EDITOR_CAPTURE || "";
 const LOG = path.join(ROOT, "suite.log");
 
 const PROMPT = "fix the health route";
@@ -20,6 +22,10 @@ const NOTE = "Added a health check note.";
 let failures = 0;
 let probeSeq = 0;
 let stub = null;
+
+const checks = panelChecks({
+  ok, probe, shown, waitForShown, waitFor, real, capture, workspace: WORKSPACE, home: HOME,
+});
 
 function say(line) {
   console.log(line);
@@ -137,6 +143,18 @@ async function waitForShown(panel, selector, needle, timeoutMs, label) {
   ok(true, label);
 }
 
+async function capture(panel, name) {
+  if (CAPTURES === "") { return; }
+  try {
+    const reply = await probe(panel, { op: "html", selector: "#root" });
+    fs.mkdirSync(CAPTURES, { recursive: true });
+    fs.writeFileSync(path.join(CAPTURES, SCENARIO + "-" + name + ".html"), reply.texts.join("\n") + "\n");
+    say("  captured what the panel renders: " + SCENARIO + "-" + name);
+  } catch (e) {
+    say("  could not capture " + name + ": " + (e && e.message ? e.message : e));
+  }
+}
+
 function recordStub(pid) {
   fs.appendFileSync(path.join(ROOT, "stub.pids"), String(pid) + "\n");
 }
@@ -198,10 +216,10 @@ async function openPanel() {
 }
 
 async function attachFromWebview(panel) {
-  await waitForShown(panel, ".gate-text", "No joule daemon is running",
+  await waitForShown(panel, ".gate-text", "no joule daemon is running",
     30000, "the idle gate painting in the webview before anything is attached");
   const button = await shown(panel, ".gate button.primary");
-  ok(button === "Start a session", "the gate offers a start button, since no daemon owns this folder yet");
+  ok(button === "start a session", "the gate offers a start button, since no daemon owns this folder yet");
 
   const clicked = await probe(panel, { op: "click", selector: ".gate button.primary" });
   ok(clicked.ok === true, "the start button in the webview took a real click");
@@ -249,10 +267,12 @@ async function approveFromWebview(panel) {
   const card = await shown(panel, ".approval");
   ok(card.includes(FIX_COMMAND), "the approval card shows the exact command, not a rendered summary line");
 
+  await checks.approvalDesign(panel);
+
   const buttons = await probe(panel, { op: "read", selector: ".approval-button" });
   ok(buttons.found === 3, "the approval card offers three choices");
-  ok(buttons.texts.includes("Allow") && buttons.texts.includes("Deny")
-    && buttons.texts.some((t) => t.startsWith("Always allow")),
+  ok(buttons.texts.includes("allow") && buttons.texts.includes("deny")
+    && buttons.texts.some((t) => t.startsWith("always allow")),
     "the choices are allow, always-allow and deny, rendered as real buttons");
 
   const readme = path.join(WORKSPACE, "README.md");
@@ -309,7 +329,7 @@ async function closeMidTurn(panel) {
   ok(daemonRecords().length === 1,
     "closing the panel mid-turn left exactly one daemon, with no orphan started alongside it");
 
-  await waitForShown(panel, ".gate-text", "A joule daemon is already running", 30000,
+  await waitForShown(panel, ".gate-text", "a joule daemon is already running", 30000,
     "the closed panel offering to rejoin the session it walked out of");
   await probe(panel, { op: "click", selector: ".gate button.primary" });
   await waitFor(() => panel.session.state === "attached", 90000, "the panel to rejoin the daemon it left");
@@ -353,14 +373,20 @@ async function drive() {
   try {
     panel = await openPanel();
     if (SCENARIO === "placement") { return; }
+    if (SCENARIO === "first-run") {
+      await checks.firstRunScreen(panel);
+      return;
+    }
     await startStub();
     await attachFromWebview(panel);
     if (SCENARIO === "close-mid-turn") {
       await closeMidTurn(panel);
       return;
     }
+    await checks.composerControls(panel);
     await runTurn(panel);
     await approveFromWebview(panel);
+    await checks.driveModeFromComposer(panel);
     await reapFromWindow(panel);
   } catch (e) {
     await dump(panel);

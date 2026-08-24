@@ -1,0 +1,121 @@
+.composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--vscode-sideBar-background);
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 8px;
+  background: var(--vscode-input-background);
+  padding: 6px 6px 5px;
+}
+
+.composer-box:focus-within {
+  border-color: var(--vscode-focusBorder);
+}
+
+.composer-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 3.4em;
+  color: var(--vscode-input-foreground);
+  background: none;
+  border: 0;
+  outline: none;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  padding: 2px 4px 4px;
+}
+
+.composer-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.composer-spacer {
+  flex: 1 1 auto;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 0.9em;
+  line-height: 1;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip:hover:not(:disabled) {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+select.chip {
+  appearance: none;
+  cursor: pointer;
+}
+
+.composer-send {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  padding: 0 14px;
+}
+
+.composer-send:hover:not(:disabled) {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-hoverBackground);
+}
+
+.composer-stop {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+.composer-status {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.status-where,
+.status-mode {
+  overflow-wrap: anywhere;
+}
+
+.status-mode {
+  color: var(--vscode-foreground);
+  opacity: 0.85;
+}

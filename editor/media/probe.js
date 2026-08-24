@@ -9,6 +9,9 @@
   function apply(msg, found, reply) {
     if (msg.op === "read") {
       reply.texts = found.map(function (node) { return node.textContent; });
+      reply.values = found.map(function (node) {
+        return typeof node.value === "string" ? node.value : "";
+      });
       return;
     }
     const target = found[msg.index || 0];
@@ -19,6 +22,15 @@
     }
     if (msg.op === "click") {
       target.click();
+      return;
+    }
+    if (msg.op === "html") {
+      reply.texts = found.map(function (node) { return node.outerHTML; });
+      return;
+    }
+    if (msg.op === "choose") {
+      target.value = msg.value;
+      target.dispatchEvent(new Event("change", { bubbles: true }));
       return;
     }
     if (msg.op === "fill") {

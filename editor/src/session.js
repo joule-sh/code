@@ -109,6 +109,18 @@ class EditorSession extends EventEmitter {
     this.link.send(frames.encodeCancelFrame(this.conversation.currentTurnId));
   }
 
+  setMode(mode) {
+    const wanted = String(mode || "").trim();
+    if (this.link === null || wanted === "") { return; }
+    this.link.send(frames.encodeModeSetFrame(wanted));
+  }
+
+  setModel(model) {
+    const wanted = String(model || "").trim();
+    if (this.link === null || wanted === "") { return; }
+    this.link.send(frames.encodeModelSetFrame(wanted));
+  }
+
   detach() {
     if (this.link !== null) {
       this.link.close();
@@ -140,6 +152,7 @@ class EditorSession extends EventEmitter {
       state: this.state,
       detail: this.detail,
       problem: this.problem,
+      binaryVersion: this.binaryVersion,
       port: this.port,
       spawnedByThisWindow: this.spawned,
       daemonAlreadyRunning: info !== null,
