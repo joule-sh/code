@@ -3,37 +3,134 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px 10px;
+  gap: 4px;
+  padding: 6px 10px 8px;
   background: var(--vscode-sideBar-background);
   border-top: 1px solid var(--vscode-panel-border);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-stop {
+  fill: currentColor;
+  stroke-width: 1;
 }
 
 .composer-box {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
   border-radius: 8px;
   background: var(--vscode-input-background);
-  padding: 6px 6px 5px;
+  padding: 5px 6px 4px;
 }
 
 .composer-box:focus-within {
   border-color: var(--vscode-focusBorder);
 }
 
+.composer-context {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-height: 20px;
+}
+
+.context-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 5px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-add:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.context-add .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px dashed var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 5px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  max-width: 16em;
+}
+
+.context-chip .context-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-chip .icon {
+  width: 9px;
+  height: 9px;
+  opacity: 0;
+}
+
+.context-chip:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-descriptionForeground);
+}
+
+.context-chip:hover .icon {
+  opacity: 1;
+}
+
 .composer-input {
   width: 100%;
   box-sizing: border-box;
-  resize: vertical;
-  min-height: 3.4em;
+  resize: none;
+  overflow-y: auto;
+  min-height: 1.5em;
   color: var(--vscode-input-foreground);
   background: none;
   border: 0;
   outline: none;
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
-  padding: 2px 4px 4px;
+  line-height: 1.45;
+  padding: 3px 4px;
 }
 
 .composer-input::placeholder {
@@ -43,7 +140,7 @@
 .composer-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-wrap: wrap;
 }
 
@@ -54,10 +151,11 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  height: 24px;
-  padding: 0 10px;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 5px;
   background: none;
   color: var(--vscode-descriptionForeground);
   font-family: inherit;
@@ -65,11 +163,16 @@
   line-height: 1;
   max-width: 14em;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.chip:hover:not(:disabled) {
+.chip .chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip:hover:not(:disabled),
+.mode-hold:hover {
   color: var(--vscode-foreground);
   background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
 }
@@ -79,23 +182,59 @@
   cursor: default;
 }
 
-select.chip {
-  appearance: none;
+.mode-hold {
   cursor: pointer;
 }
 
-.composer-send {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-  padding: 0 14px;
+select.mode-chip {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  max-width: 9em;
+  text-overflow: ellipsis;
 }
 
-.composer-send:hover:not(:disabled) {
+select.mode-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+select.mode-chip option {
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+}
+
+.composer-send {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--vscode-descriptionForeground);
+}
+
+.composer-send .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.composer-send.armed,
+.composer-send.armed:hover {
   color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.composer-send.armed:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
-.composer-stop {
+.composer-stop,
+.composer-stop:hover {
   color: var(--vscode-button-secondaryForeground);
   background: var(--vscode-button-secondaryBackground);
 }
@@ -107,15 +246,24 @@ select.chip {
   padding: 0 4px;
   color: var(--vscode-descriptionForeground);
   font-size: 0.85em;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .status-where,
 .status-mode {
-  overflow-wrap: anywhere;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
 }
 
-.status-mode {
-  color: var(--vscode-foreground);
-  opacity: 0.85;
+.status-where .icon,
+.status-mode .icon {
+  width: 11px;
+  height: 11px;
+  align-self: center;
+}
+
+.status-text {
+  overflow-wrap: anywhere;
 }

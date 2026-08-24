@@ -2,7 +2,7 @@ const vscode = require("vscode");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { assertPlacement, expected } = require("./placement.js");
 const { panelChecks } = require("./panel_checks.js");
 
@@ -13,6 +13,7 @@ const STUB = process.env.JOULE_EDITOR_TEST_STUB || "";
 const STUB_PORT = Number(process.env.JOULE_EDITOR_TEST_STUB_PORT || "0");
 const HOME = process.env.HOME || "";
 const CAPTURES = process.env.JOULE_EDITOR_CAPTURE || "";
+const SHOTS = process.env.JOULE_EDITOR_SHOT || "";
 const LOG = path.join(ROOT, "suite.log");
 
 const PROMPT = "fix the health route";
@@ -153,6 +154,29 @@ async function capture(panel, name) {
   } catch (e) {
     say("  could not capture " + name + ": " + (e && e.message ? e.message : e));
   }
+}
+
+function shot(name) {
+  if (SHOTS === "") { return; }
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const file = path.join(SHOTS, SCENARIO + "-" + name + ".png");
+  const took = spawnSync("import", ["-display", process.env.DISPLAY || ":0", "-window", "root", file]);
+  say(took.status === 0 ? "  screenshot: " + file : "  screenshot failed for " + name + ": " + String(took.stderr || took.error || took.status));
+}
+
+async function shootStates(panel) {
+  if (SHOTS === "") { return; }
+  await sleep(1200);
+  shot("empty");
+  const readme = await vscode.workspace.openTextDocument(path.join(WORKSPACE, "README.md"));
+  await vscode.window.showTextDocument(readme, { preview: false });
+  await waitForShown(panel, ".context-chip", "README.md", 15000, "the chip row to show the open file before the filled shot");
+  await probe(panel, { op: "fill", selector: ".composer-input", text: "add a health endpoint, and a test that proves it answers", key: "Shift" });
+  await sleep(600);
+  shot("filled");
+  await probe(panel, { op: "fill", selector: ".composer-input", text: "", key: "Shift" });
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  await sleep(400);
 }
 
 function recordStub(pid) {
@@ -383,6 +407,7 @@ async function drive() {
       await closeMidTurn(panel);
       return;
     }
+    await shootStates(panel);
     await checks.composerControls(panel);
     await runTurn(panel);
     await approveFromWebview(panel);

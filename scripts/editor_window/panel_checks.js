@@ -100,7 +100,30 @@ function panelChecks(kit) {
     ok(send === "send", "send sits at the end of that row rather than as a button below the box");
     const below = await probe(panel, { op: "read", selector: ".composer-actions" });
     ok(below.found === 0, "the old row of buttons under the box is gone");
+    await contextChipRow(panel);
     await capture(panel, "composer");
+  }
+
+  async function contextChipRow(panel) {
+    const add = await probe(panel, { op: "read", selector: ".composer-context .context-add" });
+    ok(add.found === 1, "the box carries a context row, with an add-context control waiting at the front of it");
+    const before = await probe(panel, { op: "read", selector: ".context-chip" });
+    ok(before.found === 0, "no file is open beside the panel, so no chip claims one will be sent");
+
+    const doc = await vscode.workspace.openTextDocument(path.join(workspace, "README.md"));
+    await vscode.window.showTextDocument(doc, { preview: false });
+    await waitForShown(panel, ".context-chip", "README.md", 15000,
+      "opening a file beside the panel puts it on the chip row, so the composer says what will go along");
+
+    const dismissed = await probe(panel, { op: "click", selector: ".context-chip" });
+    ok(dismissed.ok === true, "the chip took a real click to leave the file out");
+    await waitFor(async () => (await probe(panel, { op: "read", selector: ".context-chip" })).found === 0,
+      10000, "the dismissed chip to leave the row");
+    ok(true, "dismissing the chip removes it, so nothing is sent that the box no longer says");
+
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await waitFor(async () => (await probe(panel, { op: "read", selector: ".context-chip" })).found === 0,
+      10000, "the chip row to settle with no file open");
   }
 
   async function driveModeFromComposer(panel) {
