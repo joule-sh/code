@@ -431,7 +431,10 @@ than the call's JSON, that six lines are painted and `+36 lines` is offered
 rather than forty-two printed, that expanding paints the rest and collapsing
 puts it away, that the approval card still carries all three sentences and
 all three choices, and that the watcher's escape codes arrive as
-`ansi-fg-*` classes with no `ESC` anywhere in the text.
+`ansi-fg-*` classes with no `ESC` anywhere in the text. It ends by closing the
+panel rather than stopping the daemon from it: the stop path is what
+`conversation` and `close-mid-turn` are for, and the runner reaps every
+scenario's daemon on its way out regardless.
 
 The DOM is reached through `media/probe.js`, which `chat_panel.js` adds to the
 webview only when `context.extensionMode` is `Test`, and which `.vscodeignore`
