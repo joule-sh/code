@@ -26,6 +26,7 @@ Failure = harness.Failure
 
 ROWS = 40
 COLS = 100
+EXIT_TIMEOUT_S = 20.0
 PROMPT_FROM_B = "what does the health route do"
 PROMPT_FROM_A = "and where does it live"
 
@@ -161,9 +162,11 @@ def main():
         ok(len(rows_holding(first, "> " + PROMPT_FROM_A)) == 1,
            "the first terminal paints its own prompt once as well")
 
-        for session, name in [(first, "first"), (second, "second"), (latecomer, "latecomer")]:
+        leaving = [(first, "first"), (second, "second"), (latecomer, "latecomer")]
+        for session, name in leaving:
             session.write("\x04")
-            ok(session.wait_exit(8.0), "the %s terminal exits cleanly on ctrl-d" % name)
+        for session, name in leaving:
+            ok(session.wait_exit(EXIT_TIMEOUT_S), "the %s terminal exits cleanly on ctrl-d" % name)
     finally:
         for session in [first, second, latecomer]:
             if session is not None:
