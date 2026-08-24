@@ -147,6 +147,45 @@ and nothing exposed to an extension moves a container to a location - and an
 approximation built out of the workbench's own commands would be a window
 rearranging a person's layout without being asked.
 
+**Beside your code is an editor tab, not a container, and that works
+everywhere (#238).** `vscode.window.createWebviewPanel` opens a webview as an
+editor in a `ViewColumn`, and it is not a `viewsContainers` contribution at
+all, so the proposal check that rules out `secondarySidebar` below 1.106 has
+nothing to say about it. `joule.openInEditorTab` opens the session in
+`ViewColumn.Beside` - a tab with a close button in the tab row, beside the
+file it was asked from - and it renders the same on 1.105.1 as on 1.134.0.
+That is the placement people ask for when they ask for the panel next to
+their code, and it is available on every version the extension installs on.
+
+**The tab and the sidebar are two renderings of one client, not two
+clients.** `ChatPanel` holds a set of surfaces rather than a single view, and
+`post()` writes the same state to each; there is one `EditorSession`, one
+connection id, one attach. So opening a tab while the sidebar is attached
+cannot duplicate a transcript or let the two diverge, because there is no
+second client to disagree with - the harness types a prompt into the tab,
+finds it exactly once in the sidebar, and answers the approval that turn asks
+for from the sidebar, which clears the ask in the tab. This is deliberately
+not the #227 problem: nothing here is two clients of one session.
+
+**A tab is destroyed when it is closed, so there is a way back.** Closing an
+editor disposes its webview, unlike hiding a view, so the same command both
+opens the tab and reveals the one already open - one command covers opening,
+reopening and focusing. The editor's own restore brings it back across a
+restart: `registerWebviewPanelSerializer` plus the
+`onWebviewPanel:joule.session` activation event hand the panel back to
+`adopt()`, which remounts it live rather than leaving the stale picture the
+editor painted from its saved state. Shutdown must leave the panel alone for
+any of that to happen - an extension that disposes its own panel on
+`deactivate` has closed the tab before the workbench can save it, and nothing
+comes back.
+
+**The tab is an addition to the container, never a replacement.** It draws no
+icon of its own and a window that has never opened one has no entry point, so
+#234's ungated activity bar container still carries discoverability and still
+answers #233. Beyond the command palette, the session view's own title bar
+carries the command, and `joule.openInEditorTab` as a setting opens the tab
+when a window opens for anyone who wants that placement by default.
+
 **The window harness asserts the icon, not just the view.** The placement
 assertions check that opening the joule container shows the view - which
 fails if the view has spilled into the Explorer - and then close each of the
@@ -156,6 +195,24 @@ can open is not yet an icon a person can see, a `startup-icon` scenario runs
 on both pinned versions without ever activating the extension or opening the
 view: it screenshots the window's display and counts the marks in the
 activity bar, and passes only when the joule icon has rendered on its own.
+
+An `editor-tab` scenario runs on both pinned versions too: it opens the tab,
+reads the editor's own tab list to see that exactly one opened in a column
+beside the file, checks the activity bar holds the same icons afterwards as
+before, hands the extension a fresh panel through the `adopt()` the
+serializer calls and drives the rest of the turn through that one, and asks
+again to prove a second request reveals the tab rather than stacking another.
+
+The restart is proved outside the test host, because it cannot be proved
+inside it: a window opened with `--extensionTestsPath` keeps its storage at
+`:memory:`, so no editor state is ever written and nothing can survive a
+restart by construction. `restart_check.mjs` installs a packaged vsix into a
+fresh profile instead, opens a window with the setting on, quits it
+gracefully, and reads the saved workspace state for the tab's editor input;
+then reopens the same profile with the setting off and finds the tab still
+there, having been opened by nothing. A third profile that never opened a tab
+saves no such input, so the mark distinguishes a restored tab from a fresh
+one rather than matching anything the manifest happens to contain.
 
 ## Trust level
 

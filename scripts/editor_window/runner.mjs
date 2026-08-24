@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
+import { assertTabSurvivesRestart } from "./restart_check.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -24,6 +25,8 @@ const ALL_SCENARIOS = [
   { name: "second-client", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
   { name: "startup-icon", version: OLDER_VSCODE_VERSION },
+  { name: "editor-tab", version: VSCODE_VERSION },
+  { name: "editor-tab", version: OLDER_VSCODE_VERSION },
 ];
 const ASKED_FOR = (process.env.JOULE_EDITOR_SCENARIOS || "").split(",").map((s) => s.trim()).filter((s) => s !== "");
 const SCENARIOS = ASKED_FOR.length === 0
@@ -243,6 +246,10 @@ async function runScenario({ name: scenario, version }) {
     die(scenario + ": the run left " + left.length + " daemon record(s) behind: " + left.join(", "));
   } else {
     note(scenario + ": no daemon record survived the run");
+  }
+
+  if (!failed && scenario === "editor-tab") {
+    await assertTabSurvivesRestart({ version, cache: CACHE, joule: JOULE, note, die, display });
   }
 
   if (await portOpen(stubPort)) {

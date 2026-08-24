@@ -21,6 +21,7 @@ class ChatPanel extends EventEmitter {
     super();
     this.context = context;
     this.view = null;
+    this.tab = null;
     this.session = null;
     this.folder = null;
     this.binary = null;
@@ -64,12 +65,29 @@ class ChatPanel extends EventEmitter {
 
   resolveWebviewView(webviewView) {
     this.view = webviewView;
-    const media = vscode.Uri.joinPath(this.context.extensionUri, "media");
-    webviewView.webview.options = { enableScripts: true, localResourceRoots: [this.context.extensionUri] };
-    webviewView.webview.html = this.html(webviewView.webview, media);
-    webviewView.webview.onDidReceiveMessage((msg) => this.onMessage(msg));
+    this.mount(webviewView.webview);
     webviewView.onDidChangeVisibility(() => { if (webviewView.visible) { this.post(); } });
     this.post();
+  }
+
+  mount(webview) {
+    const media = vscode.Uri.joinPath(this.context.extensionUri, "media");
+    webview.options = { enableScripts: true, localResourceRoots: [this.context.extensionUri] };
+    webview.html = this.html(webview, media);
+    webview.onDidReceiveMessage((msg) => this.onMessage(msg));
+  }
+
+  setTab(panel) {
+    this.tab = panel;
+    if (panel !== null) { this.mount(panel.webview); }
+    this.post();
+  }
+
+  targets() {
+    const out = [];
+    if (this.view !== null) { out.push(this.view.webview); }
+    if (this.tab !== null) { out.push(this.tab.webview); }
+    return out;
   }
 
   probeTag(webview, media, n) {
@@ -303,7 +321,8 @@ ${assets.scripts}
   }
 
   post() {
-    if (this.view === null) { return; }
+    const targets = this.targets();
+    if (targets.length === 0) { return; }
     const folders = this.folders().map((f) => ({ name: f.name, path: f.uri.fsPath }));
     const blocked = unsupportedPlatform("");
     const state = this.session === null
@@ -315,7 +334,7 @@ ${assets.scripts}
     state.activeFile = this.activeFile();
     state.binary = this.binary;
     state.note = this.note;
-    this.view.webview.postMessage({ kind: "state", state });
+    for (const webview of targets) { webview.postMessage({ kind: "state", state }); }
     this.ensureBinary();
   }
 

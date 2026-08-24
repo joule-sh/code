@@ -53,8 +53,37 @@ ok(!/setContext/.test(extension),
 ok(new RegExp("registerWebviewViewProvider\\(ACTIVITY_BAR\\.view").test(extension),
   "extension.js registers the provider for the view the manifest declares");
 
+ok((manifest.activationEvents || []).includes("onWebviewPanel:" + placement.TAB.viewType),
+  "a restored editor tab activates the extension, so the tab can be handed back to it");
+ok(new RegExp("registerWebviewPanelSerializer\\(TAB\\.viewType").test(extension),
+  "extension.js registers a serializer for the tab, so a restored tab is rehydrated rather than left a stale shell");
+ok(new RegExp("registerCommand\\(TAB\\.command").test(extension),
+  "extension.js registers the command that opens the tab");
+
+const commands = (manifest.contributes.commands || []).map((c) => c.command);
+ok(commands.includes(placement.TAB.command),
+  "the manifest declares the command placement.js names, so the command palette can find it");
+
+const titleMenu = ((manifest.contributes.menus || {})["view/title"] || [])
+  .filter((item) => item.command === placement.TAB.command);
+ok(titleMenu.length === 1 && titleMenu[0].when === "view == " + placement.ACTIVITY_BAR.view,
+  "the session view's own title bar offers the tab, so the placement is reachable without the command palette");
+
+const settings = manifest.contributes.configuration.properties;
+ok(settings["joule.openInEditorTab"] !== undefined && settings["joule.openInEditorTab"].default === false,
+  "a window can be told to open the tab on its own, and is not told to by default");
+ok(/getConfiguration\("joule"\).get\("openInEditorTab"\)/.test(extension),
+  "extension.js reads that setting at activation");
+
+const tab = fs.readFileSync(path.join(ROOT, "editor", "src", "editor_tab.js"), "utf8");
+ok(/ViewColumn\.Beside/.test(tab),
+  "the tab opens beside the editor it was asked for rather than taking it over");
+ok(/retainContextWhenHidden: true/.test(tab),
+  "the tab keeps its webview alive while it is not the visible tab");
+
 if (failures > 0) {
   console.error(failures + " placement check(s) failed");
   process.exit(1);
 }
-console.log("nothing gates the activity bar container or its view, so the icon cannot depend on the extension running");
+console.log("nothing gates the activity bar container or its view, so the icon cannot depend on the extension running,"
+  + " and the editor tab is an addition to it that needs no container at all");

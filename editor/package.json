@@ -40,7 +40,8 @@
   "main": "./extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onView:joule.chat"
+    "onView:joule.chat",
+    "onWebviewPanel:joule.session"
   ],
   "contributes": {
     "viewsContainers": {
@@ -64,6 +65,11 @@
     },
     "commands": [
       {
+        "command": "joule.openInEditorTab",
+        "title": "Joule: Open the session in an editor tab",
+        "icon": "$(split-horizontal)"
+      },
+      {
         "command": "joule.attach",
         "title": "Joule: Attach to this workspace's session"
       },
@@ -80,6 +86,15 @@
         "title": "Joule: Stop this workspace's daemon"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "joule.openInEditorTab",
+          "when": "view == joule.chat",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "configuration": {
       "title": "Joule",
       "properties": {
@@ -87,6 +102,11 @@
           "type": "string",
           "default": "joule",
           "description": "Path to the joule binary. The daemon is started and stopped through it, so it must be the same install a terminal would use."
+        },
+        "joule.openInEditorTab": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the session in an editor tab beside your code when the window opens, instead of waiting to be asked. The activity bar icon stays where it is either way, and a tab you close stays closed until the command opens it again."
         },
         "joule.attachOnStartup": {
           "type": "boolean",

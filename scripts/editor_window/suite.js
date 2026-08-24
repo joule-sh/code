@@ -6,6 +6,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const { assertPlacement, expected } = require("./placement.js");
 const { panelChecks, otherClientOn } = require("./panel_checks.js");
 const { assertStartupIcons } = require("./startup_icon.js");
+const { assertEditorTab } = require("./editor_tab.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
 const ROOT = process.env.JOULE_EDITOR_TEST_ROOT || "";
@@ -432,6 +433,10 @@ async function drive() {
     }
     panel = await openPanel();
     if (SCENARIO === "placement") { return; }
+    if (SCENARIO === "editor-tab") {
+      await assertEditorTab({ ok, say, panel, startStub, attachFromWebview, reapFromWindow });
+      return;
+    }
     if (SCENARIO === "first-run") {
       await checks.firstRunScreen(panel);
       return;
