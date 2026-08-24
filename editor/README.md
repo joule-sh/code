@@ -13,16 +13,17 @@ rewritten - are in
 
 The session view opens in the **secondary side bar**, on the right, where the
 other assistant extensions sit and next to the editor rather than in front of
-the file tree. Its icon is in the strip along the top of that bar. The
-placement is declared, not something the extension does at run time, so an
-install where someone has already dragged the view somewhere else keeps it
-there: the editor remembers a person's own placement and only falls back to
-this default when there is none.
+the file tree. Its icon is in the strip along the top of that bar.
 
-Declaring it needs **VS Code 1.106 or newer**, which is what `engines.vscode`
-now says. That is the release where `secondarySidebar` became a final
-contribution point; an older editor would ignore it and leave the view in the
-Explorer, so the extension asks not to be installed there instead.
+That placement needs an editor from **1.106** on, which is where the manifest
+first took a secondary side bar container. On anything older the same view
+opens in the activity bar on the left, exactly as it always has, and can be
+dragged to the right by hand. Nothing about this asks a person to move
+editors: `engines.vscode` is still `^1.85.0`, and the extension ships both
+containers and picks between them when it starts.
+
+Either way the editor remembers a person's own placement: drag the view where
+you want it and that is where it opens, whatever the default says.
 
 ## What it needs
 

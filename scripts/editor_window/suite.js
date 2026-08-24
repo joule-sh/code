@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { assertPlacement, expected } = require("./placement.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
 const ROOT = process.env.JOULE_EDITOR_TEST_ROOT || "";
@@ -160,41 +161,6 @@ function real(p) {
   try { return fs.realpathSync(p); } catch (e) { void e; return p; }
 }
 
-async function showJoule(panel) {
-  await vscode.commands.executeCommand("workbench.view.extension.joule");
-  await waitFor(() => panel.view !== null && panel.view.visible === true, 20000,
-    "the joule view to open where the editor keeps it");
-}
-
-async function runAndSettle(command) {
-  await vscode.commands.executeCommand(command);
-  await sleep(500);
-}
-
-async function assertOpensInSecondarySidebar(panel) {
-  const commands = await vscode.commands.getCommands(true);
-  ok(commands.includes("workbench.view.extension.joule"),
-    "the editor built a joule view container from the manifest, so the view is not sitting in someone else's container");
-
-  await showJoule(panel);
-  await runAndSettle("workbench.action.closeSidebar");
-  ok(panel.view.visible === true,
-    "closing the primary side bar leaves the joule view showing, so it did not open in the activity bar");
-  await runAndSettle("workbench.action.closePanel");
-  ok(panel.view.visible === true,
-    "closing the bottom panel leaves the joule view showing, so it did not open in the panel");
-
-  await vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
-  try {
-    await waitFor(() => panel.view.visible === false, 20000, "the joule view to close with the secondary side bar");
-  } catch (e) {
-    void e;
-  }
-  ok(panel.view.visible === false,
-    "closing the secondary side bar takes the joule view with it, so that is where a fresh window opens it");
-  await showJoule(panel);
-}
-
 async function openPanel() {
   const ext = vscode.extensions.getExtension("joule-sh.joule-editor");
   if (!ok(ext !== undefined, "the joule extension is present in this editor window")) {
@@ -213,7 +179,7 @@ async function openPanel() {
   ok(folders.length === 1 && real(folders[0].uri.fsPath) === real(WORKSPACE),
     "the window has exactly the isolated test workspace open");
 
-  for (const command of ["joule.chat.focus", "workbench.view.extension.joule"]) {
+  for (const command of [expected().view + ".focus", expected().container]) {
     if (panel.view !== null) { break; }
     try {
       await vscode.commands.executeCommand(command);
@@ -224,10 +190,10 @@ async function openPanel() {
   }
   ok(panel.view !== null, "opening the joule view built the panel's webview");
   if (panel.view === null) { throw new Error("the joule view never resolved a webview"); }
-  await assertOpensInSecondarySidebar(panel);
+  await assertPlacement(panel, ok, say);
   panel.view.show(true);
   ok(await webviewReady(panel, hello, 120000), "the panel's webview loaded its scripts and answers from the editor window");
-  ok(panel.view.visible === true, "the joule view is the visible one in the secondary side bar");
+  ok(panel.view.visible === true, "the joule view is the visible one in the " + expected().bar);
   return panel;
 }
 
@@ -386,6 +352,7 @@ async function drive() {
   let panel = null;
   try {
     panel = await openPanel();
+    if (SCENARIO === "placement") { return; }
     await startStub();
     await attachFromWebview(panel);
     if (SCENARIO === "close-mid-turn") {
