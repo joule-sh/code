@@ -4,7 +4,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const { assertPlacement, expected } = require("./placement.js");
-const { panelChecks } = require("./panel_checks.js");
+const { panelChecks, otherClientOn } = require("./panel_checks.js");
 const { assertStartupIcons } = require("./startup_icon.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
@@ -377,6 +377,36 @@ async function closeMidTurn(panel) {
   await reapFromWindow(panel);
 }
 
+async function rejoinAfterAnotherClientDroveIt(panel, other) {
+  const port = panel.session.port;
+  panel.dispose();
+  await waitForShown(panel, ".gate-text", "a joule daemon is already running", 30000,
+    "the closed panel offering to rejoin the session another client is still driving");
+  checks.setModeFrom(other, "read-only");
+  await sleep(1000);
+  await probe(panel, { op: "click", selector: ".gate button.primary" });
+  await waitFor(() => panel.session.state === "attached", 90000, "the panel to rejoin that session");
+  ok(panel.session.port === port, "it rejoined the same daemon rather than starting a second one");
+  await checks.learnedTheSessionOnAttach(panel, "read-only");
+}
+
+async function restartTheDaemonUnderIt(panel) {
+  const promptsBefore = await checks.promptsPainted(panel);
+  const session = panel.session;
+  panel.dispose();
+  say("  joule --stop said: " + JSON.stringify(await session.stopDaemon()));
+  await waitFor(() => daemonRecords().length === 0, 60000, "the daemon record to disappear after a stop");
+  await waitFor(async () => {
+    const gate = await probe(panel, { op: "read", selector: ".gate button.primary" });
+    return gate.found === 1;
+  }, 30000, "the panel offering to start a session in this folder again");
+  await probe(panel, { op: "click", selector: ".gate button.primary" });
+  await waitFor(() => panel.session !== null && panel.session.state === "attached", 90000,
+    "the panel to attach to the daemon it started next");
+  ok(daemonRecords().length === 1, "exactly one daemon is running in this folder again");
+  await checks.joinedTheSessionThatIsRunning(panel, "auto-edit", promptsBefore);
+}
+
 async function dump(panel) {
   if (panel === null) { return; }
   if (panel.session !== null) {
@@ -410,6 +440,18 @@ async function drive() {
     await attachFromWebview(panel);
     if (SCENARIO === "close-mid-turn") {
       await closeMidTurn(panel);
+      return;
+    }
+    if (SCENARIO === "second-client") {
+      const other = await otherClientOn(panel.session.port);
+      try {
+        await checks.anotherClientDrivesTheSession(panel, other);
+        await rejoinAfterAnotherClientDroveIt(panel, other);
+      } finally {
+        other.close();
+      }
+      await restartTheDaemonUnderIt(panel);
+      await reapFromWindow(panel);
       return;
     }
     await shootStates(panel);

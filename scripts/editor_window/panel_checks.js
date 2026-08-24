@@ -1,7 +1,22 @@
 const vscode = require("vscode");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const modes = require("../../editor/src/modes.js");
+const ws = require("../../editor/src/ws.js");
+
+const OTHER_PROMPT = "what does the health route do";
+
+function frameJson(fields) {
+  return JSON.stringify(Object.assign({ v: 1, seq: 0 }, fields));
+}
+
+async function otherClientOn(port) {
+  const id = crypto.randomBytes(8).toString("hex");
+  const conn = await ws.connect("127.0.0.1", port, "/attach/" + id + "/ws", {});
+  conn.send(frameJson({ type: "resume", since: -1 }));
+  return conn;
+}
 
 function panelChecks(kit) {
   const { ok, probe, shown, waitForShown, waitFor, real, capture, workspace, home } = kit;
@@ -143,6 +158,48 @@ function panelChecks(kit) {
     await waitFor(() => sessionMode(panel) === was, 30000, "the mode to go back to where it started");
   }
 
+  async function anotherClientDrivesTheSession(panel, conn) {
+    conn.send(frameJson({ type: "mode.set", mode: modes.MODE_FULL_AUTO }));
+    await waitForShown(panel, ".status-mode", modes.permissionText(modes.MODE_FULL_AUTO), 30000,
+      "the panel painting the mode a second client on this session moved it to");
+    ok(sessionMode(panel) === modes.MODE_FULL_AUTO,
+      "the panel took that mode from the daemon's broadcast rather than keeping a notion of its own");
+
+    conn.send(frameJson({ type: "input", text: OTHER_PROMPT }));
+    await waitForShown(panel, ".prompt-text", OTHER_PROMPT, 30000,
+      "a prompt typed at another client painting in this panel's transcript, so the transcript says what was asked");
+    await waitFor(() => panel.session.conversation.turnActive === false, 60000,
+      "the turn that other client started to finish");
+  }
+
+  function setModeFrom(conn, mode) {
+    conn.send(frameJson({ type: "mode.set", mode }));
+  }
+
+  async function learnedTheSessionOnAttach(panel, mode) {
+    await waitForShown(panel, ".status-mode", modes.permissionText(mode), 30000,
+      "a panel that attached mid-session painting the mode the session is actually in: " + mode);
+    ok(sessionMode(panel) === mode,
+      "the mode it shows is the one the daemon replayed to it, not the one it was last told before it left");
+    const prompts = await probe(panel, { op: "read", selector: ".prompt-text" });
+    ok(prompts.texts.includes(OTHER_PROMPT),
+      "and the prompt another client sent is in the transcript it painted on the way back in");
+  }
+
+  async function promptsPainted(panel) {
+    const prompts = await probe(panel, { op: "read", selector: ".prompt-text" });
+    return prompts.texts.filter((t) => t === OTHER_PROMPT).length;
+  }
+
+  async function joinedTheSessionThatIsRunning(panel, mode, promptsBefore) {
+    await waitForShown(panel, ".status-mode", modes.permissionText(mode), 30000,
+      "the panel painting the mode of the daemon now running in this folder: " + mode);
+    ok(sessionMode(panel) === mode,
+      "a panel attaching to a daemon started after another one in the same folder shows the session it is in");
+    ok(await promptsPainted(panel) === promptsBefore,
+      "and nothing the previous session in this folder said is replayed into the transcript of this one");
+  }
+
   async function approvalDesign(panel) {
     const where = await shown(panel, ".approval-where");
     ok(namesTheWorkspace(where) && where.includes("not in the editor"),
@@ -155,7 +212,11 @@ function panelChecks(kit) {
     await capture(panel, "approval");
   }
 
-  return { firstRunScreen, composerControls, driveModeFromComposer, approvalDesign };
+  return {
+    firstRunScreen, composerControls, driveModeFromComposer, approvalDesign,
+    anotherClientDrivesTheSession, setModeFrom, learnedTheSessionOnAttach,
+    promptsPainted, joinedTheSessionThatIsRunning,
+  };
 }
 
-module.exports = { panelChecks };
+module.exports = { panelChecks, otherClientOn, OTHER_PROMPT };

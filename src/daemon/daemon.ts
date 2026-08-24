@@ -16,7 +16,7 @@ import { TaskRunner } from "../tasks/types.ts";
 import { SessionWorker } from "./session_worker.ts";
 import { RelayUplink } from "./relay_uplink.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
-import { appendBroadcast } from "./broadcast.ts";
+import { appendBroadcast, startBroadcastLog } from "./broadcast.ts";
 import { logDaemon, describeFrame } from "./daemon_log.ts";
 import { runDaemonWebSocket } from "./connection.ts";
 import { sweepInbox } from "./inbox.ts";
@@ -64,6 +64,12 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   fs.mkdirSync(runtimeDir, true);
   fs.mkdirSync(inboxDir(runtimeDir), true);
   sweepInbox(runtimeDir);
+  let logCleared = startBroadcastLog(runtimeDir);
+  if (logCleared != "") {
+    console.log("joule-daemon: " + logCleared + " - a client joining would be replayed a previous session, so this daemon is not starting");
+    process.exit(1);
+    return;
+  }
 
   let registry = new ToolsRegistry(workspaceRoot);
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };

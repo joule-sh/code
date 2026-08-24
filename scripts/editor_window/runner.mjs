@@ -21,6 +21,7 @@ const ALL_SCENARIOS = [
   { name: "first-run", version: VSCODE_VERSION },
   { name: "conversation", version: VSCODE_VERSION },
   { name: "close-mid-turn", version: VSCODE_VERSION },
+  { name: "second-client", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
   { name: "startup-icon", version: OLDER_VSCODE_VERSION },
 ];
@@ -267,7 +268,9 @@ async function main() {
 
   if (!failed) {
     note("PASS: a real editor window showed an unconfigured person the first-run screen, opened the panel, ran a turn,"
-      + " drove the approval mode from the composer, approved a tool from the webview onto disk, left no daemon behind,"
+      + " drove the approval mode from the composer, approved a tool from the webview onto disk, painted a mode and a"
+      + " prompt a second client on the same session produced, learned that session's state when it attached to it"
+      + " afterwards, painted nothing of a previous session in the same folder, left no daemon behind,"
       + " and both pinned editors showed the joule icon in the activity bar at startup"
       + " without the view ever being opened");
   }

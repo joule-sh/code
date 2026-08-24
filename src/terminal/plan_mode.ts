@@ -5,7 +5,7 @@ import { Scrollback } from "./scrollback.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
 import { PendingPlanDecision, PLAN_DECISION_ACCEPT, PLAN_DECISION_OPTION_COUNT, planDecisionOptionForChar } from "./input_state.ts";
 import { planDecisionOptionsBlock, planDecisionOptionRow } from "./renderer.ts";
-import { styleBanner, stylePrompt } from "./style.ts";
+import { styleBanner } from "./style.ts";
 import { decodeTurnEnd, REASON_DONE } from "../protocol/frames.ts";
 import { PLAN_MODE_BRIEFING } from "../approval/plan_briefing.ts";
 
@@ -51,7 +51,6 @@ function answerPlanDecision(pending: PendingPlanDecision, gate: Gate, session: S
   pending.close();
   if (index != PLAN_DECISION_ACCEPT) { return; }
   gate.mode = priorMode;
-  sb.append("\n" + stylePrompt("> ") + PLAN_APPROVED_MESSAGE);
   bridge.runNow(session, PLAN_APPROVED_MESSAGE);
 }
 

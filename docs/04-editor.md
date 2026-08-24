@@ -303,6 +303,17 @@ pending, reopens it, finds the same call id waiting, denies it from the webview
 and asserts the file was left alone, then reaps the daemon and asserts nothing
 is listening.
 
+A third window is the panel with company (#227). A second client - a plain
+websocket on the same daemon, the same thing a terminal is - sets the mode and
+sends a prompt, and both have to paint in the panel: the status line taking the
+mode, the transcript taking a prompt nobody typed here. It then closes the
+panel, has that other client move the mode again while nothing of this window
+is attached, reopens it, and asserts the panel paints the mode the session is
+in rather than the one it was last told before it left. Finally it stops the
+daemon, starts another in the same folder, and asserts the panel paints that
+session's mode with none of the previous session's transcript replayed into it,
+which is the half of #227 that was a daemon bug rather than a panel one.
+
 The DOM is reached through `media/probe.js`, which `chat_panel.js` adds to the
 webview only when `context.extensionMode` is `Test`, and which `.vscodeignore`
 keeps out of the packaged `.vsix`. It reads text and dispatches real clicks on

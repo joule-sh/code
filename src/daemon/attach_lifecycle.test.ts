@@ -1,4 +1,4 @@
-import { helloWorkspace, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
+import { helloWorkspace, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello } from "../protocol/frames.ts";
 
 function hello(workspace: string): string {
@@ -6,6 +6,15 @@ function hello(workspace: string): string {
     v: PROTOCOL_VERSION, seq: 0, type: SESSION_HELLO,
     sessionId: "daemon-8300", workspace: workspace, model: "stub",
     mode: "ask", protocol: PROTOCOL_VERSION,
+  };
+  return encodeSessionHello(f);
+}
+
+function helloSaying(mode: string, model: string): string {
+  let f: SessionHelloFrame = {
+    v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO,
+    sessionId: "daemon-8300", workspace: "/tmp/mine", model: model,
+    mode: mode, protocol: PROTOCOL_VERSION,
   };
   return encodeSessionHello(f);
 }
@@ -29,6 +38,42 @@ test("helloWorkspace answers with the first hello it saw", () => {
 
 test("a daemon for another workspace does not read as this one", () => {
   expect(helloWorkspace([hello("/tmp/theirs/repo")]) != "/tmp/mine/repo");
+});
+
+test("a client with nothing replayed to it yet falls back to what it guessed", () => {
+  expect(attachedMode([], "auto-edit") == "auto-edit");
+  expect(attachedModel([], "local-guess") == "local-guess");
+});
+
+test("the mode and model a joining client shows come from the session's hello", () => {
+  let frames = [helloSaying("safe-auto", "stub-model")];
+  expect(attachedMode(frames, "auto-edit") == "safe-auto");
+  expect(attachedModel(frames, "local-guess") == "stub-model");
+});
+
+test("a hello that names neither leaves the client's own guess alone", () => {
+  let frames = [helloSaying("", "")];
+  expect(attachedMode(frames, "auto-edit") == "auto-edit");
+  expect(attachedModel(frames, "local-guess") == "local-guess");
+});
+
+test("a change made before this client joined wins over the hello it replays with", () => {
+  let frames = [
+    helloSaying("auto-edit", "stub-model"),
+    "{\"v\":1,\"seq\":2,\"type\":\"mode.changed\",\"mode\":\"full-auto\"}",
+    "{\"v\":1,\"seq\":3,\"type\":\"model.changed\",\"model\":\"other-model\"}",
+  ];
+  expect(attachedMode(frames, "auto-edit") == "full-auto");
+  expect(attachedModel(frames, "local-guess") == "other-model");
+});
+
+test("the last change in the replay is the one a joining client lands on", () => {
+  let frames = [
+    helloSaying("auto-edit", "stub-model"),
+    "{\"v\":1,\"seq\":2,\"type\":\"mode.changed\",\"mode\":\"full-auto\"}",
+    "{\"v\":1,\"seq\":3,\"type\":\"mode.changed\",\"mode\":\"read-only\"}",
+  ];
+  expect(attachedMode(frames, "auto-edit") == "read-only");
 });
 
 test("nextPortInRange steps to the next port in the range", () => {

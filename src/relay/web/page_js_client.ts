@@ -181,6 +181,7 @@ function applyFrameToTranscript(frameJson) {
   if (kind === TURN_START) {
     state.currentTextEl = null;
     state.currentTurnId = f.turnId;
+    if (typeof f.prompt === "string" && f.prompt !== "") { appendLine("line-prompt", "> " + f.prompt); }
     showCancelRow(true);
     return;
   }
