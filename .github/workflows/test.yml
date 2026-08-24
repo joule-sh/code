@@ -274,6 +274,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: choco install make -y --no-progress
+      # make is a native Windows program and inherits the Windows PATH, which
+      # does not carry Git's POSIX tools even inside a bash step - bash resolves
+      # those itself. Without an sh.exe it can see, make runs each recipe
+      # through CreateProcess instead of a shell, and CreateProcess does not
+      # append .exe, so the build died on "zig: The system cannot find the file
+      # specified". Putting the directory on PATH also gives `$(shell find src
+      # ...)` the GNU find the Makefile is written against rather than the
+      # unrelated Windows one.
+      - run: cygpath -w /usr/bin >> "$GITHUB_PATH"
       - run: |
           curl -fsSL -o lumen.zip "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-windows.zip"
           7z x -y lumen.zip > /dev/null

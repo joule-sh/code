@@ -53,8 +53,17 @@ jobs:
       LUMEN_VERSION: ${{ matrix.lumen_version }}
     steps:
       - uses: actions/checkout@v4
+      # make is a native Windows program and inherits the Windows PATH, which
+      # does not carry Git's POSIX tools even inside a bash step - bash resolves
+      # those itself. Without an sh.exe it can see, make runs each recipe
+      # through CreateProcess instead of a shell, and CreateProcess does not
+      # append .exe, so the build dies on "zig: The system cannot find the file
+      # specified". Putting the directory on PATH also gives `$(shell find src
+      # ...)` the GNU find the Makefile is written against.
       - if: runner.os == 'Windows'
-        run: choco install make -y --no-progress
+        run: |
+          choco install make -y --no-progress
+          cygpath -w /usr/bin >> "$GITHUB_PATH"
       # Lumen's allocator links the Boehm collector as a system library. macOS
       # has none, so Homebrew provides it. Linux needs nothing installed here:
       # the static build below compiles its own - see the Linux step.
