@@ -426,6 +426,99 @@ expectTrue(mdIsFenceLine("```"), "the web markdown tokenizer recognizes a fenced
 expectTrue(mdIsFenceLine("```ts"), "a fence line with a language tag still counts as a fence (#81 markdown rendering)");
 expectTrue(!mdIsFenceLine("plain text"), "a plain line is not mistaken for a fence (#81 markdown rendering)");
 
+const viewPath = new URL("../src/relay/web/page_js_view.ts", import.meta.url);
+const viewSource = fs.readFileSync(viewPath, "utf8");
+const viewStart = viewSource.indexOf("`");
+const viewEnd = viewSource.lastIndexOf("`");
+if (viewStart < 0 || viewEnd <= viewStart) {
+  console.error("could not find the embedded template literal in page_js_view.ts");
+  process.exit(1);
+}
+const viewSandbox = {};
+vm.createContext(viewSandbox);
+vm.runInContext(viewSource.slice(viewStart + 1, viewEnd).replace(/\\\\/g, "\\"), viewSandbox);
+vm.runInContext(
+  "var __exports = { ansiSegmentsJs: ansiSegmentsJs, stripAnsiJs: stripAnsiJs, toolTargetJs: toolTargetJs, toolFactJs: toolFactJs };",
+  viewSandbox
+);
+const { ansiSegmentsJs, stripAnsiJs, toolTargetJs, toolFactJs } = viewSandbox.__exports;
+
+function segmentClass(text, needle) {
+  for (const segment of ansiSegmentsJs(text)) {
+    if (segment.text.indexOf(needle) >= 0) { return segment.cls; }
+  }
+  return "";
+}
+
+const watcherLine = ESC + "[33m[nodemon]" + ESC + "[39m 3.1.14";
+expectTrue(
+  stripAnsiJs(watcherLine) === "[nodemon] 3.1.14",
+  "an escape sequence leaves the text it was colouring and nothing else (#226)"
+);
+expectTrue(
+  segmentClass(watcherLine, "[nodemon]") === "ansi-fg-3",
+  "the yellow a watcher asks for becomes a class a theme can colour (#226)"
+);
+expectTrue(
+  segmentClass(ESC + "[92mpassed", "passed") === "ansi-fg-10",
+  "a bright colour is the bright half of the palette, not the plain one (#226)"
+);
+expectTrue(
+  segmentClass(ESC + "[1;4;31mFAIL", "FAIL") === "ansi-fg-1 ansi-bold ansi-underline",
+  "attributes and a colour in one sequence all survive (#226)"
+);
+expectTrue(
+  segmentClass(ESC + "[38;5;196mred", "red") === "ansi-fg-9" && segmentClass(ANSI_RED + "red", "red") === "ansi-fg-9",
+  "a 256-colour and a truecolour red both land on the nearest palette entry rather than being dropped (#226)"
+);
+expectTrue(
+  stripAnsiJs(ESC + "[2K" + ESC + "[1Gprogress") === "progress" && stripAnsiJs(ESC + "]0;a title" + String.fromCharCode(7) + "done") === "done",
+  "cursor moves and window titles are removed rather than printed as text (#226)"
+);
+expectTrue(
+  stripAnsiJs("one\r\ntwo\rthree") === "one\ntwothree",
+  "a carriage return does not survive into the page as a character (#226)"
+);
+
+const readFact = toolFactJs("read", JSON.stringify({ path: "server.js" }), { ok: true, output: "a\nb\nc\n", truncated: false });
+expectTrue(
+  readFact.target === "server.js" && readFact.meta === "3 lines",
+  "a read is the file it read and how much came back, not the json it was called with (#236)"
+);
+expectTrue(
+  readFact.body === "a\nb\nc",
+  "the body it offers is what the tool returned, without the empty line a trailing newline leaves (#236)"
+);
+expectTrue(
+  toolFactJs("run", JSON.stringify({ command: "npm test" }), { ok: true, output: "exit 0\n2 passed\n0 failed", truncated: false }).meta === "exit 0, 2 lines",
+  "a run is how it ended and how much it printed (#236)"
+);
+expectTrue(
+  toolFactJs("write", JSON.stringify({ path: "a.ts" }), { ok: true, output: "wrote 12 bytes to a.ts", truncated: false }).body === "",
+  "a one-line result is the row itself and gets no block under it (#236)"
+);
+expectTrue(
+  toolFactJs("list", JSON.stringify({ path: "src" }), { ok: true, output: "a.ts\nb.ts\nc.ts", truncated: false }).meta === "3 entries",
+  "a listing counts entries rather than lines (#236)"
+);
+expectTrue(
+  toolFactJs("read", JSON.stringify({ path: "big.ts" }), { ok: true, output: "a\nb", truncated: true }).meta === "2 lines, truncated",
+  "a truncated result still says so (#236)"
+);
+expectTrue(
+  toolFactJs("run", JSON.stringify({ command: "false" }), { ok: false, output: "no such file", truncated: false }).meta === "failed: no such file",
+  "a failure that fits on the row stays on the row (#236)"
+);
+expectTrue(
+  toolFactJs("run", JSON.stringify({ command: "sleep 1" }), { running: true, ok: false, output: "" }).meta === "running",
+  "a call still in flight says that much and no more (#236)"
+);
+expectTrue(
+  toolTargetJs("task_status", JSON.stringify({ id: "bgrun-2" })) === "bgrun-2"
+    && toolTargetJs("odd", "not json at all") === "not json at all",
+  "every tool has something better to show than its arguments, and an unparsable one is left alone (#236)"
+);
+
 console.log("");
 if (failures > 0) {
   console.error(failures + " assertion(s) failed");

@@ -311,6 +311,57 @@ Deliberately not changed: subagent approvals are intercepted by
 Foreground approvals are what a client shows a person, and widening that is
 its own change.
 
+## What the transcript shows (#236, #226)
+
+**A tool call is a fact, not an invocation.** `read {"path":"server.js"}` is
+what the model sent; what a person wants is which file, and how much came
+back. Each call is one row - the tool, its target, and what the result was -
+with the output under it, and `toolFactJs` in
+`src/relay/web/page_js_view.ts` is the single place that decides what those
+three are. A `run` says how it exited and how many lines it printed, a `list`
+counts entries, a one-line result *is* the row and gets no block under it at
+all, and a tool this panel has never heard of still shows the first string in
+its arguments rather than the JSON around it.
+
+**Output is bounded the way the terminal bounds it.** The collapse policy the
+terminal uses - `planToolOutputCollapseJs`, six head lines once there are
+more than ten - was already served to the browser page and was the one thing
+the panel did not take. It does now: six lines, then `+36 lines`, expanding
+in place and collapsing again. Which calls are open is held per call id
+outside the DOM, because the panel repaints the whole transcript on every
+frame.
+
+**File content is not prose.** A `read` renders as numbered lines in a code
+block, terminal output renders as terminal output, and the model's own text
+is the UI font at reading weight - which it was not before, because every
+`pre` in the transcript was the editor's monospace font at the editor's size,
+so a sentence and a stack trace arrived at the same weight.
+
+**ANSI becomes colour, not text.** `ansiSegmentsJs` turns an escape run into
+`{text, cls}` spans. The sixteen palette entries map to the window's own
+`--vscode-terminal-ansi*` colours, so a watcher's yellow is the yellow that
+window gives a terminal; bold, dim, italic, underline and inverse become
+classes; 256-colour and truecolour land on the nearest of the sixteen rather
+than being dropped; cursor moves, window titles and carriage returns are
+removed rather than printed. Nothing is coloured inline, because the
+webview's CSP carries no `unsafe-inline` in `style-src`.
+
+That conversion lives beside the frame vocabulary rather than inside the
+panel, for the reason #226 gives: anything that has to show terminal output
+in a DOM wants it, and a third private copy is what #148 was written to stop.
+`page_js_view.ts` is served by the relay alongside `page_js_frames.ts`, is
+generated into `editor/src/frames.js` by the same `make editor-frames`, and
+`scripts/verify_renderer.mjs` asserts over the source both of them share.
+
+**The approval card keeps every word and loses its weight.** The sentences
+#217 settled - what runs, where it runs, and that whoever answers first
+anywhere decides - are unchanged. What changed is that the explanation is
+secondary text rather than body copy, the three choices are one compact row
+with only `allow` filled, and the command sits in the same code block a tool
+result gets. It is still the loudest thing in the transcript, because it is
+the only thing waiting on a person, but it is no longer heavier than the work
+it interrupts.
+
 ## Tools run where the workspace is
 
 `read`, `write`, `edit`, `run` and `spawn_agent` execute inside
@@ -419,6 +470,20 @@ daemon, starts another in the same folder, and asserts the panel paints that
 session's mode with none of the previous session's transcript replayed into it,
 which is the half of #227 that was a daemon bug rather than a panel one.
 
+A fourth window is the transcript with something worth reading in it (#236,
+#226). The stub model drives a second script, chosen by `E2E_STUB_SCRIPT`, so
+the scenarios that existed keep the turn they were written for: this one
+reads a 42-line file and runs a command that prints 29 lines of watcher
+output in colour. It asserts off the DOM that the row names the file rather
+than the call's JSON, that six lines are painted and `+36 lines` is offered
+rather than forty-two printed, that expanding paints the rest and collapsing
+puts it away, that the approval card still carries all three sentences and
+all three choices, and that the watcher's escape codes arrive as
+`ansi-fg-*` classes with no `ESC` anywhere in the text. It ends by closing the
+panel rather than stopping the daemon from it: the stop path is what
+`conversation` and `close-mid-turn` are for, and the runner reaps every
+scenario's daemon on its way out regardless.
+
 The DOM is reached through `media/probe.js`, which `chat_panel.js` adds to the
 webview only when `context.extensionMode` is `Test`, and which `.vscodeignore`
 keeps out of the packaged `.vsix`. It reads text and dispatches real clicks on
@@ -453,7 +518,7 @@ is why the layout below moved here when publishing was wired up (#175).
 | `src/setup.js` | what this machine is configured with, without reading a key |
 | `src/onboard.js` | what each first-run route does in the editor |
 | `src/modes.js` | the approval modes and what each one lets run |
-| `src/frames.js` | generated from `src/relay/web/page_js_frames.ts`, never edited by hand |
+| `src/frames.js` | generated from `src/relay/web/page_js_frames.ts` and `page_js_view.ts`, never edited by hand |
 | `src/ws.js` | the WebSocket client, shared with `scripts/` |
 | `media/` | the webview: `chat.js` renders, `first_run.js`, `transcript.js` and `composer.js` are its three screens |
 | `media/icon.png` | the marketplace tile, written by `make editor-icon` from the same J as `media/icon.svg` |
@@ -484,8 +549,10 @@ make editor-package  # build dist/joule-editor-<version>.vsix
 Two environment variables help while working on the interface:
 
 ```
-JOULE_EDITOR_SCENARIOS=first-run          # run one scenario instead of all three
+JOULE_EDITOR_SCENARIOS=first-run          # run one scenario instead of all of them
 JOULE_EDITOR_CAPTURE=/tmp/panel           # also write what the panel rendered, as HTML
+JOULE_EDITOR_SHOT=/tmp/shots              # also write PNGs of the window, from inside the run
+JOULE_EDITOR_THEME="Default Light Modern" # open the window under a named theme
 ```
 
 ## Packaging and the version

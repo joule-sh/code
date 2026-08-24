@@ -97,7 +97,7 @@ class ChatPanel extends EventEmitter {
   }
 
   mediaTags(webview, media, n) {
-    const sheets = ["chat.css", "first_run.css", "composer.css"];
+    const sheets = ["chat.css", "first_run.css", "transcript.css", "composer.css"];
     const scripts = ["dom.js", "first_run.js", "transcript.js", "composer.js", "chat.js"];
     const links = sheets.map((name) => {
       const uri = webview.asWebviewUri(vscode.Uri.joinPath(media, name));

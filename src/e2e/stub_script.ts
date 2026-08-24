@@ -1,5 +1,8 @@
 const READ_ARG_PATH: string = "README.md";
 const RUN_FIX_COMMAND: string = "echo 'Added a health check note.' >> README.md";
+const TRANSCRIPT_SCRIPT: string = "transcript";
+const TRANSCRIPT_READ_PATH: string = "server.js";
+const TRANSCRIPT_RUN_COMMAND: string = "sh noisy.sh";
 
 function joinComma(parts: string[]): string {
   let out = "";
@@ -98,6 +101,31 @@ function finalStepBody(): string {
   return textDeltaChunk("Done.") + finishChunk("stop") + DONE_LINE;
 }
 
+function transcriptReadStepBody(): string {
+  let args = toolCallArgs([strField("path", TRANSCRIPT_READ_PATH)]);
+  let fragment = toolCallFragmentJson(0, "call_read_1", "read", args);
+  return textDeltaChunk("Let me read the server before I start it.")
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
+function transcriptRunStepBody(): string {
+  let args = toolCallArgs([strField("command", TRANSCRIPT_RUN_COMMAND)]);
+  let fragment = toolCallFragmentJson(0, "call_run_1", "run", args);
+  return textDeltaChunk("It looks fine. I will start it and watch what it prints.")
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
+export function scriptedResponseBodyFor(script: string, step: int): string {
+  if (script != TRANSCRIPT_SCRIPT) { return scriptedResponseBody(step); }
+  if (step <= 0) { return transcriptReadStepBody(); }
+  if (step == 1) { return transcriptRunStepBody(); }
+  return finalStepBody();
+}
+
 export function scriptedResponseBody(step: int): string {
   let clamped = step;
   if (clamped < 0) { clamped = 0; }
@@ -130,4 +158,17 @@ test("finalStepBody closes the turn with a stop finish reason", () => {
 test("scriptedResponseBody clamps out-of-range steps to the final body", () => {
   expect(scriptedResponseBody(5) == finalStepBody());
   expect(scriptedResponseBody(-1) == readStepBody());
+});
+
+test("the transcript script reads a file and then runs a command that prints a lot", () => {
+  let read = scriptedResponseBodyFor("transcript", 0);
+  expect(read.indexOf("server.js") >= 0);
+  let run = scriptedResponseBodyFor("transcript", 1);
+  expect(run.indexOf("sh noisy.sh") >= 0);
+  expect(scriptedResponseBodyFor("transcript", 2) == finalStepBody());
+});
+
+test("an unnamed script is the one every other harness drives", () => {
+  expect(scriptedResponseBodyFor("", 0) == readStepBody());
+  expect(scriptedResponseBodyFor("", 1) == runStepBody());
 });

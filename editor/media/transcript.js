@@ -4,6 +4,8 @@ var jouleTranscript = (function () {
   const PENDING_NOTE = "nothing runs until you answer. whoever answers first, here or in a terminal on the same "
     + "session, is the one that decides, and the ask clears everywhere.";
 
+  const opened = new Set();
+
   function whereLine(where) {
     if (!where || !where.root) { return "this runs where the files are, not in the editor."; }
     if (where.remote) {
@@ -36,6 +38,83 @@ var jouleTranscript = (function () {
       body.appendChild(document.createTextNode("\n"));
     }
     box.appendChild(body);
+    return box;
+  }
+
+  function ansiInto(box, text) {
+    for (const segment of ansiSegmentsJs(text)) {
+      if (segment.cls === "") {
+        box.appendChild(document.createTextNode(segment.text));
+        continue;
+      }
+      box.appendChild(el("span", segment.cls, segment.text));
+    }
+    return box;
+  }
+
+  function codeNode(text) {
+    const box = el("pre", "tool-output tool-code");
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const row = el("span", "code-line");
+      row.appendChild(el("span", "code-num", i + 1));
+      row.appendChild(el("span", "code-text", lines[i]));
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  function outputNode(item, text) {
+    if (item.tool === "read") { return codeNode(text); }
+    return ansiInto(el("pre", "tool-output"), text);
+  }
+
+  function factOf(item) {
+    return toolFactJs(item.tool, item.args, {
+      ok: item.status === "ok",
+      running: item.status === "running",
+      output: item.output,
+      truncated: item.truncated,
+    });
+  }
+
+  function toggle(item, box) {
+    if (opened.has(item.callId)) { opened.delete(item.callId); } else { opened.add(item.callId); }
+    box.replaceWith(toolNode(item));
+  }
+
+  function toolHead(item, fact, expandable, open) {
+    const head = el(expandable ? "button" : "div", "tool-head");
+    const caret = el("span", "tool-caret", expandable ? (open ? "▾" : "▸") : "");
+    caret.setAttribute("aria-hidden", "true");
+    head.appendChild(caret);
+    head.appendChild(el("span", "tool-name", item.tool));
+    const target = el("span", "tool-target", fact.target);
+    target.title = fact.target;
+    head.appendChild(target);
+    head.appendChild(el("span", "tool-meta", fact.meta));
+    if (!expandable) { return head; }
+    head.type = "button";
+    head.setAttribute("aria-expanded", open ? "true" : "false");
+    return head;
+  }
+
+  function toolNode(item) {
+    const fact = factOf(item);
+    const plan = planToolOutputCollapseJs(fact.body);
+    const open = opened.has(item.callId);
+    const expandable = plan.hidden > 0;
+    const box = el("div", "item tool tool-" + item.status);
+    const head = toolHead(item, fact, expandable, open);
+    if (expandable) { head.addEventListener("click", () => toggle(item, box)); }
+    box.appendChild(head);
+    if (item.diff) { box.appendChild(diffNode(item.diff)); }
+    if (fact.body !== "") {
+      box.appendChild(outputNode(item, open ? fact.body : plan.head));
+    }
+    if (expandable) {
+      box.appendChild(button("tool-more", open ? "show less" : "+" + plan.hidden + " lines", () => toggle(item, box)));
+    }
     return box;
   }
 
@@ -88,19 +167,6 @@ var jouleTranscript = (function () {
     return card;
   }
 
-  function toolNode(item) {
-    const box = el("div", "item tool tool-" + item.status);
-    const head = el("div", "tool-head");
-    head.appendChild(el("span", "tool-name", item.tool));
-    head.appendChild(el("span", "tool-label", item.label));
-    box.appendChild(head);
-    if (item.diff) { box.appendChild(diffNode(item.diff)); }
-    if (item.status !== "running" && item.output) {
-      box.appendChild(el("pre", "tool-output", item.output + (item.truncated ? "\n(truncated)" : "")));
-    }
-    return box;
-  }
-
   function itemNode(item, where) {
     if (item.kind === "prompt") {
       const box = el("div", "item prompt");
@@ -129,5 +195,5 @@ var jouleTranscript = (function () {
     return list;
   }
 
-  return { node, itemNode, diffNode, whereLine, PENDING_NOTE };
+  return { node, itemNode, toolNode, diffNode, whereLine, PENDING_NOTE };
 })();

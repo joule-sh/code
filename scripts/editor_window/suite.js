@@ -7,6 +7,7 @@ const { assertPlacement, expected } = require("./placement.js");
 const { panelChecks, otherClientOn } = require("./panel_checks.js");
 const { assertStartupIcons } = require("./startup_icon.js");
 const { assertEditorTab } = require("./editor_tab.js");
+const { assertTranscript } = require("./transcript_checks.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
 const ROOT = process.env.JOULE_EDITOR_TEST_ROOT || "";
@@ -439,6 +440,13 @@ async function drive() {
     }
     if (SCENARIO === "first-run") {
       await checks.firstRunScreen(panel);
+      return;
+    }
+    if (SCENARIO === "transcript") {
+      await assertTranscript({
+        ok, say, panel, probe, shown, waitForShown, waitFor, shot, capture,
+        workspace: WORKSPACE, startStub, attachFromWebview, reapFromWindow,
+      });
       return;
     }
     await startStub();
