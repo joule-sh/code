@@ -1,7 +1,9 @@
+import { envOr, tempDir } from "../vendor/platform/platform.ts";
+
 export function relayRuntimeDir(httpPort: int): string {
-  let fromEnv = process.env("JOULE_RELAY_RUNTIME_DIR") ?? "";
+  let fromEnv = envOr("JOULE_RELAY_RUNTIME_DIR", "");
   if (fromEnv != "") { return fromEnv; }
-  let tmp = process.env("TMPDIR") ?? "/tmp";
+  let tmp = tempDir();
   return tmp + "/joule-relay-runtime-" + `${httpPort}`;
 }
 

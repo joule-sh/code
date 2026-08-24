@@ -1,3 +1,5 @@
+import { homeDir } from "../vendor/platform/platform.ts";
+
 export type MemoryEntry = { text: string, savedAt: string };
 export type MemoryFile = { entries: MemoryEntry[] };
 export type MemoryWriteResult = { ok: bool, message: string };
@@ -17,7 +19,7 @@ function emptyMemoryFile(): MemoryFile {
 }
 
 export function memoryDirPath(): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code";
 }
 

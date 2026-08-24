@@ -1,4 +1,5 @@
 import { appendMailbox, MailboxReader, findMailboxEntry, readAllMailboxEntries } from "./mailbox.ts";
+import { appendFile } from "../vendor/platform/platform.ts";
 
 function freshPath(name: string): string {
   let p = "/tmp/mailbox-test-" + name + ".log";
@@ -128,13 +129,13 @@ test("drainNew holds its position when a read comes back short, instead of repla
 test("an entry that is only half written is held back until its newline lands", () => {
   let p = freshPath("partial");
   appendMailbox(p, "DELTA", "whole");
-  fs.appendFileSync(p, "1700000000000|DELTA|half");
+  appendFile(p, "1700000000000|DELTA|half");
   let r = new MailboxReader(p);
   let first = r.drainNew();
   expect(first.length == 1);
   expect(first[0].payload == "whole");
   expect(r.drainNew().length == 0);
-  fs.appendFileSync(p, " an entry\n");
+  appendFile(p, " an entry\n");
   let second = r.drainNew();
   expect(second.length == 1);
   expect(second[0].payload == "half an entry");

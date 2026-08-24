@@ -1,19 +1,20 @@
 import { scriptedResponseBody } from "./stub_script.ts";
 import { chunkedSseResponse, readStubRequest } from "./stub_http.ts";
+import { appendFile, envOr } from "../vendor/platform/platform.ts";
 
 function envInt(name: string, fallback: int): int {
-  let raw = process.env(name) ?? "";
+  let raw = envOr(name, "");
   return Number.parseInt(raw, 10) ?? fallback;
 }
 
 const PORT: int = envInt("E2E_STUB_PORT", 0);
-const LOG_PATH: string = process.env("E2E_STUB_LOG") ?? "";
+const LOG_PATH: string = envOr("E2E_STUB_LOG", "");
 
 let requestCount: int = 0;
 
 function logRequest(body: string): void {
   if (LOG_PATH == "") { return; }
-  fs.appendFileSync(LOG_PATH, body + "\n<<<END>>>\n");
+  appendFile(LOG_PATH, body + "\n<<<END>>>\n");
 }
 
 function handleConnection(socket: Socket): void {

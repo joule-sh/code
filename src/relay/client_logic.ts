@@ -1,4 +1,5 @@
 import { frameSeq, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
+import { envOr } from "../vendor/platform/platform.ts";
 
 export const OUTBOUND_BUFFER_CAP: int = 500;
 export const BACKOFF_START_MS: i64 = 500;
@@ -101,10 +102,10 @@ export function resolveRelayConfig(rawHost: string, rawHttpPort: string, rawWsPo
 }
 
 export function loadRelayConfig(): RelayConfig {
-  let rawHost = process.env("JOULE_RELAY_HOST") ?? "";
-  let rawHttpPort = process.env("JOULE_RELAY_HTTP_PORT") ?? "";
-  let rawWsPort = process.env("JOULE_RELAY_WS_PORT") ?? "";
-  let rawWebBaseUrl = process.env("JOULE_WEB_BASE_URL") ?? "";
-  let rawTmpDir = process.env("TMPDIR") ?? "";
+  let rawHost = envOr("JOULE_RELAY_HOST", "");
+  let rawHttpPort = envOr("JOULE_RELAY_HTTP_PORT", "");
+  let rawWsPort = envOr("JOULE_RELAY_WS_PORT", "");
+  let rawWebBaseUrl = envOr("JOULE_WEB_BASE_URL", "");
+  let rawTmpDir = envOr("TMPDIR", "");
   return resolveRelayConfig(rawHost, rawHttpPort, rawWsPort, rawWebBaseUrl, rawTmpDir);
 }
