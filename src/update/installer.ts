@@ -101,6 +101,11 @@ export function wontRunError(name: string, binPath: string, r: ShellResult): str
   return "the downloaded " + name + " would not run on this machine (" + refusalReason(binPath, r.status, r.stderr, r.stdout) + ") - nothing was relinked, so your existing install still works";
 }
 
+export function putInPlaceError(versionDir: string, restored: bool): string {
+  let tail = restored ? " - the install that was there was put back and nothing was relinked, so it still works" : " - nothing was relinked, so your existing install still works";
+  return "the new version could not be moved into " + versionDir + tail;
+}
+
 export function signingFailedError(name: string, binPath: string, r: ShellResult): string {
   return "the downloaded " + name + " carries no code signature this machine accepts, and signing it here failed (" + refusalReason(binPath, r.status, r.stderr, r.stdout) + ") - nothing was relinked, so your existing install still works";
 }
@@ -267,8 +272,18 @@ export function runInstallOnceWith(currentVersion: string, installRoot: string, 
   }
 
   let versionDir = versionDirPath(installRoot, versionTag);
-  if (fs.existsSync(versionDir)) { fs.rmSync(versionDir, true); }
-  fs.renameSync(innerDir, versionDir);
+  let displaced = "";
+  if (fs.existsSync(versionDir)) {
+    displaced = tmpRoot + "/superseded";
+    fs.renameSync(versionDir, displaced);
+  }
+  try {
+    fs.renameSync(innerDir, versionDir);
+  } catch {
+    if (displaced != "") { fs.renameSync(displaced, versionDir); }
+    fs.rmSync(tmpRoot, true);
+    return errorResult(putInPlaceError(versionDir, displaced != ""));
+  }
 
   relinkBin(binDir, "joule", versionDir + "/joule");
   relinkBin(binDir, "relay", versionDir + "/relay");

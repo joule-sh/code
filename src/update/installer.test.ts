@@ -1,4 +1,4 @@
-import { runInstallOnceWith, verifyDownloadedJoule, ensureCodeSignature, refusalReason, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, CODESIGN, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
+import { runInstallOnceWith, verifyDownloadedJoule, ensureCodeSignature, refusalReason, putInPlaceError, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, CODESIGN, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
 import { MIN_BINARY_BYTES } from "./archive.ts";
 import { PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64 } from "./platform.ts";
 
@@ -374,6 +374,27 @@ test("a macOS update that cannot sign the daemon relinks nothing and keeps the w
   expect(result.error.indexOf("joule-daemon") >= 0);
   expect(!fs.existsSync(bin + "/joule"));
   expect(fs.readdirSync(root).length == 0);
+});
+
+test("a version directory that is already there is displaced whole, never written into", () => {
+  let root = freshDir("displace");
+  let bin = freshDir("displace-bin");
+  let stale = root + "/0.6.2";
+  fs.mkdirSync(stale, true);
+  fs.writeFileSync(stale + "/joule", "left over from a killed attempt");
+  fs.writeFileSync(stale + "/stowaway", "no file from before may survive the swap");
+
+  let result = runInstallOnceWith("0.6.1", root, bin, "linux", "x64", ok("v0.6.2"), baseHappyRun("0.6.2"));
+
+  expect(result.kind == RESULT_INSTALLED);
+  expect(!fs.existsSync(stale + "/stowaway"));
+  expect(fs.readFileSync(stale + "/joule") == validJouleBytes());
+  expect(fs.readdirSync(root).length == 1);
+});
+
+test("putInPlaceError says which install is still working", () => {
+  expect(putInPlaceError("/opt/.joule-code/0.6.2", true).indexOf("was put back") >= 0);
+  expect(putInPlaceError("/opt/.joule-code/0.6.2", false).indexOf("existing install still works") >= 0);
 });
 
 test("pure path helpers build the expected on-disk layout", () => {
