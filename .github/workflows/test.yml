@@ -307,3 +307,26 @@ jobs:
           cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
           tar -czf "$dir.tar.gz" "$dir"
       - run: scripts/check_macos_release.sh "code-aarch64-macos.tar.gz"
+
+  # Installing over an existing install is the step #235 broke on, and it is
+  # arm64 macOS behaviour, so it is checked on the same runner the release is
+  # built on. The check is about inodes rather than exec - these images have
+  # SIP off and enforce no signature at all (#196) - so what a green run here
+  # says is that the installer never wrote over a binary this machine had
+  # already execed, and that everything it left behind still passes codesign.
+  install-swap-macos:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_install_swap.sh install.sh
+
+  # The same check on Linux, where /bin/sh is dash rather than bash. The inode
+  # assertion means the same thing here; this job is what keeps install.sh
+  # honestly POSIX as well as correct.
+  install-swap-linux:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_install_swap.sh install.sh
