@@ -128,18 +128,30 @@ test("drainNew holds its position when a read comes back short, instead of repla
 test("an entry that is only half written is held back until its newline lands", () => {
   let p = freshPath("partial");
   appendMailbox(p, "DELTA", "whole");
-  let fd = fs.openSync(p, "a");
-  fs.writeSync(fd, "1700000000000|DELTA|half");
+  fs.appendFileSync(p, "1700000000000|DELTA|half");
   let r = new MailboxReader(p);
   let first = r.drainNew();
   expect(first.length == 1);
   expect(first[0].payload == "whole");
   expect(r.drainNew().length == 0);
-  fs.writeSync(fd, " an entry\n");
-  fs.closeSync(fd);
+  fs.appendFileSync(p, " an entry\n");
   let second = r.drainNew();
   expect(second.length == 1);
   expect(second[0].payload == "half an entry");
+});
+
+test("appendMailbox adds to the end of the file instead of writing over the start of it", () => {
+  let p = freshPath("append-not-overwrite");
+  appendMailbox(p, "DELTA", "first entry, long enough to be written over");
+  let afterFirst = fs.statSync(p).size;
+  appendMailbox(p, "DELTA", "second");
+  appendMailbox(p, "DELTA", "third");
+  expect(fs.statSync(p).size > afterFirst);
+  let entries = readAllMailboxEntries(p);
+  expect(entries.length == 3);
+  expect(entries[0].payload == "first entry, long enough to be written over");
+  expect(entries[1].payload == "second");
+  expect(entries[2].payload == "third");
 });
 
 test("appending only ever grows the mailbox file", () => {
@@ -182,43 +194,51 @@ function openFdCount(): int {
   try { return fs.readdirSync("/proc/self/fd").length; } catch { return -1; }
 }
 
+function hasProcSelf(): bool {
+  return process.platform() == "linux";
+}
+
 const COST_ENTRIES: int = 600;
 const COST_PAYLOAD: int = 100;
 
 test("a reader polling a growing mailbox reads each entry once, not the whole file on every poll", () => {
-  let p = freshPath("incremental-cost");
-  let body = "";
-  while (body.length < COST_PAYLOAD) { body = body + "x"; }
-  let r = new MailboxReader(p);
-  let before = readCharCounter();
-  expect(before >= 0);
-  let drained: int = 0;
-  let i: int = 0;
-  while (i < COST_ENTRIES) {
-    appendMailbox(p, "DELTA", body);
-    drained = drained + r.drainNew().length;
-    i = i + 1;
+  if (hasProcSelf()) {
+    let p = freshPath("incremental-cost");
+    let body = "";
+    while (body.length < COST_PAYLOAD) { body = body + "x"; }
+    let r = new MailboxReader(p);
+    let before = readCharCounter();
+    expect(before >= 0);
+    let drained: int = 0;
+    let i: int = 0;
+    while (i < COST_ENTRIES) {
+      appendMailbox(p, "DELTA", body);
+      drained = drained + r.drainNew().length;
+      i = i + 1;
+    }
+    let read: i64 = readCharCounter() - before;
+    expect(drained == COST_ENTRIES);
+    let size: i64 = fs.statSync(p).size;
+    expect(size > 0);
+    expect(read < size * 4);
   }
-  let read: i64 = readCharCounter() - before;
-  expect(drained == COST_ENTRIES);
-  let size: i64 = fs.statSync(p).size;
-  expect(size > 0);
-  expect(read < size * 4);
 });
 
 test("closing a reader releases its descriptor, so short-lived readers do not accumulate them", () => {
-  let p = freshPath("fd-release");
-  appendMailbox(p, "DELTA", "one");
-  let baseline = openFdCount();
-  expect(baseline > 0);
-  let i: int = 0;
-  while (i < 200) {
-    let r = new MailboxReader(p);
-    expect(r.drainNew().length == 1);
-    r.close();
-    i = i + 1;
+  if (hasProcSelf()) {
+    let p = freshPath("fd-release");
+    appendMailbox(p, "DELTA", "one");
+    let baseline = openFdCount();
+    expect(baseline > 0);
+    let i: int = 0;
+    while (i < 200) {
+      let r = new MailboxReader(p);
+      expect(r.drainNew().length == 1);
+      r.close();
+      i = i + 1;
+    }
+    expect(openFdCount() <= baseline + 4);
   }
-  expect(openFdCount() <= baseline + 4);
 });
 
 const CONCURRENT_ENTRIES: int = 500;

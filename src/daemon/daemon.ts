@@ -17,6 +17,7 @@ import { SessionWorker } from "./session_worker.ts";
 import { RelayUplink } from "./relay_uplink.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
 import { appendBroadcast } from "./broadcast.ts";
+import { logDaemon, describeFrame } from "./daemon_log.ts";
 import { runDaemonWebSocket } from "./connection.ts";
 import { sweepInbox } from "./inbox.ts";
 import { inboxDir, daemonRuntimeDir } from "./paths.ts";
@@ -115,7 +116,8 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   gate.setOnPoll(() => { worker.pollForApproval(); });
 
   session.subscribe((frameJson: string) => {
-    appendBroadcast(runtimeDir, frameJson);
+    let undelivered = appendBroadcast(runtimeDir, frameJson);
+    if (undelivered != "") { logDaemon("no attached client will see " + describeFrame(frameJson) + ": " + undelivered); }
     if (frameType(frameJson) == TURN_START) {
       let f = decodeTurnStart(frameJson);
       if (f != null) { tracker.setCurrent(f.turnId); }
@@ -130,7 +132,12 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
     sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: cfg.model,
     mode: gate.mode, protocol: PROTOCOL_VERSION,
   };
-  appendBroadcast(runtimeDir, encodeSessionHello(hello));
+  let helloUndelivered = appendBroadcast(runtimeDir, encodeSessionHello(hello));
+  if (helloUndelivered != "") {
+    console.log("joule-daemon: " + helloUndelivered + " - no attached client could ever be sent a frame, so this daemon is not starting");
+    process.exit(1);
+    return;
+  }
 
   writeDaemonInfo(workspaceRoot, port);
   console.log("joule-daemon " + VERSION + ": workspace " + workspaceRoot + ", listening on 127.0.0.1:" + `${port}`);

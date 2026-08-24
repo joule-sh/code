@@ -4,6 +4,7 @@ import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUE
 import { connIdFromPath, isSafeConnId } from "./paths.ts";
 import { appendInbound, appendClosed } from "./inbox.ts";
 import { newBroadcastReader } from "./broadcast.ts";
+import { logDaemon, logReceived, logUndeliverable, shortConnId } from "./daemon_log.ts";
 
 export const PUSH_POLL_MS: int = 60;
 
@@ -49,23 +50,31 @@ export function isAcceptedInboundType(t: string): bool {
 export function daemonOnMessage(peer: Peer, message: string): void {
   let connId = connIdFromPath(peer.path);
   if (!isSafeConnId(connId)) {
+    logDaemon("refused a connection on attach path " + peer.path);
     closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad attach path");
     return;
   }
   let t = frameType(message);
+  logReceived(connId, message);
   if (t == RESUME) {
     let since = sinceFromResume(message);
+    logDaemon("replaying to " + shortConnId(connId) + " from seq " + `${since}`);
     Worker.run(() => { return pusherLoop(peer, since); });
     return;
   }
-  if (!isAcceptedInboundType(t)) { return; }
-  appendInbound(g_runtimeDir, connId, message);
+  if (!isAcceptedInboundType(t)) {
+    logUndeliverable(connId, message, "the daemon does not accept that frame from a client");
+    return;
+  }
+  let reason = appendInbound(g_runtimeDir, connId, message);
+  if (reason != "") { logUndeliverable(connId, message, reason); }
 }
 
 export function daemonOnClose(peer: Peer, graceful: bool): void {
   if (peer.path == "" && graceful) { return; }
   let connId = connIdFromPath(peer.path);
   if (!isSafeConnId(connId)) { return; }
+  logDaemon("client " + shortConnId(connId) + " went away");
   appendClosed(g_runtimeDir, connId);
 }
 

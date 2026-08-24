@@ -1,4 +1,4 @@
-import { helloWorkspace, nextPortInRange, isTaken, firstFreePort } from "./attach_lifecycle.ts";
+import { helloWorkspace, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello } from "../protocol/frames.ts";
 
 function hello(workspace: string): string {
@@ -58,4 +58,36 @@ test("firstFreePort steps past every port another workspace holds", () => {
 
 test("firstFreePort wraps around the end of the range", () => {
   expect(firstFreePort(8699, [8699]) == 8300);
+});
+
+test("firstLine takes the first non-empty line of what a failed run reported", () => {
+  expect(firstLine("dyld: symbol not found\nmore detail\n") == "dyld: symbol not found");
+  expect(firstLine("  only one line  ") == "only one line");
+  expect(firstLine("") == "");
+  expect(firstLine("\n\n") == "");
+});
+
+test("a daemon that failed to start is reported with whatever it said", () => {
+  let text = spawnFailureText("/home/a/.local/joule-daemon", 1, "libgc.so.1: cannot open shared object file\n");
+  expect(text.indexOf("/home/a/.local/joule-daemon") >= 0);
+  expect(text.indexOf("libgc.so.1: cannot open shared object file") >= 0);
+});
+
+test("a daemon killed on exec says so rather than reporting a blank reason", () => {
+  let text = spawnFailureText("/home/a/.local/joule-daemon", -1, "");
+  expect(text.indexOf("killed before it could run") >= 0);
+});
+
+test("a daemon that exited with a status and said nothing still names the status", () => {
+  let text = spawnFailureText("/home/a/.local/joule-daemon", 3, "");
+  expect(text.indexOf("status 3") >= 0);
+});
+
+test("a daemon binary that is not there is reported without trying to run it", () => {
+  let failure = daemonBinFailure("/tmp/joule-daemon-that-does-not-exist");
+  expect(failure.indexOf("there is no such file") >= 0);
+});
+
+test("a daemon binary that runs and exits cleanly reports no failure", () => {
+  expect(daemonBinFailure("/bin/echo") == "");
 });

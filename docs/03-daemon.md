@@ -691,3 +691,95 @@ this pass rather than assumed:
   content, and a daemon-start failure (binary temporarily moved aside)
   falls back to a working in-process terminal with the diagnostic line
   described above.
+
+## The mailbox append that only worked on Linux (#197)
+
+Every frame the daemon and its clients exchange goes through a mailbox
+file. A client's frame is appended to `inbox/<connId>.in`, which the
+session loop drains; the session's own frames are appended to
+`broadcast.log`, which each connection's pusher tails and writes to its
+websocket. `appendMailbox` in `src/tasks/mailbox.ts` is the one function
+that writes to either of them.
+
+It used to open the file with `fs.openSync(path, "a")` and write. In the
+toolchain this project pins, that call seats the file offset at
+end-of-file with an `lseek` that is compiled in **only on Linux**.
+Everywhere else the descriptor starts at offset 0, so every "append"
+writes over the front of the file instead. Measured directly on an
+Apple Silicon runner, three appends of a 13-byte line leave a 13-byte
+file holding only the third line; the same three through
+`fs.appendFileSync` leave 39 bytes holding all three.
+
+That is the whole of #197. On macOS the daemon came up, accepted the
+websocket, and received the client's `input` frame - the inbox file was
+created fresh by that first write, so it landed correctly, and the turn
+really ran. Its answer did not come back. `session.hello` was the first
+line written to `broadcast.log`, and the pusher read it, which is why a
+client reported itself attached and an editor panel showed the model and
+mode. Every frame after it - `turn.start`, the text deltas, the tool
+call, the approval request - was written over the top of that first
+line. The file never grew past the offset the pusher had already reached,
+`MailboxReader.readForward()` returned nothing on every poll for the rest
+of the process's life, and not one frame was ever sent. A daemon
+transcript taken from the macOS runner shows a 273-byte `broadcast.log`
+holding exactly one line: the seventh frame of the turn, `approval.request`.
+
+The fix is one line of behaviour: `appendMailbox` now uses
+`fs.appendFileSync`, which opens with a real `O_APPEND` on every
+platform, so the kernel repositions to end-of-file on each write. That is
+also strictly better than the `lseek` it replaces, because `O_APPEND`
+places each write atomically - two processes appending to the same
+mailbox can no longer land a write between another writer's seek and its
+write.
+
+### Why nothing caught it
+
+`mailbox.test.ts` already asserted the property that broke ("appending
+only ever grows the mailbox file"), and `broadcast.test.ts` already
+asserted that a late reader sees every frame. Both of them would have
+failed on macOS the first time they ran there. They never ran there: every
+job in `test.yml` was on a Linux runner. `test.yml` now has a `macos` job
+that builds and runs the suite plus the daemon harnesses on `macos-14`,
+which is the only reason this can be called fixed rather than believed
+fixed. Two tests in `mailbox.test.ts` read `/proc/self/io` and
+`/proc/self/fd` to measure read amplification and descriptor leaks; they
+are Linux-only by nature and now guard on `process.platform()`. Four test
+files elsewhere in the tree do not pass on macOS for reasons of their own -
+the permission bits a credential file is written with, and how the update
+path recognises and smoke-tests a managed install - and are named in
+`MACOS_SKIP_TS` in the Makefile, a list meant to shrink.
+
+### Silence is its own defect
+
+Two changes exist because the failure was invisible, not because they
+fix it.
+
+The daemon logged its startup line and then nothing for the rest of its
+life, so a daemon that had received a request was indistinguishable from
+one that had not. It now logs each frame it receives on a connection,
+each replay it starts, each frame it dispatches to the session, and every
+client that goes away. It also refuses to start at all if the first write
+to its own broadcast log does not land, since a daemon that cannot
+broadcast can never answer anyone. Inbound frames are human-paced, so
+this is a few lines per turn.
+
+The client had no way to notice that an accepted request produced
+nothing. `TurnWatchdog` (`src/terminal/attach_watchdog.ts`) starts on
+each request sent to the daemon and clears on the first frame that comes
+back. If ten seconds pass with neither, the client says so in the
+transcript, names the port, and names `joule --stop` as the way out,
+rather than sitting at a healthy-looking prompt indefinitely.
+
+### A failed spawn is no longer waited out (#198)
+
+`ensureAttached` discarded the result of the `spawnSync` that starts the
+daemon, then waited `SPAWN_WAIT_TICKS` plus `HELLO_WAIT_TICKS` - eight
+seconds - for a process that in some cases had already failed in
+milliseconds. Checking the shell's own status is not enough, because the
+spawn command backgrounds the daemon and the shell exits 0 whatever
+happens to it. So the binary is now run once, synchronously, before it is
+backgrounded: a missing file, or one the kernel kills on exec (which is
+what macOS did with the invalid signature in #196), fails that probe in
+milliseconds and the client falls back immediately with the reason in one
+line, including whatever the failed run put on stderr. The shell's status
+is checked too.

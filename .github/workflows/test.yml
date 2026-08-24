@@ -191,6 +191,37 @@ jobs:
       - run: node --version
       - run: make relay-reconnect-harness
 
+  # Every other job here is a Linux runner, which is why #197 shipped twice:
+  # the daemon's frame transport was broken on macOS and nothing on macOS
+  # ever ran. This job builds the three binaries on macOS, runs each one,
+  # and drives the daemon path end to end there.
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      LUMEN_VERSION: v0.7.1
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install bdw-gc
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-aarch64-macos.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-aarch64-macos" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-aarch64-macos/zig" >> "$GITHUB_PATH"
+      - run: lumen --version && zig version && node --version && python3 --version
+      - run: make build bin/stub_model
+      - run: |
+          ./bin/joule --version
+          ./bin/relay --version
+          ./bin/joule-daemon --version
+      - run: make macos-test
+      - run: make daemon-concurrent-harness
+      - run: make daemon-attach-harness
+      - run: make daemon-stop-harness
+      - run: make daemon-commands-harness
+      - run: make attach-commands-harness
+      - run: make ws-peer-lifecycle-harness
+
   linux-release:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10
