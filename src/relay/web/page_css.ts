@@ -108,6 +108,7 @@ button:disabled {
   word-break: break-word;
   line-height: 1.4;
 }
+.line-prompt { color: var(--accent); font-weight: 600; }
 .line-text { color: var(--text); }
 .line-tool { color: var(--muted); }
 .line-result-ok { color: var(--ok); }

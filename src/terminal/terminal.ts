@@ -197,6 +197,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       let f = decodeTurnStart(frameJson);
       if (f != null) {
         tracker.setCurrent(f.turnId);
+        if (f.prompt != "" && !isTaskTurnId(f.turnId)) { sb.append("\n" + stylePrompt("> ") + f.prompt); }
       }
     }
     if (isTaskTurnId(frameTurnId(frameJson))) {
@@ -362,8 +363,6 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (cmd.kind == CMD_NONE) {
       history.record(line);
-      sb.append("\n" + stylePrompt("> ") + line);
-      drawScreen(sb, input, gate.mode, rk);
       bridge.runNow(session, line);
       drawScreen(sb, input, gate.mode, rk);
       continue;

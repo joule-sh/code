@@ -14,7 +14,8 @@ import { buildWelcomeBox } from "./layout.ts";
 import { resolveResume, hasContinueFlag } from "./resume.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
-import { AttachResult, ensureAttached, runAttachStop, hasStopFlag } from "../daemon/attach_lifecycle.ts";
+import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel } from "../daemon/attach_lifecycle.ts";
+import { LocalPrompts } from "./attach_echo.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
@@ -125,15 +126,17 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let tagged = new TaggedTurns();
   let notifier = startUpdateNotifier();
 
-  let approvalLog = new ApprovalLog(MODE_AUTO_EDIT);
-  let state = new ClientState(initialModel);
+  let approvalLog = new ApprovalLog(attachedMode(result.pending, MODE_AUTO_EDIT));
+  let state = new ClientState(attachedModel(result.pending, initialModel));
   let watchdog = new TurnWatchdog(result.port);
+  let echoes = new LocalPrompts();
 
   let setMode = (m: string) => {
     client.publish(encodeModeSet({ v: PROTOCOL_VERSION, seq: 0, type: MODE_SET, mode: m }));
   };
   let sendInput = (t: string) => {
     client.publish(encodeInput({ v: PROTOCOL_VERSION, seq: 0, type: INPUT, text: t }));
+    echoes.note(t);
     watchdog.noteRequestSent(Date.now());
   };
 
@@ -156,7 +159,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
         let start = decodeTurnStart(f);
         if (start != null) {
           state.turnId = start.turnId;
-          if (isReplay && !tagged1 && start.prompt != "") {
+          if (!tagged1 && start.prompt != "" && !echoes.claim(start.prompt)) {
             sb.append("\n" + stylePrompt("> ") + start.prompt);
           }
         }

@@ -783,3 +783,112 @@ what macOS did with the invalid signature in #196), fails that probe in
 milliseconds and the client falls back immediately with the reason in one
 line, including whatever the failed run put on stderr. The shell's status
 is checked too.
+
+## Two clients on one session that did not agree (#227)
+
+A terminal and the editor panel on the same daemon diverged twice over: a
+prompt typed in the panel never appeared in the terminal, and the two
+disagreed about the mode - the terminal's status line said `full-auto`
+while the panel said it had not been told what may run. They are one root
+cause and one straightforward omission, and it is worth separating them.
+
+### A client joining is replayed the session it is joining, and no other
+
+The daemon writes every frame the session emits to `broadcast.log` in the
+workspace's runtime directory, and a joining client is replayed all of it
+from `session.hello` on. `seq` is assigned by the process that emits the
+frame and starts again at 1 with each one; the log was created once and
+appended to forever. So the second daemon ever started in a workspace
+wrote frames numbered from 1 underneath a log that already ran to some
+higher number, and the pusher - which forwards a frame only when its
+`seq` is above the watermark it has reached - walked up through the old
+numbers on the replay and then dropped every live frame beneath them.
+
+What a client saw was a previous session's transcript, followed by
+silence, followed eventually by the live session once its counter climbed
+past the stale one. `session.hello` is frame 1 of a session, so it was
+always among the casualties: the panel had never been told the mode
+because the frame that carries it had been filtered out as already seen,
+and a `mode.changed` from early in the session went the same way. This is
+also why the two clients could disagree rather than both being wrong -
+they attached at different points, so they lost different frames.
+
+The log now belongs to the process that writes it: `startBroadcastLog`
+truncates it before the first `session.hello`, and a daemon that cannot
+refuses to start, for the same reason it already refuses when the first
+broadcast write does not land. A joining client is replayed one session,
+beginning with the hello that says what the mode and the model are, and
+`seq` means what the spec says it means again.
+
+One thing in the replay path did change, because the same hazard reaches
+it from the other side. A client that reconnects sends `resume{since}`
+carrying the last `seq` it saw, and nothing stopped that number from
+belonging to a session that is over - a client whose daemon died and
+whose workspace has a new one resumes from where the old session got to,
+which is above everything the new one has emitted, and it is sent nothing
+at all. The pusher now compares `since` against the highest `seq` the log
+holds on its first read: within a session that is never above it, so a
+real resume is untouched, and a `since` from a session this daemon never
+ran replays the current one in full instead of silently sending nothing.
+
+### The prompt the terminal would not draw
+
+`turn.start` carries the prompt, and the daemon broadcasts it to every
+client, so the frame was always arriving - the terminal simply did not
+draw it. Each client echoed its own input locally the moment it was
+typed, and the terminal drew a `turn.start` prompt only while replaying
+a backlog, which is exactly the case where no local echo had happened.
+A prompt from a second client arrived live and painted nothing, which is
+why the terminal showed answers to questions it never showed.
+
+The terminal now draws every `turn.start` prompt except the one it echoed
+itself. `LocalPrompts` (`src/terminal/attach_echo.ts`) holds the prompts
+this client sent, in order, and a `turn.start` whose prompt is at the
+head of that queue is the client's own echo coming back and is skipped;
+anything else is another client's and is drawn. Keeping the local echo
+matters: the round trip through the daemon is a poll tick, and a person
+who has just pressed enter should not watch their line disappear while
+they wait for it.
+
+The in-process terminal - the one that runs when no daemon could be
+started - has the same two sources of prompt, itself and a browser paired
+over the relay. There the session's frames come back synchronously, so it
+does not echo locally at all any more: `turn.start` is what draws a
+prompt, whoever sent it. The relay page never echoed and never drew one
+either, so a browser watching a session saw replies to prompts it could
+not see; it draws them now too.
+
+### What a joining terminal shows before its first frame
+
+The welcome box is painted before the replay is processed, from the
+mode the client guessed and the model in local configuration. A terminal
+attaching to a session already in `full-auto` therefore opened saying
+`may run auto-edit` and only corrected itself in the status line once
+the replay arrived. `attachedMode` and `attachedModel` fold the replayed
+`session.hello`, `mode.changed` and `model.changed` into what the box is
+built from, so the first thing the terminal paints is what the session
+says rather than what the client assumed.
+
+### Verification
+
+`scripts/verify_two_clients.py` drives three real terminals on one
+daemon over real ptys and asserts on the rows of the latest redraw, not
+on frames received - #147 was a bug where the frames arrived and nothing
+painted, and a frames-received test would have passed it. It covers a
+mode set in one terminal appearing in another's status line, a terminal
+attaching after that change opening with the right mode in its welcome
+box, a prompt from either terminal appearing in both transcripts, and
+each terminal drawing its own prompt exactly once.
+
+The `second-client` scenario in the editor window harness does the panel
+half in a real editor window against a real daemon, asserting against
+the webview's DOM: a second client's mode change and prompt painting in
+the panel, the panel learning the mode a second client set while it was
+detached, and - after the daemon in that folder is stopped and another
+started - the panel painting the mode of the session it just joined with
+none of the previous session's transcript replayed into it.
+
+`verify_daemon_concurrent_clients.mjs` covers the daemon end of that last
+one: a client joining a restarted daemon gets that session's hello first
+and nothing from the session before it, and a `mode.set` it sends is
+broadcast back rather than being shadowed by the old numbering.

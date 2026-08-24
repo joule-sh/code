@@ -4,6 +4,7 @@ import { RESUME, INPUT, CANCEL, APPROVAL_REPLY, MODE_SET, MODEL_SET, TASKS_REQUE
 import { connIdFromPath, isSafeConnId } from "./paths.ts";
 import { appendInbound, appendClosed } from "./inbox.ts";
 import { newBroadcastReader } from "./broadcast.ts";
+import { MailboxEntry } from "../tasks/mailbox.ts";
 import { logDaemon, logReceived, logUndeliverable, shortConnId } from "./daemon_log.ts";
 
 export const PUSH_POLL_MS: int = 60;
@@ -14,12 +15,31 @@ export function configureConnections(runtimeDir: string): void {
   g_runtimeDir = runtimeDir;
 }
 
+export function highestSeq(entries: MailboxEntry[]): int {
+  let highest = -1;
+  for (const e of entries) {
+    let seq = frameSeq(e.payload);
+    if (seq > highest) { highest = seq; }
+  }
+  return highest;
+}
+
+export function watermarkForResume(since: int, highest: int): int {
+  if (since > highest) { return -1; }
+  return since;
+}
+
 export function pusherLoop(peer: Peer, since: int): int {
   let reader = newBroadcastReader(g_runtimeDir);
   let watermark = since;
+  let settled = false;
   let pushed = 0;
   while (peer.open) {
     let entries = reader.drainNew();
+    if (!settled && entries.length > 0) {
+      settled = true;
+      watermark = watermarkForResume(watermark, highestSeq(entries));
+    }
     for (const e of entries) {
       let seq = frameSeq(e.payload);
       if (seq > watermark) {
