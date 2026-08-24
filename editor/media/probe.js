@@ -28,6 +28,20 @@
       reply.texts = found.map(function (node) { return node.outerHTML; });
       return;
     }
+    if (msg.op === "measure") {
+      reply.texts = found.map(function (node) {
+        const style = getComputedStyle(node);
+        const box = node.getBoundingClientRect();
+        return JSON.stringify({
+          font: parseFloat(style.fontSize),
+          line: parseFloat(style.lineHeight),
+          left: box.left,
+          width: box.width,
+          height: box.height,
+        });
+      });
+      return;
+    }
     if (msg.op === "choose") {
       target.value = msg.value;
       target.dispatchEvent(new Event("change", { bubbles: true }));

@@ -104,7 +104,7 @@ function panelChecks(kit) {
       "the status line says what may run without being asked: " + JSON.stringify(mode + " - " + permits));
 
     const chips = await probe(panel, { op: "read", selector: ".composer-controls .chip" });
-    ok(chips.found === 3, "the controls sit on one row inside the box: mode, model and send");
+    ok(chips.found === 4, "the controls sit on one row inside the box: add-context, mode, model and send");
     const select = await probe(panel, { op: "read", selector: ".composer-controls .mode-chip" });
     ok(select.values[0] === mode, "the mode control shows the mode the daemon is actually in");
     ok(select.texts[0].includes(modes.MODE_PLAN),
@@ -115,15 +115,63 @@ function panelChecks(kit) {
     ok(send === "send", "send sits at the end of that row rather than as a button below the box");
     const below = await probe(panel, { op: "read", selector: ".composer-actions" });
     ok(below.found === 0, "the old row of buttons under the box is gone");
+    await controlsGroupLeft(panel);
+    await composerFitsThePanel(panel);
     await contextChipRow(panel);
     await capture(panel, "composer");
   }
 
+  async function measured(panel, selector) {
+    const reply = await probe(panel, { op: "measure", selector });
+    return reply.texts.map((text) => JSON.parse(text));
+  }
+
+  async function controlsGroupLeft(panel) {
+    const [row] = await measured(panel, ".composer-controls");
+    const [add] = await measured(panel, ".composer-controls .context-add");
+    const [mode] = await measured(panel, ".composer-controls .mode-hold");
+    const [model] = await measured(panel, ".composer-controls .model-chip");
+    const [send] = await measured(panel, ".composer-controls .composer-send");
+
+    let tight = Math.abs(add.left - row.left) <= 2;
+    const gaps = [];
+    for (const [before, after] of [[add, mode], [mode, model]]) {
+      const gap = after.left - (before.left + before.width);
+      gaps.push(Math.round(gap));
+      tight = tight && gap >= 0 && gap <= 8;
+    }
+    ok(tight, "add-context, mode and model read as one cluster against the left of the row, "
+      + JSON.stringify(gaps) + "px apart");
+    ok(send.left > model.left + model.width && send.left + send.width >= row.left + row.width - 2,
+      "and send is the only control on the right of it");
+  }
+
+  async function composerFitsThePanel(panel) {
+    const [body] = await measured(panel, "body");
+    const [area] = await measured(panel, ".composer-input");
+    ok(area.font === body.font,
+      "the composer types at the panel's own UI font size rather than the document's: " + area.font + "px");
+
+    const [box] = await measured(panel, ".composer-box");
+    const lines = box.height / area.line;
+    ok(lines <= 3.5, "an empty composer is two or three lines of UI text tall rather than a card: "
+      + Math.round(box.height) + "px, " + lines.toFixed(1) + " lines");
+
+    for (const line of ["status-where", "status-mode"]) {
+      const [said] = await measured(panel, ".composer-status ." + line);
+      ok(said.font < body.font && said.height <= said.line * 1.5,
+        "the " + line + " line is smaller than the composer and stays on one line: "
+        + said.font + "px, " + Math.round(said.height) + "px tall");
+    }
+  }
+
   async function contextChipRow(panel) {
-    const add = await probe(panel, { op: "read", selector: ".composer-context .context-add" });
-    ok(add.found === 1, "the box carries a context row, with an add-context control waiting at the front of it");
+    const add = await probe(panel, { op: "read", selector: ".composer-controls .context-add" });
+    ok(add.found === 1, "add-context waits at the front of the controls row rather than on a row of its own");
     const before = await probe(panel, { op: "read", selector: ".context-chip" });
     ok(before.found === 0, "no file is open beside the panel, so no chip claims one will be sent");
+    const empty = await probe(panel, { op: "read", selector: ".composer-context" });
+    ok(empty.found === 0, "and the empty box reserves no blank row for the chip that is not there");
 
     const doc = await vscode.workspace.openTextDocument(path.join(workspace, "README.md"));
     await vscode.window.showTextDocument(doc, { preview: false });

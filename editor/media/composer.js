@@ -3,6 +3,8 @@ var jouleComposer = (function () {
 
   const PLACEHOLDER = "describe a change, or paste an error";
   const NO_MODE_YET = "the session has not said what may run yet";
+  const NO_MODE_NAME = "mode";
+  const NO_MODEL_NAME = "model";
   const GROW_MAX_PX = 160;
   const CONTEXT_PREFIX = "active file: ";
 
@@ -56,25 +58,27 @@ var jouleComposer = (function () {
     return area;
   }
 
-  function contextRow(state) {
-    const row = el("div", "composer-context");
+  function addControl() {
     const add = button("chip context-add", "", () => {});
     add.disabled = true;
     add.title = "picking files to send is not built yet. the file open beside the panel is named automatically.";
     add.appendChild(icon("plus"));
     add.appendChild(hiddenText("add context"));
-    row.appendChild(add);
+    return add;
+  }
+
+  function contextRow(state) {
     const context = activeContext(state);
-    if (context !== null) {
-      const chip = button("context-chip", "", () => {
-        dismissedFile = context.rel;
-        chip.remove();
-      });
-      chip.title = context.rel + " is named at the top of your message. joule reads files itself when the turn runs. click to leave it out.";
-      chip.appendChild(el("span", "context-name", context.name));
-      chip.appendChild(icon("x"));
-      row.appendChild(chip);
-    }
+    if (context === null) { return null; }
+    const row = el("div", "composer-context");
+    const chip = button("context-chip", "", () => {
+      dismissedFile = context.rel;
+      row.remove();
+    });
+    chip.title = context.rel + " is named at the top of your message. joule reads files itself when the turn runs. click to leave it out.";
+    chip.appendChild(el("span", "context-name", context.name));
+    chip.appendChild(icon("x"));
+    row.appendChild(chip);
     return row;
   }
 
@@ -84,6 +88,11 @@ var jouleComposer = (function () {
     hold.appendChild(icon("shield"));
     const select = el("select", "mode-chip");
     const current = session === null ? "" : session.mode;
+    if (current === "") {
+      const waiting = el("option", "", NO_MODE_NAME);
+      waiting.value = "";
+      select.appendChild(waiting);
+    }
     const known = [];
     for (const entry of APPROVAL_MODES) { known.push(entry.mode); }
     if (current !== "" && known.indexOf(current) < 0) { known.push(current); }
@@ -100,7 +109,7 @@ var jouleComposer = (function () {
   }
 
   function modelControl(session) {
-    const label = session === null || !session.model ? "model" : session.model;
+    const label = session === null || !session.model ? NO_MODEL_NAME : session.model;
     const chip = button("chip model-chip", "", () => post("model"));
     chip.disabled = session === null;
     chip.title = "the model this session drives. the same thing /model sets in a terminal.";
@@ -124,12 +133,18 @@ var jouleComposer = (function () {
     return chip;
   }
 
+  function whereParts(where) {
+    if (!where || !where.root) { return [["", "tools run where the files are, never in the editor"]]; }
+    const lead = where.remote
+      ? "tools run on " + where.host + ", where the files are: "
+      : "tools run on this machine, in ";
+    return [["status-lead", lead], ["status-path", where.root], ["status-tail", " - never in the editor"]];
+  }
+
   function whereText(where) {
-    if (!where || !where.root) { return "tools run where the files are, never in the editor"; }
-    if (where.remote) {
-      return "tools run on " + where.host + ", where the files are: " + where.root + " - never in the editor";
-    }
-    return "tools run on this machine, in " + where.root + " - never in the editor";
+    let out = "";
+    for (const part of whereParts(where)) { out += part[1]; }
+    return out;
   }
 
   function modeText(session) {
@@ -138,16 +153,22 @@ var jouleComposer = (function () {
     return permits === "" ? session.mode : session.mode + " - " + permits;
   }
 
+  function statusLine(kind, glyph, parts) {
+    const row = el("span", kind);
+    row.appendChild(icon(glyph));
+    let whole = "";
+    for (const part of parts) {
+      row.appendChild(el("span", ("status-text " + part[0]).trim(), part[1]));
+      whole += part[1];
+    }
+    row.title = whole;
+    return row;
+  }
+
   function statusNode(state) {
     const box = el("div", "composer-status");
-    const where = el("span", "status-where");
-    where.appendChild(icon("monitor"));
-    where.appendChild(el("span", "status-text", whereText(state.where)));
-    box.appendChild(where);
-    const mode = el("span", "status-mode");
-    mode.appendChild(icon("shield"));
-    mode.appendChild(el("span", "status-text", modeText(sessionOf(state))));
-    box.appendChild(mode);
+    box.appendChild(statusLine("status-where", "monitor", whereParts(state.where)));
+    box.appendChild(statusLine("status-mode", "shield", [["", modeText(sessionOf(state))]]));
     return box;
   }
 
@@ -155,7 +176,8 @@ var jouleComposer = (function () {
     const session = sessionOf(state);
     const box = el("div", "composer");
     const field = el("div", "composer-box");
-    field.appendChild(contextRow(state));
+    const context = contextRow(state);
+    if (context !== null) { field.appendChild(context); }
     let sendChip = null;
     const arm = () => {
       if (sendChip !== null) { sendChip.classList.toggle("armed", area.value.trim() !== ""); }
@@ -163,6 +185,7 @@ var jouleComposer = (function () {
     const area = input(state, arm);
     field.appendChild(area);
     const controls = el("div", "composer-controls");
+    controls.appendChild(addControl());
     controls.appendChild(modeControl(session));
     controls.appendChild(modelControl(session));
     controls.appendChild(el("span", "composer-spacer"));
