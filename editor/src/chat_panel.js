@@ -1,5 +1,6 @@
 const vscode = require("vscode");
 const os = require("node:os");
+const path = require("node:path");
 const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const { EditorSession } = require("./session.js");
@@ -29,6 +30,7 @@ class ChatPanel extends EventEmitter {
     this.setupFacts = null;
     this.setupReadAt = 0;
     this.probing = context.extensionMode === vscode.ExtensionMode.Test;
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => this.post()));
   }
 
   jouleBin() {
@@ -266,6 +268,17 @@ ${assets.scripts}
     };
   }
 
+  activeFile() {
+    const active = vscode.window.activeTextEditor;
+    if (!active || active.document.uri.scheme !== "file") { return null; }
+    const root = this.where().root;
+    if (root === "") { return null; }
+    const rel = path.relative(root, active.document.uri.fsPath);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) { return null; }
+    const posix = rel.split(path.sep).join("/");
+    return { rel: posix, name: posix.split("/").pop() };
+  }
+
   setup() {
     const now = Date.now();
     if (this.setupFacts !== null && now - this.setupReadAt < SETUP_TTL_MS) { return this.setupFacts; }
@@ -299,6 +312,7 @@ ${assets.scripts}
     state.blocked = blocked;
     state.setup = this.setup();
     state.where = this.where();
+    state.activeFile = this.activeFile();
     state.binary = this.binary;
     state.note = this.note;
     this.view.webview.postMessage({ kind: "state", state });

@@ -111,6 +111,14 @@ function makeRoot(scenario) {
     path.join(dirs.workspace, ".vscode", "settings.json"),
     JSON.stringify({ "joule.path": JOULE, "joule.attachOnStartup": false }, null, 2) + "\n",
   );
+  const theme = (process.env.JOULE_EDITOR_THEME || "").trim();
+  if (theme !== "") {
+    fs.mkdirSync(path.join(dirs.userData, "User"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dirs.userData, "User", "settings.json"),
+      JSON.stringify({ "workbench.colorTheme": theme }, null, 2) + "\n",
+    );
+  }
   return dirs;
 }
 
