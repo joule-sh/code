@@ -16,12 +16,16 @@ const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache"
 const VSCODE_VERSION = "1.134.0";
 const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
-const SCENARIOS = [
+const ALL_SCENARIOS = [
   { name: "first-run", version: VSCODE_VERSION },
   { name: "conversation", version: VSCODE_VERSION },
   { name: "close-mid-turn", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
 ];
+const ASKED_FOR = (process.env.JOULE_EDITOR_SCENARIOS || "").split(",").map((s) => s.trim()).filter((s) => s !== "");
+const SCENARIOS = ASKED_FOR.length === 0
+  ? ALL_SCENARIOS
+  : ALL_SCENARIOS.filter((s) => ASKED_FOR.includes(s.name));
 
 const teardown = [];
 let failed = false;
