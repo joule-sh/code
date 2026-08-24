@@ -1,21 +1,19 @@
 const vscode = require("vscode");
-const { ACTIVITY_BAR, SECONDARY_SIDEBAR, placementFor } = require("../../editor/src/placement.js");
+const { ACTIVITY_BAR } = require("../../editor/src/placement.js");
 
 const BARS = [
-  { ids: ACTIVITY_BAR, name: "activity bar", closes: "workbench.action.closeSidebar" },
-  { ids: SECONDARY_SIDEBAR, name: "secondary side bar", closes: "workbench.action.closeAuxiliaryBar" },
-  { ids: null, name: "bottom panel", closes: "workbench.action.closePanel" },
+  { name: "activity bar", closes: "workbench.action.closeSidebar" },
+  { name: "secondary side bar", closes: "workbench.action.closeAuxiliaryBar" },
+  { name: "bottom panel", closes: "workbench.action.closePanel" },
 ];
 
 function expected() {
-  const ids = placementFor(vscode.version);
-  const bar = BARS.find((b) => b.ids === ids);
   return {
-    bar: bar.name,
-    closes: bar.closes,
-    view: ids.view,
-    container: "workbench.view.extension." + ids.container,
-    others: BARS.filter((b) => b !== bar),
+    bar: BARS[0].name,
+    closes: BARS[0].closes,
+    view: ACTIVITY_BAR.view,
+    container: "workbench.view.extension." + ACTIVITY_BAR.container,
+    others: BARS.slice(1),
   };
 }
 
@@ -40,11 +38,11 @@ async function runAndSettle(command) {
 
 async function assertPlacement(panel, ok, say) {
   const where = expected();
-  say("  this editor is " + vscode.version + ", so the view belongs in the " + where.bar);
+  say("  this editor is " + vscode.version + ", and the view belongs in the " + where.bar + " on every version");
 
   const commands = await vscode.commands.getCommands(true);
   ok(commands.includes(where.container),
-    "the editor built the joule view container this editor version is meant to use");
+    "the editor built the joule view container");
 
   ok(await open(panel, where, 30000),
     "opening that container shows the joule view, so the view is in it rather than spilled into another one");

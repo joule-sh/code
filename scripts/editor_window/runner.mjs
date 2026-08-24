@@ -268,8 +268,8 @@ async function main() {
   if (!failed) {
     note("PASS: a real editor window showed an unconfigured person the first-run screen, opened the panel, ran a turn,"
       + " drove the approval mode from the composer, approved a tool from the webview onto disk, left no daemon behind,"
-      + " an editor too old for the secondary side bar opened the same view in the activity bar, and both editors"
-      + " showed the joule entry point in the right bar at startup without the view ever being opened");
+      + " and both pinned editors showed the joule icon in the activity bar at startup"
+      + " without the view ever being opened");
   }
 }
 
