@@ -7,7 +7,7 @@ let panel = null;
 function activate(context) {
   panel = new ChatPanel(context);
 
-  vscode.commands.executeCommand("setContext", CONTEXT_KEY, !supportsSecondarySidebar(vscode.version));
+  vscode.commands.executeCommand("setContext", CONTEXT_KEY, supportsSecondarySidebar(vscode.version));
 
   for (const where of [ACTIVITY_BAR, SECONDARY_SIDEBAR]) {
     context.subscriptions.push(

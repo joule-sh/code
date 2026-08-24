@@ -104,13 +104,27 @@ containers and refusing to install below 1.106.
 `activitybar` carries `joule` and `secondarySidebar` carries
 `joule-secondary`, in that order, because on 1.104 and 1.105 the throw ends
 the manifest's container list where it stands and everything declared before
-it has already registered. Each container's view is gated on
-`joule.noSecondarySidebar`, which `extension.js` sets from `vscode.version`
-at activation, so exactly one of them is ever populated; a container with no
-visible view is hidden, so the other never appears. The `when` on the
-containers themselves is declared for the same reason and does nothing today
-- the editor reads `id`, `title` and `icon` and ignores the rest - so it is
-the views' clauses that decide, and the empty container that disappears. `engines.vscode` stays at
+it has already registered. The activity bar's view is
+gated on `!joule.secondarySidebar` and the right-hand one on
+`joule.secondarySidebar`, which `extension.js` sets from `vscode.version` at
+activation, so exactly one of them is ever populated; a container with no
+visible view is hidden, so the other never appears. The containers carry no
+`when` of their own - the editor reads `id`, `title` and `icon` there and
+ignores the rest - so it is the views' clauses that decide, and the empty
+container that disappears.
+
+**An unset key has to mean the activity bar, because every window starts
+with it unset.** A context key nobody has set evaluates false, and the
+extension only sets this one at `onStartupFinished`, which fires seconds
+after the bars paint - or never, if activation fails. 0.16.0 gated the left
+view on the key being *set*, and that direction is a broken install twice
+over: until the key exists the activity bar container has no visible view
+and shows no icon in any editor, and below 1.106 the orphaned right-hand
+view - whose negated clause is *true* on an unset key - sits in the
+Explorer. So the clauses fail toward an icon: an extension that never runs
+a line still shows the activity bar icon everywhere, and setting the key is
+what moves the view to the right-hand bar, not what makes an icon exist.
+`scripts/verify_editor_placement.mjs` holds that direction. `engines.vscode` stays at
 `^1.85.0`: nobody has to move editors to keep the extension, and nobody on a
 recent one has to drag the view to where the comparable assistant extensions
 sit. Every one of those extensions contributes to `activitybar` with a floor
@@ -160,7 +174,13 @@ if the view has spilled into the Explorer - and then close each of the three
 bars in turn, so only the bar that owns the view makes it disappear. The
 `conversation` and `close-mid-turn` scenarios run on the pinned 1.134.0 and
 assert the secondary side bar; a third scenario runs the same assertions on
-1.105.1, below the line, and asserts the activity bar.
+1.105.1, below the line, and asserts the activity bar. And because a view a
+command can open is not yet an icon a person can see, a `startup-icon`
+scenario runs on both pinned versions without ever activating the extension
+or opening the view: it screenshots the window's display and counts the
+marks in the bars, and passes only when the joule entry point has rendered
+on its own - the activity bar icon on 1.105.1, the tab in the secondary side
+bar's strip on 1.134.0.
 
 ## Trust level
 

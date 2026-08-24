@@ -41,16 +41,14 @@
         {
           "id": "joule",
           "title": "Joule",
-          "icon": "media/icon.svg",
-          "when": "joule.noSecondarySidebar"
+          "icon": "media/icon.svg"
         }
       ],
       "secondarySidebar": [
         {
           "id": "joule-secondary",
           "title": "Joule",
-          "icon": "media/icon.svg",
-          "when": "!joule.noSecondarySidebar"
+          "icon": "media/icon.svg"
         }
       ]
     },
@@ -60,7 +58,7 @@
           "id": "joule.chat",
           "name": "Session",
           "type": "webview",
-          "when": "joule.noSecondarySidebar"
+          "when": "!joule.secondarySidebar"
         }
       ],
       "joule-secondary": [
@@ -68,7 +66,7 @@
           "id": "joule.chat.secondary",
           "name": "Session",
           "type": "webview",
-          "when": "!joule.noSecondarySidebar"
+          "when": "joule.secondarySidebar"
         }
       ]
     },

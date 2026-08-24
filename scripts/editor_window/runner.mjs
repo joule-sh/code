@@ -17,10 +17,12 @@ const VSCODE_VERSION = "1.134.0";
 const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
 const ALL_SCENARIOS = [
+  { name: "startup-icon", version: VSCODE_VERSION },
   { name: "first-run", version: VSCODE_VERSION },
   { name: "conversation", version: VSCODE_VERSION },
   { name: "close-mid-turn", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
+  { name: "startup-icon", version: OLDER_VSCODE_VERSION },
 ];
 const ASKED_FOR = (process.env.JOULE_EDITOR_SCENARIOS || "").split(",").map((s) => s.trim()).filter((s) => s !== "");
 const SCENARIOS = ASKED_FOR.length === 0
@@ -266,7 +268,8 @@ async function main() {
   if (!failed) {
     note("PASS: a real editor window showed an unconfigured person the first-run screen, opened the panel, ran a turn,"
       + " drove the approval mode from the composer, approved a tool from the webview onto disk, left no daemon behind,"
-      + " and an editor too old for the secondary side bar opened the same view in the activity bar");
+      + " an editor too old for the secondary side bar opened the same view in the activity bar, and both editors"
+      + " showed the joule entry point in the right bar at startup without the view ever being opened");
   }
 }
 

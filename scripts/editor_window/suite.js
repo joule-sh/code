@@ -5,6 +5,7 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const { assertPlacement, expected } = require("./placement.js");
 const { panelChecks } = require("./panel_checks.js");
+const { assertStartupIcons } = require("./startup_icon.js");
 
 const SCENARIO = process.env.JOULE_EDITOR_TEST_SCENARIO || "conversation";
 const ROOT = process.env.JOULE_EDITOR_TEST_ROOT || "";
@@ -395,6 +396,10 @@ async function dump(panel) {
 async function drive() {
   let panel = null;
   try {
+    if (SCENARIO === "startup-icon") {
+      await assertStartupIcons({ ok, say });
+      return;
+    }
     panel = await openPanel();
     if (SCENARIO === "placement") { return; }
     if (SCENARIO === "first-run") {

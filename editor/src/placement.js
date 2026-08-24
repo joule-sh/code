@@ -1,4 +1,4 @@
-const CONTEXT_KEY = "joule.noSecondarySidebar";
+const CONTEXT_KEY = "joule.secondarySidebar";
 const SINCE_MAJOR = 1;
 const SINCE_MINOR = 106;
 
