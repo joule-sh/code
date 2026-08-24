@@ -139,6 +139,7 @@ editor-check:
 	node scripts/verify_renderer.mjs
 	node scripts/verify_editor_modes.mjs
 	node scripts/verify_editor_setup.mjs
+	node scripts/verify_editor_placement.mjs
 	node --check editor/extension.js
 	for f in editor/src/*.js editor/media/*.js scripts/editor_window/*.js; do node --check $$f || exit 1; done
 

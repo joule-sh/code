@@ -1,21 +1,17 @@
 const vscode = require("vscode");
 const { ChatPanel } = require("./src/chat_panel.js");
-const { CONTEXT_KEY, ACTIVITY_BAR, SECONDARY_SIDEBAR, supportsSecondarySidebar } = require("./src/placement.js");
+const { ACTIVITY_BAR } = require("./src/placement.js");
 
 let panel = null;
 
 function activate(context) {
   panel = new ChatPanel(context);
 
-  vscode.commands.executeCommand("setContext", CONTEXT_KEY, !supportsSecondarySidebar(vscode.version));
-
-  for (const where of [ACTIVITY_BAR, SECONDARY_SIDEBAR]) {
-    context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(where.view, panel, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-  }
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ACTIVITY_BAR.view, panel, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("joule.attach", () => panel.attach({})),

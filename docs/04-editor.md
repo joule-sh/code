@@ -81,8 +81,8 @@ do before it does it.
 
 ## Where the view opens (#199)
 
-**The session view is declared into the secondary side bar where the editor
-can take that, and into the activity bar where it cannot.**
+**The session view is declared into the activity bar, and the right-hand
+default is parked until it can come back without costing the icon (#233).**
 `contributes.viewsContainers` takes three keys - `activitybar`, `panel` and
 `secondarySidebar` - and the third registers a container at the auxiliary
 bar, the right-hand side bar whose containers are the strip across its top.
@@ -100,34 +100,28 @@ unknown and the same thing happens quietly. So the choice is not between a
 right-hand default and a left-hand one; it is between shipping both
 containers and refusing to install below 1.106.
 
-**Both containers ship, and a context key decides which one holds the view.**
-`activitybar` carries `joule` and `secondarySidebar` carries
-`joule-secondary`, in that order, because on 1.104 and 1.105 the throw ends
-the manifest's container list where it stands and everything declared before
-it has already registered. Each container's view is gated on
-`joule.noSecondarySidebar`, which `extension.js` sets from `vscode.version`
-at activation, so exactly one of them is ever populated; a container with no
-visible view is hidden, so the other never appears. The `when` on the
-containers themselves is declared for the same reason and does nothing today
-- the editor reads `id`, `title` and `icon` and ignores the rest - so it is
-the views' clauses that decide, and the empty container that disappears. `engines.vscode` stays at
-`^1.85.0`: nobody has to move editors to keep the extension, and nobody on a
-recent one has to drag the view to where the comparable assistant extensions
-sit. Every one of those extensions contributes to `activitybar` with a floor
-between 1.79 and 1.101, and the ones that reach the right-hand bar by default
-do it exactly this way, with a second container and a version-gated view.
+**One container ships, the activity bar's, and nothing gates it.** The
+manifest declares `joule` in `activitybar` holding `joule.chat` with no
+`when` clause at all - the shape Continue, Cline and Roo all ship - so the
+icon exists from the window's first paint, before and without the extension
+activating. The two-container arrangement above is the design this section
+argues for, and it is parked rather than abandoned: as shipped in 0.16.0 it
+gated both views on a context key only activation could set, an unset key
+evaluates false, and a container whose views are all hidden draws no icon -
+so every window started icon-less, stayed that way wherever activation never
+landed, and below 1.106 the orphaned right-hand view sat in the Explorer.
+When the secondary container returns, its clauses have to fail toward an
+icon; `scripts/verify_editor_placement.mjs` holds the ungated shape in the
+meantime.
 
 **Someone who has already moved it keeps where they put it, on the editors
 where that has been possible.** A container's location is resolved as the
 stored customization first and the declared default only when there is none:
 `views.customizations` in global storage holds a `viewContainerLocations`
 entry for every container a person has dragged, keyed by container id. The
-container that has shipped until now is `joule`, and it stays the activity
-bar's, so an install below 1.106 - where dragging has been the only way to
-reach the right-hand bar - keeps its drag exactly. Above 1.106 the view moves
-into `joule-secondary`, which has no stored entry and therefore opens where
-this change points. That is the default change the issue asks for, and it is
-the one case where an upgrade relocates the view.
+container is `joule`, and it stays the activity bar's, so a person who has
+dragged the view to the right-hand bar - the only way to reach it for now -
+keeps that drag across restarts and across this change.
 
 **The icon is the console's mark, drawn for the size the strip uses.** That
 strip renders a container's title by default and its icon when a person turns
@@ -153,14 +147,15 @@ and nothing exposed to an extension moves a container to a location - and an
 approximation built out of the workbench's own commands would be a window
 rearranging a person's layout without being asked.
 
-**The window harness runs on both sides of the line.** The placement
-assertions are version-aware: they ask the editor for the container this
-version is meant to use, check that opening it shows the view - which fails
-if the view has spilled into the Explorer - and then close each of the three
-bars in turn, so only the bar that owns the view makes it disappear. The
-`conversation` and `close-mid-turn` scenarios run on the pinned 1.134.0 and
-assert the secondary side bar; a third scenario runs the same assertions on
-1.105.1, below the line, and asserts the activity bar.
+**The window harness asserts the icon, not just the view.** The placement
+assertions check that opening the joule container shows the view - which
+fails if the view has spilled into the Explorer - and then close each of the
+three bars in turn, so only the bar that owns the view makes it disappear;
+they run on the pinned 1.134.0 and on 1.105.1. And because a view a command
+can open is not yet an icon a person can see, a `startup-icon` scenario runs
+on both pinned versions without ever activating the extension or opening the
+view: it screenshots the window's display and counts the marks in the
+activity bar, and passes only when the joule icon has rendered on its own.
 
 ## Trust level
 

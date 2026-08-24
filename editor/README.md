@@ -11,19 +11,16 @@ rewritten - are in
 
 ## Where it opens
 
-The session view opens in the **secondary side bar**, on the right, where the
-other assistant extensions sit and next to the editor rather than in front of
-the file tree. Its icon is in the strip along the top of that bar.
+The session view opens in the **activity bar**, on the left, with the J mark
+as its icon. Nothing gates the container or the view, so the icon is there
+from the window's first paint on every editor from 1.85 up, whether or not
+the extension has activated yet.
 
-That placement needs an editor from **1.106** on, which is where the manifest
-first took a secondary side bar container. On anything older the same view
-opens in the activity bar on the left, exactly as it always has, and can be
-dragged to the right by hand. Nothing about this asks a person to move
-editors: `engines.vscode` is still `^1.85.0`, and the extension ships both
-containers and picks between them when it starts.
-
-Either way the editor remembers a person's own placement: drag the view where
-you want it and that is where it opens, whatever the default says.
+It can be dragged to the secondary side bar - the right-hand strip where the
+comparable assistant extensions sit - and the editor remembers that placement
+across restarts. An earlier release declared a right-hand default and lost
+the icon doing it (#233), so the default stays where every editor renders it
+reliably until the right-hand arrangement can come back without that cost.
 
 ## What the panel shows
 

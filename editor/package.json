@@ -33,7 +33,8 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onView:joule.chat"
   ],
   "contributes": {
     "viewsContainers": {
@@ -41,16 +42,7 @@
         {
           "id": "joule",
           "title": "Joule",
-          "icon": "media/icon.svg",
-          "when": "joule.noSecondarySidebar"
-        }
-      ],
-      "secondarySidebar": [
-        {
-          "id": "joule-secondary",
-          "title": "Joule",
-          "icon": "media/icon.svg",
-          "when": "!joule.noSecondarySidebar"
+          "icon": "media/icon.svg"
         }
       ]
     },
@@ -60,15 +52,7 @@
           "id": "joule.chat",
           "name": "Session",
           "type": "webview",
-          "when": "joule.noSecondarySidebar"
-        }
-      ],
-      "joule-secondary": [
-        {
-          "id": "joule.chat.secondary",
-          "name": "Session",
-          "type": "webview",
-          "when": "!joule.noSecondarySidebar"
+          "visibility": "visible"
         }
       ]
     },
