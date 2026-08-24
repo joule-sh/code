@@ -214,16 +214,6 @@ jobs:
           ./bin/joule --version
           ./bin/relay --version
           ./bin/joule-daemon --version
-      # Packaging the binaries the way a release does, and then checking the
-      # archive, is what keeps the macOS guard honest between tags: the release
-      # workflow only runs on one, so without this the guard itself would go
-      # untested until the moment it is relied on (#196).
-      - run: |
-          dir="code-aarch64-macos"
-          mkdir -p "$dir"
-          cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
-          tar -czf "$dir.tar.gz" "$dir"
-          scripts/check_macos_release.sh "$dir.tar.gz"
       - run: make macos-test
       - run: make daemon-concurrent-harness
       - run: make daemon-attach-harness
@@ -250,3 +240,42 @@ jobs:
           ./bin/joule --version
           ./bin/relay --version
           ./bin/joule-daemon --version
+
+  # The macOS counterpart to linux-release, and the only job that sees what a
+  # release actually publishes. The `macos` job above builds for the runner and
+  # runs what it built, so it cannot catch a fault in signing or packaging -
+  # that is how #196 stayed green through three releases. This one repeats the
+  # release recipe, archive and all, and checks the archive. It is a job of its
+  # own rather than more steps on `macos` because `brew unlink bdw-gc` would
+  # pull the collector out from under the dynamically linked binaries the
+  # harnesses there are still using.
+  macos-release:
+    runs-on: macos-14
+    timeout-minutes: 20
+    env:
+      LUMEN_VERSION: v0.7.1
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install bdw-gc
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-aarch64-macos.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-aarch64-macos" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-aarch64-macos/zig" >> "$GITHUB_PATH"
+      - run: |
+          mkdir -p "$PWD/gcstatic"
+          cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
+          brew unlink bdw-gc
+          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+      - run: make release
+      - run: |
+          for bin in bin/joule bin/relay bin/joule-daemon; do
+            codesign --sign - --force "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+      - run: |
+          dir="code-aarch64-macos"
+          mkdir -p "$dir"
+          cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
+          tar -czf "$dir.tar.gz" "$dir"
+      - run: scripts/check_macos_release.sh "code-aarch64-macos.tar.gz"
