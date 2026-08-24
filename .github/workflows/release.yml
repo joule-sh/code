@@ -60,13 +60,18 @@ jobs:
       # the static build below compiles its own - see the Linux step.
       - if: runner.os == 'macOS'
         run: brew install bdw-gc
-      # The Windows toolchain is published as a .zip rather than a .tar.gz; the
-      # tar that ships with the runner is bsdtar and reads both.
+      # The Windows toolchain is published as a .zip rather than a .tar.gz, and
+      # is unpacked with 7z rather than tar: the tar on PATH inside Git Bash is
+      # GNU tar, which does not read zip, and Expand-Archive takes minutes over
+      # twenty thousand files.
       - run: |
-          ext=tar.gz
-          if [ "$RUNNER_OS" = "Windows" ]; then ext=zip; fi
-          curl -fsSL -o "lumen.$ext" "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.$ext"
-          tar -xf "lumen.$ext"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            curl -fsSL -o lumen.zip "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.zip"
+            7z x -y lumen.zip > /dev/null
+          else
+            curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.tar.gz"
+            tar -xzf lumen.tar.gz
+          fi
           echo "$PWD/${{ matrix.lumen_dist }}" >> "$GITHUB_PATH"
           echo "$PWD/${{ matrix.lumen_dist }}/zig" >> "$GITHUB_PATH"
       - run: |
