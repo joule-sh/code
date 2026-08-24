@@ -743,7 +743,11 @@ that builds and runs the suite plus the daemon harnesses on `macos-14`,
 which is the only reason this can be called fixed rather than believed
 fixed. Two tests in `mailbox.test.ts` read `/proc/self/io` and
 `/proc/self/fd` to measure read amplification and descriptor leaks; they
-are Linux-only by nature and now guard on `process.platform()`.
+are Linux-only by nature and now guard on `process.platform()`. Four test
+files elsewhere in the tree do not pass on macOS for reasons of their own -
+the permission bits a credential file is written with, and how the update
+path recognises and smoke-tests a managed install - and are named in
+`MACOS_SKIP_TS` in the Makefile, a list meant to shrink.
 
 ### Silence is its own defect
 
