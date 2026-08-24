@@ -17,6 +17,7 @@ const VSCODE_VERSION = "1.134.0";
 const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
 const SCENARIOS = [
+  { name: "first-run", version: VSCODE_VERSION },
   { name: "conversation", version: VSCODE_VERSION },
   { name: "close-mid-turn", version: VSCODE_VERSION },
   { name: "placement", version: OLDER_VSCODE_VERSION },
@@ -162,6 +163,11 @@ async function runScenario({ name: scenario, version }) {
     JOULE_EDITOR_TEST_STUB_PORT: String(stubPort),
   };
   if (display !== null) { env.DISPLAY = display; }
+  if (scenario === "first-run") {
+    delete env.JOULE_CODE_BASE_URL;
+    delete env.JOULE_CODE_MODEL;
+    delete env.JOULE_CODE_API_KEY;
+  }
 
   const cleanup = () => {
     reap(dirs, env);
@@ -240,7 +246,8 @@ async function main() {
   }
 
   if (!failed) {
-    note("PASS: a real editor window opened the panel, ran a turn, approved a tool from the webview onto disk, and left no daemon behind,"
+    note("PASS: a real editor window showed an unconfigured person the first-run screen, opened the panel, ran a turn,"
+      + " drove the approval mode from the composer, approved a tool from the webview onto disk, left no daemon behind,"
       + " and an editor too old for the secondary side bar opened the same view in the activity bar");
   }
 }

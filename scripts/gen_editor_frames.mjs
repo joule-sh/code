@@ -24,6 +24,11 @@ const EXPORTED = [
   "APPROVAL_REPLY_FRAME",
   "APPROVAL_REPLY_RESULT",
   "RESUME_FRAME",
+  "MODE_SET_FRAME",
+  "MODEL_SET_FRAME",
+  "NOTICE_FRAME",
+  "LEVEL_INFO",
+  "LEVEL_WARN",
   "REASON_DONE",
   "REASON_CANCELLED",
   "REASON_ERROR",
@@ -50,6 +55,8 @@ const EXPORTED = [
   "encodeCancelFrame",
   "encodeApprovalReplyFrame",
   "encodeResumeFrame",
+  "encodeModeSetFrame",
+  "encodeModelSetFrame",
 ];
 
 function templateBody(text) {

@@ -214,6 +214,11 @@ class Conversation extends EventEmitter {
       return;
     }
 
+    if (kind === frames.NOTICE_FRAME) {
+      this.notice(f.message, f.level === frames.LEVEL_WARN ? "warn" : "info");
+      return;
+    }
+
     if (frames.isDaemonBroadcastType(kind)) {
       this.handleBroadcast(kind, f);
       return;
