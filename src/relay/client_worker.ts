@@ -1,6 +1,7 @@
 import { connectWebSocket, receive, sendText, Connection } from "../vendor/websocket/client.ts";
 import { PROTOCOL_VERSION, RESUME, ResumeFrame, encodeResume } from "../protocol/frames.ts";
 import { encodeMailboxFrame, encodeMailboxControl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { appendFile } from "../vendor/platform/platform.ts";
 
 let g_host: string = "";
 let g_wsPort: int = 0;
@@ -30,7 +31,7 @@ function terminalHeaders(secret: string): Map<string, string> {
 }
 
 function appendMailbox(line: string): void {
-  try { fs.appendFileSync(g_mailboxPath, line + "\n"); } catch { }
+  try { appendFile(g_mailboxPath, line + "\n"); } catch { }
 }
 
 export function receiveLoop(): int {

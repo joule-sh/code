@@ -1,5 +1,6 @@
 import { runInstallOnceWith, RESULT_INSTALLED, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
 import { PLATFORM_LINUX_X64 } from "./platform.ts";
+import { chmodPath } from "../vendor/platform/platform.ts";
 
 const TARGET: string = PLATFORM_LINUX_X64;
 const FIXTURES: string = "/tmp/joule-update-smoke-fixtures";
@@ -69,7 +70,7 @@ function ensureFixtures(): void {
 function place(src: string, dst: string): void {
   if (src == "") { return; }
   run("cp", [src, dst]);
-  fs.chmodSync(dst, 0o755);
+  chmodPath(dst, 0o755);
 }
 
 function versionOf(path: string): string {

@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop } from "../protocol/frames.ts";
 import { DaemonClient } from "./attach_client.ts";
 import { readDaemonInfo, readDaemonInfoAt, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
+import { tempDir } from "../vendor/platform/platform.ts";
 
 export const POLL_MS: int = 100;
 const CONNECT_WAIT_TICKS: int = 20;
@@ -13,7 +14,7 @@ const ATTACH_ATTEMPTS: int = 8;
 export const STOP_FLAG: string = "--stop";
 
 export function tmpDir(): string {
-  return process.env("TMPDIR") ?? "/tmp";
+  return tempDir();
 }
 
 export function hasStopFlag(argv: string[]): bool {

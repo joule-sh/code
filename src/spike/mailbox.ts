@@ -1,3 +1,5 @@
+import { appendFile } from "../vendor/platform/platform.ts";
+
 export type MailboxEntry = { recvAt: i64, tag: string, payload: string };
 
 function parseI64(s: string): i64 {
@@ -15,7 +17,7 @@ function parseI64(s: string): i64 {
 
 export function appendMailbox(path: string, tag: string, payload: string): void {
   let recvAt: i64 = Date.now();
-  try { fs.appendFileSync(path, `${recvAt}` + "|" + tag + "|" + payload + "\n"); } catch { }
+  try { appendFile(path, `${recvAt}` + "|" + tag + "|" + payload + "\n"); } catch { }
 }
 
 function nonEmptyLines(content: string): string[] {

@@ -1,10 +1,11 @@
 import { sessionKeyFor } from "../session/persistence.ts";
 import { detectRunningExePath } from "../update/install_detect.ts";
+import { homeDir } from "../vendor/platform/platform.ts";
 
 export type DaemonInfo = { workspace: string, port: int, startedAt: string };
 
 export function daemonInfoDir(): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code/daemon";
 }
 

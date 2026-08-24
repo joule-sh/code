@@ -3,6 +3,7 @@ import { DEV_VERSION, isNewerVersion, stripLeadingV } from "./version_compare.ts
 import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, isMacosPlatform, RELEASE_REPO } from "./platform.ts";
 import { isRunnableBinaryForPlatform, readMagic4, fileSize } from "./archive.ts";
 import { isUpdateTmpName, UPDATE_TMP_PREFIX } from "./install_detect.ts";
+import { chmodPath } from "../vendor/platform/platform.ts";
 
 export const LATEST_RELEASE_URL: string = "https://api.github.com/repos/" + RELEASE_REPO + "/releases/latest";
 
@@ -138,7 +139,7 @@ export function verifyDownloadedJoule(newJoule: string, releaseTarget: string, v
     let r: VerifyResult = { ok: false, error: "the archive did not contain a joule binary for " + releaseTarget };
     return r;
   }
-  fs.chmodSync(newJoule, 0o755);
+  chmodPath(newJoule, 0o755);
   let magic = readMagic4(newJoule);
   let size = fileSize(newJoule);
   if (!isRunnableBinaryForPlatform(releaseTarget, magic, size)) {
@@ -168,7 +169,7 @@ export function verifyDownloadedCompanion(path: string, name: string, releaseTar
     let r: VerifyResult = { ok: false, error: "the archive did not contain a " + name + " binary for " + releaseTarget };
     return r;
   }
-  fs.chmodSync(path, 0o755);
+  chmodPath(path, 0o755);
   let signature = ensureCodeSignature(path, name, releaseTarget, runCmd);
   if (!signature.ok) { return signature; }
   let smoke = smokeRunBinary(path, runCmd);

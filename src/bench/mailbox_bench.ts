@@ -1,12 +1,13 @@
 import { appendMailbox, MailboxReader } from "../tasks/mailbox.ts";
+import { appendFile, envOr } from "../vendor/platform/platform.ts";
 
 function envInt(name: string, fallback: int): int {
-  let raw = process.env(name) ?? "";
+  let raw = envOr(name, "");
   return Number.parseInt(raw, 10) ?? fallback;
 }
 
-const MODE: string = process.env("BENCH_MODE") ?? "mailbox";
-const MAILBOX_PATH: string = process.env("BENCH_PATH") ?? "/tmp/joule-mailbox-bench.log";
+const MODE: string = envOr("BENCH_MODE", "mailbox");
+const MAILBOX_PATH: string = envOr("BENCH_PATH", "/tmp/joule-mailbox-bench.log");
 const ENTRIES: int = envInt("BENCH_ENTRIES", 2000);
 const PAYLOAD: int = envInt("BENCH_PAYLOAD", 100);
 const POLL_EVERY: int = envInt("BENCH_POLL_EVERY", 10);
@@ -44,7 +45,7 @@ function bodyText(): string {
 }
 
 function rewriteAppend(text: string): void {
-  fs.appendFileSync(MAILBOX_PATH, `${Date.now()}` + "|DELTA|" + text + "\n");
+  appendFile(MAILBOX_PATH, `${Date.now()}` + "|DELTA|" + text + "\n");
 }
 
 function runRewrite(text: string): void {

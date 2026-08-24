@@ -6,6 +6,7 @@ import { serveTerminalWebSocket, serveBrowserWebSocket } from "./ws.ts";
 import { relayRuntimeDir, sessionsDir } from "./relay_paths.ts";
 import { AccountVerifier } from "./http.ts";
 import { verifyAccountCredential, consoleUrlFromEnv, CONSOLE_URL_ENV } from "./account_verify.ts";
+import { envOr } from "../vendor/platform/platform.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -27,14 +28,14 @@ function currentArgs(): string[] {
 }
 
 function envPort(name: string, fallback: int): int {
-  let raw = process.env(name) ?? "";
+  let raw = envOr(name, "");
   return Number.parseInt(raw, 10) ?? fallback;
 }
 
 const HTTP_PORT: int = envPort("JOULE_RELAY_HTTP_PORT", 8090);
 const WS_PORT: int = envPort("JOULE_RELAY_WS_PORT", 8091);
 const WS_BROWSER_PORT: int = envPort("JOULE_RELAY_WS_BROWSER_PORT", WS_PORT + 1);
-const CONSOLE_URL: string = consoleUrlFromEnv(process.env(CONSOLE_URL_ENV) ?? "");
+const CONSOLE_URL: string = consoleUrlFromEnv(envOr(CONSOLE_URL_ENV, ""));
 
 let runtimeDir = relayRuntimeDir(HTTP_PORT);
 

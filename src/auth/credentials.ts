@@ -1,5 +1,6 @@
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { normalizeServer } from "./server.ts";
+import { chmodPath, homeDir } from "../vendor/platform/platform.ts";
 
 const DIR_MODE: int = 0o700;
 const FILE_MODE: int = 0o600;
@@ -23,7 +24,7 @@ export function emptyCredential(): Credential {
 }
 
 export function credentialsDir(): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code";
 }
 
@@ -87,11 +88,11 @@ export function writeSecretFile(filePath: string, text: string): void {
   let dir = path.dirname(filePath);
   if (dir != "") {
     if (!fs.existsSync(dir)) { fs.mkdirSync(dir, true); }
-    fs.chmodSync(dir, DIR_MODE);
+    chmodPath(dir, DIR_MODE);
   }
   let tmpPath = filePath + "." + `${Date.now()}` + ".tmp";
   fs.writeFileSync(tmpPath, "");
-  fs.chmodSync(tmpPath, FILE_MODE);
+  chmodPath(tmpPath, FILE_MODE);
   fs.writeFileSync(tmpPath, text);
   fs.renameSync(tmpPath, filePath);
 }

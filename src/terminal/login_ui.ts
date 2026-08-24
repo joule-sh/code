@@ -7,6 +7,7 @@ import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSour
 import { loginUrl, exchangeCode, normalizeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
 import { credentialsPath, loadCredential, saveCredential, forgetCredential, accountLabel, otherServers } from "../auth/credentials.ts";
 import { rememberServer, configFilePath } from "../providers/config.ts";
+import { envOr } from "../vendor/platform/platform.ts";
 
 const MAX_ATTEMPTS: int = 3;
 const LIST_LIMIT: int = 3;
@@ -162,7 +163,7 @@ function endSignIn(input: InputLine, signin: SignIn): void {
 }
 
 export function beginSignIn(sb: Scrollback, input: InputLine, signin: SignIn, origin: ServerOrigin, requested: string): void {
-  let check = checkServer(loginTarget(origin, requested), insecureAllowed(process.env(INSECURE_ENV) ?? ""));
+  let check = checkServer(loginTarget(origin, requested), insecureAllowed(envOr(INSECURE_ENV, "")));
   if (check.status != SERVER_OK) {
     sb.append("\n" + check.message);
     return;
@@ -178,7 +179,7 @@ export function cancelSignIn(sb: Scrollback, input: InputLine, signin: SignIn): 
 }
 
 function switchSignInServer(sb: Scrollback, input: InputLine, signin: SignIn, typed: string): void {
-  let check = checkServer(typedServerAddress(typed), insecureAllowed(process.env(INSECURE_ENV) ?? ""));
+  let check = checkServer(typedServerAddress(typed), insecureAllowed(envOr(INSECURE_ENV, "")));
   if (check.status != SERVER_OK) {
     sb.append("\n" + check.message);
     sb.append(waitingLines(signin.origin));

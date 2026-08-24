@@ -1,3 +1,4 @@
+import { envOr } from "../vendor/platform/platform.ts";
 export const INSTALL_ROOT_ENV: string = "CODE_INSTALL_ROOT";
 export const BIN_DIR_ENV: string = "CODE_BIN_DIR";
 export const DEFAULT_INSTALL_ROOT: string = ".joule-code";
@@ -64,7 +65,7 @@ function detectViaProcSelfExe(): string {
 function detectViaArgv0(): string {
   let argv = process.argv();
   if (argv.length == 0) { return ""; }
-  let pathEnv = process.env("PATH") ?? "";
+  let pathEnv = envOr("PATH", "");
   let cwd = process.cwd();
   let resolved = resolveArgv0Path(argv[0], pathEnv, cwd, existsOnDisk);
   if (resolved == "") { return ""; }
