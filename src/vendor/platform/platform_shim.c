@@ -32,9 +32,25 @@
 
 // The value of `name`, or an empty string if it is unset. An unset variable
 // and one set to "" are told apart by plat_env_present, not by this.
+//
+// The answer is a copy, deliberately. getenv hands back a pointer into the
+// process environment block, and handing that across the FFI makes the
+// caller's ownership of it a question - if the runtime frees what a string
+// call returns, freeing that pointer corrupts the heap in a way that surfaces
+// nowhere near here. A copy is correct whichever answer the runtime gives,
+// and this is called a few dozen times in a process lifetime.
 const char *plat_env(const char *name) {
     const char *value = getenv(name);
-    return value ? value : "";
+    if (value == NULL) {
+        return "";
+    }
+    size_t len = strlen(value);
+    char *copy = (char *)malloc(len + 1);
+    if (copy == NULL) {
+        return "";
+    }
+    memcpy(copy, value, len + 1);
+    return copy;
 }
 
 int plat_env_present(const char *name) {
