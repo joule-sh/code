@@ -36,7 +36,7 @@ function attachHelpText(): string {
     + "\n/stop-daemon    ask this workspace's daemon to stop (any attached client may; it takes effect once any in-flight turn finishes, see docs/03-daemon.md)";
 }
 
-export function runDaemonJoule(argv: string[]): bool {
+export function runDaemonJoule(argv: string[], fallbackNotes: string[]): bool {
   let workspaceRoot = process.cwd();
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
@@ -49,7 +49,8 @@ export function runDaemonJoule(argv: string[]): bool {
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, wantsResume);
   if (!result.client.socketReady) {
-    console.log("joule: could not reach or start a daemon for " + workspaceRoot + " - running in-process instead");
+    for (const n of result.notes) { fallbackNotes.push(n); }
+    fallbackNotes.push("joule: could not reach or start a daemon for " + workspaceRoot + " - running in-process instead");
     return false;
   }
   runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, false);
@@ -75,6 +76,7 @@ export function runAttach(argv: string[]): void {
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, wantsResume);
   if (!result.client.socketReady) {
+    for (const n of result.notes) { console.log(n); }
     console.log("joule attach: could not reach a daemon for " + workspaceRoot);
     process.exit(1);
     return;
@@ -201,6 +203,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   } else {
     sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   }
+  for (const n of result.notes) { sb.append("\n" + styleBanner(n)); }
   let resumeNote = resumeNoteFor(argv, workspaceRoot, result, wantsResume);
   if (resumeNote != "") { sb.append(resumeNote); }
   drawScreen(sb, input, approvalLog.mode, rk);

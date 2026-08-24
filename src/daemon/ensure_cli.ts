@@ -40,6 +40,7 @@ export function runDaemonEnsure(argv: string[]): void {
   let ready = result.client.socketReady;
   let port = result.client.port;
   result.client.detach();
+  for (const n of result.notes) { console.log(n); }
   console.log(ensureReport(ready, workspaceRoot, port, result.spawned));
   if (!ready) {
     process.exit(1);

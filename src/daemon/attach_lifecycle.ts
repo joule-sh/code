@@ -109,9 +109,10 @@ function waitForHello(client: DaemonClient, seed: string[], ticks: int): string[
   return collected;
 }
 
-export type AttachResult = { client: DaemonClient, spawned: bool, pending: string[], port: int };
+export type AttachResult = { client: DaemonClient, spawned: bool, pending: string[], port: int, notes: string[] };
 
 export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
+  let notes: string[] = [];
   let info = readDaemonInfo(workspaceRoot);
   let taken = portsHeldByOthers(workspaceRoot);
   let port = DEFAULT_PORT_BASE;
@@ -133,10 +134,10 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
       let settled = waitForHello(client, first.frames, HELLO_WAIT_TICKS);
       let seen = helloWorkspace(settled);
       if (seen == workspaceRoot || (recorded && seen == "")) {
-        let already: AttachResult = { client: client, spawned: false, pending: settled, port: port };
+        let already: AttachResult = { client: client, spawned: false, pending: settled, port: port, notes: notes };
         return already;
       }
-      console.log("joule: 127.0.0.1:" + `${port}` + " answers for " + describeWorkspace(seen) + ", not " + workspaceRoot + " - looking for a port of its own");
+      notes.push("joule: 127.0.0.1:" + `${port}` + " answers for " + describeWorkspace(seen) + ", not " + workspaceRoot + " - looking for a port of its own");
       client.disconnect();
       taken.push(port);
       port = firstFreePort(nextPortInRange(port), taken);
@@ -155,19 +156,19 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     let settled = waitForHello(client, combined, HELLO_WAIT_TICKS);
     let seen = helloWorkspace(settled);
     if (seen != "" && seen != workspaceRoot) {
-      console.log("joule: started a daemon for " + workspaceRoot + " on 127.0.0.1:" + `${port}` + " but 127.0.0.1:" + `${port}` + " answered for " + seen);
-      console.log("joule: two daemons are sharing that port - stop the stale one with joule --stop in " + seen);
+      notes.push("joule: started a daemon for " + workspaceRoot + " on 127.0.0.1:" + `${port}` + " but 127.0.0.1:" + `${port}` + " answered for " + seen);
+      notes.push("joule: two daemons are sharing that port - stop the stale one with joule --stop in " + seen);
       client.disconnect();
-      let shared: AttachResult = { client: client, spawned: true, pending: settled, port: port };
+      let shared: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
       return shared;
     }
-    let fresh: AttachResult = { client: client, spawned: true, pending: settled, port: port };
+    let fresh: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
     return fresh;
   }
 
-  console.log("joule: every port this workspace tried is serving another workspace - stop the stale daemons with joule --stop in their workspaces");
+  notes.push("joule: every port this workspace tried is serving another workspace - stop the stale daemons with joule --stop in their workspaces");
   let exhausted = new DaemonClient("127.0.0.1", port, tmpDir());
-  let none: AttachResult = { client: exhausted, spawned: false, pending: [], port: port };
+  let none: AttachResult = { client: exhausted, spawned: false, pending: [], port: port, notes: notes };
   return none;
 }
 
