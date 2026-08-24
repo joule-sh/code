@@ -30,11 +30,19 @@ export function jail(root: string, relPath: string): JailResult {
   let remainder = target.slice(existingAncestor.length);
   let candidate = ancestorReal + remainder;
 
-  if (candidate == rootReal) {
-    return allowed(candidate);
-  }
-  if (candidate.startsWith(rootReal + "/")) {
+  if (isWithin(candidate, rootReal)) {
     return allowed(candidate);
   }
   return refused();
+}
+
+// Windows answers realpath and path.join in backslashes, so a candidate under
+// the root read as escaping it and every file tool refused every path (#173).
+// Both separators are accepted rather than normalised, because the string that
+// comes back from here is handed straight to fs and has to stay the spelling
+// the platform gave.
+export function isWithin(candidate: string, rootReal: string): bool {
+  if (candidate == rootReal) { return true; }
+  if (candidate.startsWith(rootReal + "/")) { return true; }
+  return candidate.startsWith(rootReal + "\\");
 }

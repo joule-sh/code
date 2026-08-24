@@ -1,7 +1,7 @@
 import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop } from "../protocol/frames.ts";
 import { DaemonClient } from "./attach_client.ts";
 import { readDaemonInfo, readDaemonInfoAt, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
-import { tempDir } from "../vendor/platform/platform.ts";
+import { isWindows, tempDir } from "../vendor/platform/platform.ts";
 
 export const POLL_MS: int = 100;
 const CONNECT_WAIT_TICKS: int = 20;
@@ -174,8 +174,22 @@ export function daemonBinFailure(daemonBinPath: string): string {
   return spawnFailureText(daemonBinPath, probe.status, probe.stderr);
 }
 
+export const WINDOWS_DAEMON_NOTE: string = "joule: the daemon does not run on Windows yet - it is started through /bin/sh with nohup, which has no equivalent here (#173) - running in-process instead";
+
 export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
   let notes: string[] = [];
+  // Declining here rather than at the spawn keeps Windows out of the connect
+  // loop entirely. Trying it first cost several seconds per start and printed
+  // a runtime trace on the way through, because a refused connection reaches
+  // Lumen's Windows socket layer as an unexpected NTSTATUS rather than as the
+  // ordinary "nothing is listening" it is on POSIX.
+  if (isWindows()) {
+    notes.push(WINDOWS_DAEMON_NOTE);
+    let port = portFromWorkspace(workspaceRoot, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD);
+    let idle = new DaemonClient("127.0.0.1", port, tempDir());
+    let declined: AttachResult = { client: idle, spawned: false, pending: [], port: port, notes: notes };
+    return declined;
+  }
   let info = readDaemonInfo(workspaceRoot);
   let taken = portsHeldByOthers(workspaceRoot);
   let port = DEFAULT_PORT_BASE;

@@ -70,7 +70,19 @@ static void tty_ensure_table(void) {
     InitOnceExecuteOnce(&g_table_once, tty_init_table, NULL, NULL);
 }
 
+// The standard three are asked of the process rather than of the CRT. A Lumen
+// binary is linked by Zig, whose startup does not populate the CRT's file
+// descriptor table, so _get_osfhandle(0) has nothing to answer with and the
+// renderer's isatty(0) came back false inside a real pseudoconsole. The fds
+// this shim opens itself - the test pipe, NUL - are CRT fds and do resolve
+// that way, which is why both paths are here.
 static HANDLE tty_handle(int fd) {
+    switch (fd) {
+    case 0: return GetStdHandle(STD_INPUT_HANDLE);
+    case 1: return GetStdHandle(STD_OUTPUT_HANDLE);
+    case 2: return GetStdHandle(STD_ERROR_HANDLE);
+    default: break;
+    }
     intptr_t h = _get_osfhandle(fd);
     if (h == -1 || h == -2) {
         return INVALID_HANDLE_VALUE;

@@ -20,9 +20,14 @@
 //   zig cc -target x86_64-windows-gnu -c platform_shim.c -o platform_shim.o
 
 #include <stdlib.h>
+#include <string.h>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // The value of `name`, or an empty string if it is unset. An unset variable
@@ -34,6 +39,42 @@ const char *plat_env(const char *name) {
 
 int plat_env_present(const char *name) {
     return getenv(name) != NULL ? 1 : 0;
+}
+
+// Append `text` to `path`, creating it if absent. 0 on success, -1 on failure.
+//
+// This is here rather than spelled with fs calls because Lumen's openSync(p,
+// "a") does not append: a handle opened that way writes from offset zero, so
+// three reopened writes leave only the third. The mailboxes this repo streams
+// model output through are append-only files with several writers, and doing
+// it wrong does not lose a line - it overwrites earlier ones, and the reader
+// then renders whatever fragments straddle the seam.
+//
+// O_APPEND and FILE_APPEND_DATA are the two platforms' names for the same
+// guarantee: the offset is taken at write time, under the file lock, so two
+// writers interleave whole records rather than landing on each other.
+int plat_append(const char *path, const char *text) {
+    size_t len = strlen(text);
+#ifdef _WIN32
+    HANDLE h = CreateFileA(path, FILE_APPEND_DATA,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        return -1;
+    }
+    DWORD written = 0;
+    BOOL ok = len == 0 ? TRUE : WriteFile(h, text, (DWORD)len, &written, NULL);
+    CloseHandle(h);
+    return (ok && written == (DWORD)len) ? 0 : -1;
+#else
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) {
+        return -1;
+    }
+    ssize_t n = len == 0 ? 0 : write(fd, text, len);
+    close(fd);
+    return n == (ssize_t)len ? 0 : -1;
+#endif
 }
 
 // 0 if the mode was applied, 1 if the platform has no equivalent to apply,

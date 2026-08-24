@@ -1,6 +1,7 @@
 // @link ./platform_shim.o
 declare function plat_env(name: string): string;
 declare function plat_env_present(name: string): int;
+declare function plat_append(path: string, text: string): int;
 declare function plat_chmod(path: string, mode: int): int;
 
 export const WINDOWS: string = "win32";
@@ -61,13 +62,12 @@ export function exeSuffix(): string {
 }
 
 // `fs.appendFileSync` is the other call Lumen v0.7.2 cannot generate code for
-// on a Windows target. Open-for-append, write, close is the same operation
-// spelled with three calls that do compile, and is what every mailbox writer
-// in this repo now uses.
+// on a Windows target, and the obvious replacement is a trap: openSync(p, "a")
+// writes from offset zero rather than appending, so a mailbox with several
+// writers loses everything but the last record. The shim uses O_APPEND and
+// FILE_APPEND_DATA, which is the guarantee appendFileSync had.
 export function appendFile(filePath: string, text: string): void {
-  let fd = fs.openSync(filePath, "a");
-  fs.writeSync(fd, text);
-  fs.closeSync(fd);
+  plat_append(filePath, text);
 }
 
 export const CHMOD_APPLIED: int = 0;
@@ -81,13 +81,22 @@ export function chmodPath(filePath: string, mode: int): int {
   return plat_chmod(filePath, mode);
 }
 
+// PowerShell rather than cmd.exe, for a reason that is about argument passing
+// and not about taste. Lumen builds a child's command line from the array by
+// the C runtime's rules, which escape an embedded quote as \" - correct for
+// every program that parses its own argv that way, and meaningless to cmd.exe,
+// which sees the backslash. So a cmd.exe script carrying any quote at all
+// arrives corrupted, and a workspace path with a space cannot be passed at
+// all. PowerShell parses its arguments by the same rules Lumen writes them
+// with, so the script survives; that its aliases cover ls, cat, rm and echo is
+// a bonus rather than the argument.
 export function shellProgram(): string {
-  if (isWindows()) { return "cmd.exe"; }
+  if (isWindows()) { return "powershell.exe"; }
   return "/bin/sh";
 }
 
 export function shellArgs(script: string): string[] {
-  if (isWindows()) { return ["/c", script]; }
+  if (isWindows()) { return ["-NoProfile", "-NonInteractive", "-Command", script]; }
   return ["-c", script];
 }
 
@@ -111,11 +120,10 @@ test("tempDir names a directory rather than an empty string", () => {
 
 test("the shell and its flag are chosen together", () => {
   let args = shellArgs("echo hi");
-  expect(args.length == 2);
-  expect(args[1] == "echo hi");
+  expect(args[args.length - 1] == "echo hi");
   if (isWindows()) {
-    expect(shellProgram() == "cmd.exe");
-    expect(args[0] == "/c");
+    expect(shellProgram() == "powershell.exe");
+    expect(args[0] == "-NoProfile");
     expect(pathListSeparator() == ";");
     expect(exeSuffix() == ".exe");
   } else {
@@ -126,12 +134,21 @@ test("the shell and its flag are chosen together", () => {
   }
 });
 
-test("appendFile adds to a file rather than replacing it", () => {
+test("appendFile keeps every record across reopens, rather than the last one", () => {
   let p = tempDir() + "/joule-platform-append-test.log";
   if (fs.existsSync(p)) { fs.unlinkSync(p); }
   appendFile(p, "one\n");
   appendFile(p, "two\n");
-  expect(fs.readFileSync(p) == "one\ntwo\n");
+  appendFile(p, "three\n");
+  expect(fs.readFileSync(p) == "one\ntwo\nthree\n");
+  fs.unlinkSync(p);
+});
+
+test("appendFile creates the file when it is not there yet", () => {
+  let p = tempDir() + "/joule-platform-append-create.log";
+  if (fs.existsSync(p)) { fs.unlinkSync(p); }
+  appendFile(p, "first\n");
+  expect(fs.readFileSync(p) == "first\n");
   fs.unlinkSync(p);
 });
 

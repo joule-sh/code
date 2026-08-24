@@ -1,6 +1,6 @@
 import { sessionKeyFor } from "../session/persistence.ts";
 import { detectRunningExePath } from "../update/install_detect.ts";
-import { homeDir } from "../vendor/platform/platform.ts";
+import { exeSuffix, homeDir } from "../vendor/platform/platform.ts";
 
 export type DaemonInfo = { workspace: string, port: int, startedAt: string };
 
@@ -66,8 +66,9 @@ export function portFromWorkspace(workspaceRoot: string, base: int, spread: int)
 }
 
 export function daemonBinNameFor(runningExePath: string): string {
-  if (runningExePath == "") { return "bin/joule-daemon"; }
-  return path.dirname(runningExePath) + "/joule-daemon";
+  let name = "joule-daemon" + exeSuffix();
+  if (runningExePath == "") { return "bin/" + name; }
+  return path.dirname(runningExePath) + "/" + name;
 }
 
 export function defaultDaemonBinPath(): string {
