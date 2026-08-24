@@ -15,6 +15,7 @@ import { resolveResume, hasContinueFlag } from "./resume.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
 import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel } from "../daemon/attach_lifecycle.ts";
+import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
@@ -38,25 +39,23 @@ function attachHelpText(): string {
     + "\n/stop-daemon    ask this workspace's daemon to stop (any attached client may; it takes effect once any in-flight turn finishes, see docs/03-daemon.md)";
 }
 
-export function runDaemonJoule(argv: string[], fallbackNotes: string[]): bool {
+export function runDaemonJoule(argv: string[]): DaemonAttempt {
   let workspaceRoot = process.cwd();
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
     process.exit(1);
-    return true;
+    return declined([]);
   }
   let cfg = loadConfig(argv);
-  if (cfg.apiKey == "") { return false; }
+  if (cfg.apiKey == "") { return declined([]); }
   let serverBase = loadServerOrigin(argv);
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, wantsResume);
   if (!result.client.socketReady) {
-    for (const n of result.notes) { fallbackNotes.push(n); }
-    fallbackNotes.push("joule: could not reach or start a daemon for " + workspaceRoot + " - running in-process instead");
-    return false;
+    return declined(declineNotes(result.notes, workspaceRoot));
   }
   runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, false);
-  return true;
+  return attached();
 }
 
 export function runAttach(argv: string[]): void {

@@ -34,9 +34,9 @@ if (hasFlagIn(currentArgs(), "--version")) {
 } else if (hasFlagIn(currentArgs(), "attach")) {
   runAttach(currentArgs());
 } else {
-  let fallbackNotes: string[] = [];
-  if (!runDaemonJoule(currentArgs(), fallbackNotes)) {
-    runTerminal(currentArgs(), fallbackNotes);
+  let attempt = runDaemonJoule(currentArgs());
+  if (!attempt.attached) {
+    runTerminal(currentArgs(), attempt.notes);
   }
 }
 
