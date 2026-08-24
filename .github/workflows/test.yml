@@ -296,6 +296,48 @@ jobs:
           ./bin/joule-daemon.exe --version
       - run: make windows-harness
 
+  # The Windows counterpart to linux-release and macos-release, and it exists
+  # for the reason those do: the job above builds for the runner with `make
+  # build` and runs what it built, so it cannot catch a fault that only the
+  # release recipe or the archive has. That is how #196 stayed green through
+  # three macOS releases. This repeats `make release`, packages the zip the
+  # release publishes, and drives the release binary through the same
+  # pseudoconsole harness - a --release-fast build is a different binary and
+  # deserves to be run rather than assumed.
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      LUMEN_VERSION: v0.7.2
+      LUMEN_TARGET: x86_64-windows-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          choco install make -y --no-progress
+          cygpath -w /usr/bin >> "$GITHUB_PATH"
+      - run: |
+          curl -fsSL -o lumen.zip "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-windows.zip"
+          7z x -y lumen.zip > /dev/null
+          echo "$PWD/lumen-x86_64-windows" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-windows/zig" >> "$GITHUB_PATH"
+      - run: make release
+      - run: |
+          ./bin/joule.exe --version
+          ./bin/relay.exe --version
+          ./bin/joule-daemon.exe --version
+      - run: |
+          dir="code-x86_64-windows"
+          mkdir -p "$dir"
+          cp bin/joule.exe bin/relay.exe bin/joule-daemon.exe README.md "$dir/"
+          7z a -tzip "$dir.zip" "$dir" > /dev/null
+          7z l "$dir.zip"
+      # `build` finds the release binaries already newer than their sources, so
+      # this drives what `make release` just produced rather than rebuilding.
+      - run: make windows-harness
+
   linux-release:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10
