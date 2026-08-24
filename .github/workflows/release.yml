@@ -10,6 +10,12 @@ permissions:
 
 jobs:
   build:
+    # Linux needs v0.7.2, which is the first release whose backend can be asked
+    # for a target and a static link. macOS stays on v0.7.1 because v0.7.2 also
+    # stopped accepting `--link -L<dir>`, which is how the macOS steps below
+    # point the linker at Homebrew's static `libgc.a`; moving macOS off that is
+    # a change to the macOS release path, and belongs with the tickets that own
+    # it rather than here.
     strategy:
       fail-fast: false
       matrix:
@@ -17,20 +23,23 @@ jobs:
           - target: x86_64-linux
             runs_on: [self-hosted, diff]
             lumen_dist: lumen-x86_64-linux
+            lumen_version: v0.7.2
           - target: aarch64-macos
             runs_on: macos-14
             lumen_dist: lumen-aarch64-macos
+            lumen_version: v0.7.1
           - target: x86_64-macos
             runs_on: macos-15-intel
             lumen_dist: lumen-x86_64-macos
+            lumen_version: v0.7.1
     runs-on: ${{ matrix.runs_on }}
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: ${{ matrix.lumen_version }}
     steps:
       - uses: actions/checkout@v4
       # Lumen's allocator links the Boehm collector as a system library. macOS
-      # has none, so Homebrew provides it. The Linux runner has one, but a
-      # release cannot link it - see the Linux step below - and builds its own.
+      # has none, so Homebrew provides it. Linux needs nothing installed here:
+      # the static build below compiles its own - see the Linux step.
       - if: runner.os == 'macOS'
         run: brew install bdw-gc
       - run: |
@@ -55,15 +64,13 @@ jobs:
           cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
           brew unlink bdw-gc
           echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
-      # Linux gets the same treatment, for the same reason: an archive that
-      # needs a `libgc.so.1` the machine does not have installs fine and then
-      # cannot start (#184). The collector is built here rather than taken from
-      # the runner because the packaged `libgc.a` on 24.04 drags the binary's
-      # glibc requirement up with it, which would cost distributions.
+      # Linux goes further, because a bundled collector next to a dynamic libc
+      # still leaves a glibc floor, and an archive that cannot satisfy either
+      # installs fine and then dies in the loader (#184). Naming a musl target
+      # links the collector, libc and all in one file, so the binary needs
+      # nothing at all from the machine it lands on.
       - if: runner.os == 'Linux'
-        run: |
-          scripts/linux_static_gc.sh "$PWD/gcstatic"
-          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+        run: echo "LUMEN_TARGET=x86_64-linux-musl" >> "$GITHUB_ENV"
       - run: make release
       - run: ./bin/joule --version
       - run: ./bin/joule-daemon --version

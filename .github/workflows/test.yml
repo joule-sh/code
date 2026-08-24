@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: [self-hosted, diff]
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -26,7 +26,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -41,7 +41,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -71,7 +71,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -86,7 +86,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -101,7 +101,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -117,7 +117,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 20
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -150,7 +150,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -165,7 +165,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -180,7 +180,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -226,7 +226,7 @@ jobs:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10
     env:
-      LUMEN_VERSION: v0.7.1
+      LUMEN_VERSION: v0.7.2
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -234,8 +234,7 @@ jobs:
           tar -xzf lumen.tar.gz
           echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
-      - run: scripts/linux_static_gc.sh "$PWD/gcstatic"
-      - run: make release LUMEN_FLAGS="--link -L$PWD/gcstatic"
+      - run: make release LUMEN_TARGET=x86_64-linux-musl
       - run: scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
       - run: |
           ./bin/joule --version
