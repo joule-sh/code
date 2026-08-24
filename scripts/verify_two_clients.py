@@ -68,15 +68,17 @@ def rows_holding(session, needle):
 def wait_painted(session, needle, timeout, label):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if rows_holding(session, needle):
+        rows = rows_holding(session, needle)
+        if rows:
             ok(True, label)
-            return
+            return rows
         time.sleep(0.1)
     print("  the last screen this client painted held:", file=sys.stderr)
     for row in painted_rows(session):
         if row.strip() != "":
             print("    " + row, file=sys.stderr)
     ok(False, label)
+    return []
 
 
 def attach_session(env, workspace):
@@ -145,25 +147,25 @@ def main():
                      "and its status line agrees with the terminals that were already there")
 
         second.write(PROMPT_FROM_B + "\r")
-        wait_painted(second, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
-                     "the terminal the prompt was typed into paints it")
+        painted = wait_painted(second, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
+                               "the terminal the prompt was typed into paints it")
+        ok(len(painted) == 1,
+           "the terminal that typed it paints it once, not once for its own echo and once for the frame")
         wait_painted(first, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
                      "the prompt typed in one terminal is part of the other terminal's transcript too")
         wait_painted(latecomer, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
                      "and part of the transcript of the terminal that joined last")
-        ok(len(rows_holding(second, "> " + PROMPT_FROM_B)) == 1,
-           "the terminal that typed it paints it once, not once for its own echo and once for the frame")
 
         second.wait_for("Done.", timeout=PAINT_TIMEOUT_S)
         wait_painted(first, "Done.", PAINT_TIMEOUT_S,
                      "the answer to that prompt paints in the terminal that did not ask")
 
         first.write(PROMPT_FROM_A + "\r")
-        wait_painted(first, "> " + PROMPT_FROM_A, PAINT_TIMEOUT_S, "a prompt typed in the first terminal paints there")
+        painted = wait_painted(first, "> " + PROMPT_FROM_A, PAINT_TIMEOUT_S,
+                               "a prompt typed in the first terminal paints there")
+        ok(len(painted) == 1, "the first terminal paints its own prompt once as well")
         wait_painted(second, "> " + PROMPT_FROM_A, PAINT_TIMEOUT_S,
                      "and reaches the second terminal, so the transcript records who asked what either way round")
-        ok(len(rows_holding(first, "> " + PROMPT_FROM_A)) == 1,
-           "the first terminal paints its own prompt once as well")
 
         leaving = [(first, "first"), (second, "second"), (latecomer, "latecomer")]
         for session, name in leaving:
