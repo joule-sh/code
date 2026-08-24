@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, frameType, decodeSessionHello, encodeDaemonStop } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop } from "../protocol/frames.ts";
 import { DaemonClient } from "./attach_client.ts";
 import { readDaemonInfo, readDaemonInfoAt, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
 
@@ -37,6 +37,46 @@ export function helloWorkspace(frames: string[]): string {
     }
   }
   return "";
+}
+
+export function attachedMode(frames: string[], fallback: string): string {
+  let mode = fallback;
+  for (const f of frames) {
+    let t = frameType(f);
+    if (t == SESSION_HELLO) {
+      let hello = decodeSessionHello(f);
+      if (hello != null) {
+        if (hello.mode != "") { mode = hello.mode; }
+      }
+    }
+    if (t == MODE_CHANGED) {
+      let changed = decodeModeChanged(f);
+      if (changed != null) {
+        if (changed.mode != "") { mode = changed.mode; }
+      }
+    }
+  }
+  return mode;
+}
+
+export function attachedModel(frames: string[], fallback: string): string {
+  let model = fallback;
+  for (const f of frames) {
+    let t = frameType(f);
+    if (t == SESSION_HELLO) {
+      let hello = decodeSessionHello(f);
+      if (hello != null) {
+        if (hello.model != "") { model = hello.model; }
+      }
+    }
+    if (t == MODEL_CHANGED) {
+      let changed = decodeModelChanged(f);
+      if (changed != null) {
+        if (changed.model != "") { model = changed.model; }
+      }
+    }
+  }
+  return model;
 }
 
 export function describeWorkspace(seen: string): string {

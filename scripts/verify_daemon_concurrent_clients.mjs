@@ -72,18 +72,25 @@ async function main() {
     stdio: "inherit",
   });
 
-  const daemonLog = path.join(workspace, "daemon.log");
-  const daemon = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
-    cwd: workspace,
-    env: {
-      ...process.env,
-      JOULE_DAEMON_PORT: String(daemonPort),
-      JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
-      JOULE_CODE_MODEL: "stub-model",
-      JOULE_CODE_API_KEY: "test-key",
-    },
-    stdio: ["ignore", fs.openSync(daemonLog, "w"), fs.openSync(daemonLog, "a")],
-  });
+  const started = [];
+  function startDaemon(port, logName) {
+    const log = path.join(workspace, logName);
+    const child = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        JOULE_DAEMON_PORT: String(port),
+        JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
+        JOULE_CODE_MODEL: "stub-model",
+        JOULE_CODE_API_KEY: "test-key",
+      },
+      stdio: ["ignore", fs.openSync(log, "w"), fs.openSync(log, "a")],
+    });
+    started.push(child);
+    return child;
+  }
+
+  const daemon = startDaemon(daemonPort, "daemon.log");
 
   try {
     ok(await waitForPort(stubPort, 5000), "stub model came up");
@@ -132,9 +139,37 @@ async function main() {
     ok(!!toolResult && toolResult.ok === true, "the approved run actually executed and reported ok");
     ok(fs.readFileSync(path.join(workspace, "README.md"), "utf8").includes("Added a health check note."), "the run tool's effect landed on the workspace filesystem, not a remote copy");
 
-    console.log("PASS: two concurrent daemon clients observed a consistent turn, and cross-client approval worked");
+    connA.close();
+    connB.close();
+    daemon.kill("SIGKILL");
+    await sleep(500);
+
+    const secondPort = await freePort();
+    startDaemon(secondPort, "daemon-second.log");
+    ok(await waitForPort(secondPort, 8000), "a second daemon started in the workspace the first one had been running in");
+
+    const idC = crypto.randomBytes(8).toString("hex");
+    const connC = await connect("127.0.0.1", secondPort, `/attach/${idC}/ws`, {});
+    const framesC = [];
+    connC.onMessage((text) => framesC.push(JSON.parse(text)));
+    connC.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
+
+    await collectUntil(connC, framesC, (f) => f.type === "session.hello", 8000,
+      "a client joining the second daemon to be told a session.hello");
+    ok(framesC[0].type === "session.hello",
+      "the first frame a joining client is replayed is the hello of the session it is joining");
+    ok(!framesC.some((f) => f.type === "turn.start" || f.type === "text.delta"),
+      "no frame of the session that ran here before is replayed into the one that is running now");
+
+    connC.send(JSON.stringify({ v: 1, seq: 0, type: "mode.set", mode: "full-auto" }));
+    await collectUntil(connC, framesC, (f) => f.type === "mode.changed" && f.mode === "full-auto", 8000,
+      "the new session's own mode.changed to reach its client rather than being shadowed by the previous session's seq numbers");
+    ok(true, "a mode set in the second session is broadcast to it, so its clients agree on the mode from the moment they attach");
+    connC.close();
+
+    console.log("PASS: two concurrent daemon clients observed a consistent turn, cross-client approval worked, and a client joining a restarted daemon is replayed that session and no other");
   } finally {
-    daemon.kill();
+    for (const child of started) { child.kill("SIGKILL"); }
     stub.kill();
     if (!process.env.DEBUG_KEEP) fs.rmSync(workspace, { recursive: true, force: true }); else console.error("workspace kept at " + workspace);
   }

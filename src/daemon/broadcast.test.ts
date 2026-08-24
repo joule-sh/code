@@ -1,4 +1,4 @@
-import { appendBroadcast, newBroadcastReader } from "./broadcast.ts";
+import { appendBroadcast, newBroadcastReader, startBroadcastLog } from "./broadcast.ts";
 
 function freshRuntimeDir(name: string): string {
   let dir = "/tmp/daemon-broadcast-test-" + name;
@@ -22,6 +22,23 @@ test("a reader started after frames were appended still sees all of them", () =>
   expect(entries.length == 2);
   expect(entries[0].payload == "{\"seq\":1}");
   expect(entries[1].payload == "{\"seq\":2}");
+});
+
+test("a log left behind by an earlier daemon is not replayed to the next session's clients", () => {
+  let dir = freshRuntimeDir("previous-session");
+  appendBroadcast(dir, "{\"seq\":1,\"type\":\"session.hello\"}");
+  appendBroadcast(dir, "{\"seq\":2,\"type\":\"mode.changed\"}");
+  expect(startBroadcastLog(dir) == "");
+  appendBroadcast(dir, "{\"seq\":1,\"type\":\"session.hello\",\"mode\":\"full-auto\"}");
+  let entries = newBroadcastReader(dir).drainNew();
+  expect(entries.length == 1);
+  expect(entries[0].payload == "{\"seq\":1,\"type\":\"session.hello\",\"mode\":\"full-auto\"}");
+});
+
+test("starting the log for a session that has none leaves an empty one", () => {
+  let dir = freshRuntimeDir("no-previous-session");
+  expect(startBroadcastLog(dir) == "");
+  expect(newBroadcastReader(dir).drainNew().length == 0);
 });
 
 test("two independent readers on the same log each see every frame", () => {

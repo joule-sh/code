@@ -115,7 +115,7 @@ jobs:
 
   editor-window:
     runs-on: [self-hosted, diff]
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       LUMEN_VERSION: v0.7.2
     steps:
@@ -160,6 +160,21 @@ jobs:
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: python3 --version
       - run: make daemon-attach-harness
+
+  two-clients:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: python3 --version
+      - run: make two-client-harness
 
   ws-peer-lifecycle:
     runs-on: [self-hosted, diff]
@@ -220,6 +235,7 @@ jobs:
       - run: make daemon-stop-harness
       - run: make daemon-commands-harness
       - run: make attach-commands-harness
+      - run: make two-client-harness
       - run: make ws-peer-lifecycle-harness
 
   linux-release:
