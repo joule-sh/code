@@ -1,4 +1,6 @@
 const vscode = require("vscode");
+const fs = require("node:fs");
+const path = require("node:path");
 const { TAB } = require("../../editor/src/placement.js");
 const { measure } = require("./startup_icon.js");
 
@@ -76,46 +78,119 @@ async function waitForBoth(panel, needle, timeoutMs) {
   return seen;
 }
 
-async function assertOpensBeside(kit) {
+function workspaceEntries() {
+  const folders = vscode.workspace.workspaceFolders || [];
+  return fs.readdirSync(folders[0].uri.fsPath).sort();
+}
+
+function openReadme(column) {
+  const folders = vscode.workspace.workspaceFolders || [];
+  const readme = vscode.Uri.joinPath(folders[0].uri, "README.md");
+  return vscode.workspace.openTextDocument(readme)
+    .then((doc) => vscode.window.showTextDocument(doc, column));
+}
+
+function activeFileName() {
+  const editor = vscode.window.activeTextEditor;
+  return editor === undefined ? "" : path.basename(editor.document.uri.fsPath);
+}
+
+async function closeTheTab(kit) {
+  const { panel } = kit;
+  if (panel.tab === null) { return; }
+  panel.tab.dispose();
+  await until(() => panel.tab === null && sessionTabs().length === 0, 30000);
+}
+
+async function assertOpensByDefault(kit) {
   const { ok, say, panel } = kit;
   const tab = exports_().tab;
   ok(tab !== undefined && tab !== null, "activation handed back the editor tab");
-  ok(sessionTabs().length === 0, "no session tab is open before anything asks for one");
+  say("  this workspace sets joule.openInEditorTab nowhere, so only the shipped default can open a tab");
 
-  const iconsBefore = measure().activityIcons;
-  const folders = vscode.workspace.workspaceFolders || [];
-  const readme = vscode.Uri.joinPath(folders[0].uri, "README.md");
-  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(readme), vscode.ViewColumn.One);
-
-  const sessionBefore = panel.session;
-  await vscode.commands.executeCommand(TAB.command);
-  for (let i = 0; i < 100 && panel.tab === null; i++) { await sleep(100); }
-  ok(panel.tab !== null, "the command opened a session tab");
+  const settled = await until(() => sessionTabs().length === 1 && panel.tab !== null, 60000);
+  const open = sessionTabs();
+  say("  the editor's own tab list holds " + JSON.stringify(open)
+    + " across " + vscode.window.tabGroups.all.length + " group(s)");
+  ok(settled && open.length === 1,
+    "a window that asked for nothing opened exactly one session tab, so the tab is the default placement");
   if (panel.tab === null) { return; }
 
-  const settled = await until(() => sessionTabs().length === 1, 30000);
+  ok(vscode.window.tabGroups.all.length === 1,
+    "the tab took the empty editor area rather than splitting it and leaving a blank pane beside itself");
+  ok(panel.view !== null,
+    "the sidebar view is mounted alongside the tab, so the default costs nobody the container");
+
+  const entries = workspaceEntries();
+  say("  the workspace folder holds " + JSON.stringify(entries));
+  ok(entries.length === 2 && entries.includes("README.md") && entries.includes(".vscode"),
+    "opening the tab wrote nothing into the folder, so the Explorer shows what it showed before");
+
+  const painted = await readable(panel, panel.tab.webview, 60000, "the tab", say);
+  ok(painted !== "", "the tab painted the session rather than an empty webview");
+
+  ok(tab.openOnStartup() === null && sessionTabs().length === 1,
+    "a window that finds a session tab already in its editor leaves it alone, so a tab the editor restored"
+    + " is not doubled by the one the default would open");
+}
+
+async function assertBesideWithoutStealingFocus(kit) {
+  const { ok, say, panel } = kit;
+  const api = exports_();
+  await closeTheTab(kit);
+  ok(sessionTabs().length === 0, "the tab a person closes is gone, so the next open is a fresh one");
+
+  await openReadme(vscode.ViewColumn.One);
+  await until(() => activeFileName() === "README.md", 30000);
+  ok(activeFileName() === "README.md", "a file is open and focused, the way a window opened on one would be");
+
+  const iconsBefore = measure().activityIcons;
+  const sessionBefore = panel.session;
+  api.tab.openOnStartup();
+  ok(await until(() => panel.tab !== null && sessionTabs().length === 1, 30000),
+    "the startup path opened the tab in a window that already had a file open");
+  if (panel.tab === null) { return; }
+
   const open = sessionTabs();
   say("  the editor's own tab list holds " + JSON.stringify(open));
-  ok(settled && open.length === 1,
-    "exactly one session tab is open, so the command did not stack duplicates");
   ok(open.length === 1 && open[0].column > 1,
     "the tab opened in a column beside the file rather than taking the file's column over");
-  ok(panel.view !== null && panel.tab !== null,
-    "the sidebar view and the tab are mounted at the same time");
+  ok(activeFileName() === "README.md",
+    "the caret is still in the file, so a window opened on a file is not fought for focus by the tab");
+  ok(panel.tab.active === false,
+    "the tab is not the active editor, so it arrived beside the work rather than in front of it");
   ok(panel.session === sessionBefore,
     "opening the tab did not build a second session, so the two surfaces are one client of the daemon");
-
-  await vscode.commands.executeCommand(TAB.command);
-  await sleep(2000);
-  ok(sessionTabs().length === 1,
-    "asking again reveals the tab it already opened rather than opening a second one");
 
   const iconsAfter = measure().activityIcons;
   ok(iconsAfter === iconsBefore,
     "the activity bar still holds the same icons, " + iconsAfter + ", so the tab cost the container nothing");
+}
 
-  const painted = await readable(panel, panel.tab.webview, 60000, "the tab", say);
-  ok(painted !== "", "the tab painted the session rather than an empty webview");
+async function assertClosingIsNotADeadEnd(kit) {
+  const { ok, say, panel } = kit;
+  await closeTheTab(kit);
+  ok(sessionTabs().length === 0 && panel.tab === null,
+    "closing the tab disposes it, since an editor is destroyed rather than hidden");
+  ok(panel.view !== null,
+    "the activity bar view outlives the tab, so closing the tab is not a way out of the extension");
+
+  await vscode.commands.executeCommand(TAB.command);
+  ok(await until(() => panel.tab !== null && sessionTabs().length === 1, 30000),
+    "the command opens a tab again for someone who closed the one they were given");
+  if (panel.tab === null) { return; }
+  ok(panel.tab.active === true,
+    "a tab the person asked for takes focus, unlike the one the window opened on its own");
+
+  await vscode.commands.executeCommand(TAB.command);
+  await sleep(2000);
+  const open = sessionTabs();
+  say("  the editor's own tab list holds " + JSON.stringify(open));
+  ok(open.length === 1,
+    "asking again reveals the tab it already opened rather than opening a second one");
+
+  const painted = await readable(panel, panel.tab.webview, 60000, "the reopened tab", say);
+  ok(painted !== "", "the reopened tab renders the session rather than an empty webview");
 }
 
 async function assertOneTranscript(kit) {
@@ -193,7 +268,11 @@ async function assertAdoptsARestoredPanel(kit) {
 }
 
 async function assertEditorTab(kit) {
-  await assertOpensBeside(kit);
+  await assertOpensByDefault(kit);
+  if (kit.panel.tab === null) { return; }
+  await assertBesideWithoutStealingFocus(kit);
+  if (kit.panel.tab === null) { return; }
+  await assertClosingIsNotADeadEnd(kit);
   if (kit.panel.tab === null) { return; }
   await assertAdoptsARestoredPanel(kit);
   await kit.startStub();

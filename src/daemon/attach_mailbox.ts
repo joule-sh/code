@@ -1,4 +1,5 @@
 import { MailboxLine, parseMailboxLine, nonEmptyLines } from "../relay/client_logic.ts";
+import { appendFile } from "../vendor/platform/platform.ts";
 
 export const ATTACH_MAILBOX_PREFIX: string = "joule-attach-";
 export const ATTACH_MAILBOX_SUFFIX: string = ".mailbox";
@@ -16,7 +17,7 @@ export function openAttachMailbox(path: string): void {
 export function appendAttachMailbox(path: string, line: string): void {
   if (path == "") { return; }
   if (!fs.existsSync(path)) { return; }
-  try { fs.appendFileSync(path, line + "\n"); } catch { }
+  try { appendFile(path, line + "\n"); } catch { }
 }
 
 export function reapAttachMailbox(path: string): bool {

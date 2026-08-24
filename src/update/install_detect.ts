@@ -1,9 +1,10 @@
+import { envOr, isWindows, pathListSeparator } from "../vendor/platform/platform.ts";
+
 export const INSTALL_ROOT_ENV: string = "CODE_INSTALL_ROOT";
 export const BIN_DIR_ENV: string = "CODE_BIN_DIR";
 export const DEFAULT_INSTALL_ROOT: string = ".joule-code";
 export const DEFAULT_BIN_DIR: string = ".local/bin";
 export const SELF_EXE_LINK: string = "/proc/self/exe";
-export const PATH_ENV_SEP: string = ":";
 export const UPDATE_TMP_PREFIX: string = ".update-tmp-";
 
 export function defaultInstallRoot(home: string): string {
@@ -29,16 +30,36 @@ function joinRelative(base: string, rel: string): string {
   return base + "/" + rel;
 }
 
+// A Windows argv[0] arrives as D:\dir\joule.exe: backslashes, a drive letter
+// where a leading slash would be, and a PATH split on semicolons. Reading it
+// with the POSIX rules did not merely fail to find the binary - it built names
+// like "C/joule.exe" out of the halves of "C:\...", and fs.existsSync on one
+// of those raised OBJECT_NAME_INVALID rather than answering false, which is
+// what took the whole process down before the first frame was drawn.
+export function hasPathSeparator(argv0: string): bool {
+  return argv0.indexOf("/") >= 0 || argv0.indexOf("\\") >= 0;
+}
+
+export function isAbsolutePath(candidate: string): bool {
+  if (candidate.startsWith("/")) { return true; }
+  if (candidate.startsWith("\\")) { return true; }
+  if (candidate.length >= 3 && candidate.charAt(1) == ":") {
+    let third = candidate.charAt(2);
+    return third == "\\" || third == "/";
+  }
+  return false;
+}
+
 export function resolveArgv0Path(argv0: string, pathEnv: string, cwd: string, exists: (path: string) => bool): string {
   if (argv0.trim() == "") { return ""; }
 
-  if (argv0.indexOf("/") >= 0) {
-    let candidate = argv0.startsWith("/") ? argv0 : joinRelative(cwd, argv0);
+  if (hasPathSeparator(argv0)) {
+    let candidate = isAbsolutePath(argv0) ? argv0 : joinRelative(cwd, argv0);
     if (exists(candidate)) { return candidate; }
     return "";
   }
 
-  let dirs = pathEnv.split(PATH_ENV_SEP);
+  let dirs = pathEnv.split(pathListSeparator());
   let i = 0;
   while (i < dirs.length) {
     if (dirs[i].trim() != "") {
@@ -50,12 +71,19 @@ export function resolveArgv0Path(argv0: string, pathEnv: string, cwd: string, ex
   return "";
 }
 
+// Answers false for a name the platform will not even parse, rather than
+// letting the syscall's error escape as a crash.
 function existsOnDisk(path: string): bool {
-  return fs.existsSync(path);
+  try {
+    return fs.existsSync(path);
+  } catch {
+    return false;
+  }
 }
 
 function detectViaProcSelfExe(): string {
-  if (!fs.existsSync(SELF_EXE_LINK)) { return ""; }
+  if (isWindows()) { return ""; }
+  if (!existsOnDisk(SELF_EXE_LINK)) { return ""; }
   let real = fs.realpathSync(SELF_EXE_LINK);
   if (real == "" || real == SELF_EXE_LINK) { return ""; }
   return real;
@@ -64,13 +92,17 @@ function detectViaProcSelfExe(): string {
 function detectViaArgv0(): string {
   let argv = process.argv();
   if (argv.length == 0) { return ""; }
-  let pathEnv = process.env("PATH") ?? "";
+  let pathEnv = envOr("PATH", "");
   let cwd = process.cwd();
   let resolved = resolveArgv0Path(argv[0], pathEnv, cwd, existsOnDisk);
   if (resolved == "") { return ""; }
-  let real = fs.realpathSync(resolved);
-  if (real == "") { return ""; }
-  return real;
+  try {
+    let real = fs.realpathSync(resolved);
+    if (real == "") { return resolved; }
+    return real;
+  } catch {
+    return resolved;
+  }
 }
 
 export function detectRunningExePath(): string {

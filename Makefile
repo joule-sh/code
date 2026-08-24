@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -19,6 +19,31 @@ SHIM_CC := zig cc -target $(LUMEN_TARGET)
 TARGET_FLAGS := --target $(LUMEN_TARGET) --static
 endif
 
+# Which tty shim to compile, and what the linker calls the result. The two tty
+# shims share no code - one is termios, the other console modes and a reader
+# thread, and their headers say why - so this is a swap rather than a set of
+# ifdefs inside one file. The platform shim beside it is the same C on both.
+#
+# SHIM_FLAGS turns off the UBSan instrumentation zig cc adds by default: on a
+# Windows target the calls it emits have nothing to resolve against, and the
+# link fails on __ubsan_handle_type_mismatch_v1 rather than on anything here.
+ifeq ($(findstring windows,$(LUMEN_TARGET)),windows)
+TTY_SHIM_SRC := src/vendor/tty/tty_shim_win32.c
+SHIM_FLAGS := -fno-sanitize=undefined
+EXE := .exe
+else
+TTY_SHIM_SRC := src/vendor/tty/tty_shim.c
+SHIM_FLAGS :=
+EXE :=
+endif
+
+SHIMS := src/vendor/tty/tty_shim.o src/vendor/platform/platform_shim.o
+
+JOULE := bin/joule$(EXE)
+RELAY := bin/relay$(EXE)
+DAEMON := bin/joule-daemon$(EXE)
+STUB_MODEL := bin/stub_model$(EXE)
+
 # Extra flags for `lumen compile`. Empty for a local build, where the Boehm
 # collector is whatever the machine already has: a normal system library on
 # Linux, Homebrew's keg on macOS (Zig only knows about Apple Silicon's prefix,
@@ -34,41 +59,44 @@ LUMEN_FLAGS ?=
 # modes are quadratic, so raising this costs time faster than it looks.
 BENCH_ENTRIES ?= 2000
 
-build: bin/joule bin/relay bin/joule-daemon
+build: $(JOULE) $(RELAY) $(DAEMON)
 
-src/vendor/tty/tty_shim.o: src/vendor/tty/tty_shim.c
-	$(SHIM_CC) -c src/vendor/tty/tty_shim.c -o src/vendor/tty/tty_shim.o
+src/vendor/tty/tty_shim.o: $(TTY_SHIM_SRC)
+	$(SHIM_CC) $(SHIM_FLAGS) -c $(TTY_SHIM_SRC) -o src/vendor/tty/tty_shim.o
 
-bin/joule: $(ALL_TS) src/vendor/tty/tty_shim.o
+src/vendor/platform/platform_shim.o: src/vendor/platform/platform_shim.c
+	$(SHIM_CC) $(SHIM_FLAGS) -c src/vendor/platform/platform_shim.c -o src/vendor/platform/platform_shim.o
+
+$(JOULE): $(ALL_TS) $(SHIMS)
 	mkdir -p bin
 	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/code.ts
-	mv code bin/joule
+	mv code$(EXE) $(JOULE)
 
-bin/relay: $(ALL_TS)
+$(RELAY): $(ALL_TS) $(SHIMS)
 	mkdir -p bin
 	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/relay/relay.ts
-	mv relay bin/relay
+	mv relay$(EXE) $(RELAY)
 
-bin/joule-daemon: $(ALL_TS)
+$(DAEMON): $(ALL_TS) $(SHIMS)
 	mkdir -p bin
 	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/daemon/daemon_main.ts
-	mv daemon_main bin/joule-daemon
+	mv daemon_main$(EXE) $(DAEMON)
 
-bin/stub_model: $(ALL_TS)
+$(STUB_MODEL): $(ALL_TS) $(SHIMS)
 	mkdir -p bin
 	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/e2e/stub_model.ts
-	mv stub_model bin/stub_model
+	mv stub_model$(EXE) $(STUB_MODEL)
 
-release: src/vendor/tty/tty_shim.o
+release: $(SHIMS)
 	mkdir -p bin
 	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/code.ts
-	mv code bin/joule
+	mv code$(EXE) $(JOULE)
 	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/relay/relay.ts
-	mv relay bin/relay
+	mv relay$(EXE) $(RELAY)
 	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/daemon/daemon_main.ts
-	mv daemon_main bin/joule-daemon
+	mv daemon_main$(EXE) $(DAEMON)
 
-test: src/vendor/tty/tty_shim.o
+test: $(SHIMS)
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
 	lumen test src/e2e/stub_model.ts
@@ -84,7 +112,7 @@ test: src/vendor/tty/tty_shim.o
 MACOS_SKIP_TS := src/auth/credentials.test.ts src/terminal/update_offer.test.ts src/update/install_detect.test.ts src/update/install_smoke.test.ts
 MACOS_TEST_TS := $(filter-out $(MACOS_SKIP_TS),$(TEST_TS))
 
-macos-test: src/vendor/tty/tty_shim.o
+macos-test: $(SHIMS)
 	lumen test src/code.ts
 	lumen test src/relay/relay.ts
 	lumen test src/e2e/stub_model.ts
@@ -129,6 +157,12 @@ share-bridge-harness: build bin/stub_model
 
 console-association-harness: build bin/stub_model
 	node scripts/verify_console_association.mjs
+
+# The Windows sibling of terminal-harness. It drives the real binary through a
+# ConPTY, which is what Windows Terminal hosts a console program with, rather
+# than asserting anything about a build that only exited 0.
+windows-harness: build $(STUB_MODEL)
+	python scripts/win_terminal_harness.py
 
 editor-frames:
 	node scripts/gen_editor_frames.mjs
@@ -185,7 +219,7 @@ relay-reconnect-harness: bin/relay
 ws-peer-lifecycle-harness: build bin/stub_model
 	node scripts/verify_ws_peer_lifecycle.mjs
 
-bin/mailbox_bench: $(ALL_TS)
+bin/mailbox_bench: $(ALL_TS) $(SHIMS)
 	mkdir -p bin
 	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/bench/mailbox_bench.ts
 	mv mailbox_bench bin/mailbox_bench
@@ -198,4 +232,4 @@ bench-mailbox: bin/mailbox_bench
 	BENCH_MODE=concurrent BENCH_ENTRIES=$(BENCH_ENTRIES) ./bin/mailbox_bench
 
 clean:
-	rm -rf bin code relay daemon_main dist src/vendor/tty/tty_shim.o
+	rm -rf bin code relay daemon_main code.exe relay.exe daemon_main.exe dist src/vendor/tty/tty_shim.o src/vendor/platform/platform_shim.o

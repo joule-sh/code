@@ -1,3 +1,5 @@
+import { appendFile } from "../vendor/platform/platform.ts";
+
 const MAILBOX: string = "/tmp/joule-spike-mailbox.log";
 const RELAY_HOST: string = "127.0.0.1";
 const RELAY_PORT: int = 8475;
@@ -31,7 +33,7 @@ function receiveLoop(): int {
       buffer = buffer.slice(nl + 1, buffer.length);
       if (line == "END") { sock.close(); return count; }
       let recvAt: i64 = Date.now();
-      try { fs.appendFileSync(MAILBOX, `${recvAt}` + "|" + line + "\n"); } catch { }
+      try { appendFile(MAILBOX, `${recvAt}` + "|" + line + "\n"); } catch { }
       count = count + 1;
     }
   }

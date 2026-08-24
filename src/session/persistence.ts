@@ -1,4 +1,5 @@
 import { Message } from "./types.ts";
+import { homeDir } from "../vendor/platform/platform.ts";
 
 const HEX_DIGITS: string = "0123456789abcdef";
 const SAFE_CHARS: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-";
@@ -45,7 +46,7 @@ export function sessionKeyFor(workspaceRoot: string): string {
 }
 
 export function sessionsDir(): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code/sessions";
 }
 

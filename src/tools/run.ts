@@ -1,4 +1,5 @@
-import { shellQuoteSingle } from "./shell_quote.ts";
+import { powershellQuoteSingle, shellQuoteSingle } from "./shell_quote.ts";
+import { isWindows, shellArgs, shellProgram } from "../vendor/platform/platform.ts";
 
 const MAX_OUTPUT_BYTES: int = 100000;
 
@@ -15,11 +16,22 @@ function capOutput(s: string): CapResult {
   return r;
 }
 
+// The prefix that puts the command in the workspace is spelled per shell; what
+// follows it is the model's command verbatim. On Windows that means the model
+// is talking to PowerShell, and a POSIX idiom with no PowerShell alias - a
+// pipeline into sed, a heredoc, $(...) - fails there as a syntax error rather
+// than being translated (#173).
+export function inWorkspace(root: string, command: string): string {
+  if (isWindows()) {
+    return "Set-Location -LiteralPath " + powershellQuoteSingle(root) + "; " + command;
+  }
+  return "cd " + shellQuoteSingle(root) + " && " + command;
+}
+
 export function run(root: string, command: string, timeoutMs: int): RunResult {
-  let inRoot = "cd " + shellQuoteSingle(root) + " && " + command;
-  let args: string[] = ["-c", inRoot];
+  let args: string[] = shellArgs(inWorkspace(root, command));
   let startedAt = time.monotonic();
-  let r = child_process.spawnSync("/bin/sh", args);
+  let r = child_process.spawnSync(shellProgram(), args);
   let elapsedMs = time.monotonic() - startedAt;
 
   if (r.status < 0) {

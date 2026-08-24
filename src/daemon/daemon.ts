@@ -23,6 +23,7 @@ import { sweepInbox } from "./inbox.ts";
 import { inboxDir, daemonRuntimeDir } from "./paths.ts";
 import { writeDaemonInfo, removeDaemonInfo } from "./lifecycle.ts";
 import { VERSION } from "../version.ts";
+import { envOr } from "../vendor/platform/platform.ts";
 
 const STDIN_FD: int = 0;
 const APPROVAL_TIMEOUT_MS: int = 120000;
@@ -38,7 +39,7 @@ class SessionBox {
 }
 
 function envPort(name: string, fallback: int): int {
-  let raw = process.env(name) ?? "";
+  let raw = envOr(name, "");
   return Number.parseInt(raw, 10) ?? fallback;
 }
 
@@ -94,7 +95,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
   session.injectSystemContext(loadProjectInstructions(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
-  let resumeRequested = (process.env("JOULE_DAEMON_RESUME") ?? "") == "1";
+  let resumeRequested = (envOr("JOULE_DAEMON_RESUME", "")) == "1";
   if (resumeRequested) {
     let prior = loadWorkspaceSession(workspaceRoot);
     if (prior != null) { session.history = prior.history; }

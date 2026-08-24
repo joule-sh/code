@@ -1,3 +1,5 @@
+import { appendFile } from "../vendor/platform/platform.ts";
+
 export type MailboxEntry = { recvAt: i64, tag: string, payload: string };
 
 const MAILBOX_READ_CHUNK: int = 65536;
@@ -22,7 +24,7 @@ export function mailboxLine(recvAt: i64, tag: string, payload: string): string {
 export function appendMailboxOrReason(path: string, tag: string, payload: string): string {
   let line = mailboxLine(Date.now(), tag, payload);
   try {
-    fs.appendFileSync(path, line);
+    appendFile(path, line);
   } catch {
     return "could not write " + `${line.length}` + " bytes to " + path;
   }

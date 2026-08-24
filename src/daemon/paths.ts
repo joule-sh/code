@@ -1,10 +1,11 @@
 import { sessionKeyFor } from "../session/persistence.ts";
+import { homeDir } from "../vendor/platform/platform.ts";
 
 export const ATTACH_PREFIX: string = "/attach/";
 export const ATTACH_SUFFIX: string = "/ws";
 
 export function daemonRuntimeDir(workspaceRoot: string): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code/daemon/" + sessionKeyFor(workspaceRoot);
 }
 

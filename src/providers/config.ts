@@ -1,6 +1,7 @@
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { ProviderConfig } from "./openai.ts";
 import { resolveServer, serverOrigin, ServerOrigin, SERVER_ENV } from "../auth/server.ts";
+import { envOr, homeDir } from "../vendor/platform/platform.ts";
 
 export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string, updateCheck: string };
 
@@ -50,7 +51,7 @@ function flagValue(argv: string[], name: string): string {
 }
 
 export function configDirPath(): string {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   return home + "/.config/joule-code";
 }
 
@@ -76,23 +77,23 @@ export function saveConfigFile(filePath: string, file: ConfigFile): void {
 export function loadConfig(argv: string[]): ProviderConfig {
   let flagModel = flagValue(argv, "--model");
   let flagBaseUrl = flagValue(argv, "--base-url");
-  let envBaseUrl = process.env("JOULE_CODE_BASE_URL") ?? "";
-  let envModel = process.env("JOULE_CODE_MODEL") ?? "";
-  let envApiKey = process.env("JOULE_CODE_API_KEY") ?? "";
+  let envBaseUrl = envOr("JOULE_CODE_BASE_URL", "");
+  let envModel = envOr("JOULE_CODE_MODEL", "");
+  let envApiKey = envOr("JOULE_CODE_API_KEY", "");
   let file = loadConfigFile(configFilePath());
   return resolveConfig(flagModel, flagBaseUrl, envBaseUrl, envModel, envApiKey, file.baseUrl, file.model, file.apiKey);
 }
 
 export function loadServerOrigin(argv: string[]): ServerOrigin {
   let flagServer = flagValue(argv, "--server");
-  let envServer = process.env(SERVER_ENV) ?? "";
+  let envServer = envOr(SERVER_ENV, "");
   let file = loadConfigFile(configFilePath());
   return serverOrigin(flagServer, envServer, file.server);
 }
 
 export function loadServerBase(argv: string[]): string {
   let flagServer = flagValue(argv, "--server");
-  let envServer = process.env(SERVER_ENV) ?? "";
+  let envServer = envOr(SERVER_ENV, "");
   let file = loadConfigFile(configFilePath());
   return resolveServer(flagServer, envServer, file.server);
 }

@@ -70,16 +70,24 @@ ok(titleMenu.length === 1 && titleMenu[0].when === "view == " + placement.ACTIVI
   "the session view's own title bar offers the tab, so the placement is reachable without the command palette");
 
 const settings = manifest.contributes.configuration.properties;
-ok(settings["joule.openInEditorTab"] !== undefined && settings["joule.openInEditorTab"].default === false,
-  "a window can be told to open the tab on its own, and is not told to by default");
+ok(settings["joule.openInEditorTab"] !== undefined && settings["joule.openInEditorTab"].default === true,
+  "a window opens the session in an editor tab by default, and can be told not to");
 ok(/getConfiguration\("joule"\).get\("openInEditorTab"\)/.test(extension),
   "extension.js reads that setting at activation");
+ok(/tab\.openOnStartup\(\)/.test(extension),
+  "the window opens the tab through the startup path rather than the one the command uses");
 
 const tab = fs.readFileSync(path.join(ROOT, "editor", "src", "editor_tab.js"), "utf8");
 ok(/ViewColumn\.Beside/.test(tab),
   "the tab opens beside the editor it was asked for rather than taking it over");
 ok(/retainContextWhenHidden: true/.test(tab),
   "the tab keeps its webview alive while it is not the visible tab");
+ok(/openOnStartup\(\)\s*\{[\s\S]*?preserveFocus: true/.test(tab),
+  "opening the tab on its own preserves focus, so it does not take the caret off the file the window opened on");
+ok(/openOnStartup\(\)\s*\{[\s\S]*?this\.restoring\(\)/.test(tab),
+  "a window whose editor is restoring a session tab leaves it to the serializer instead of opening a second one");
+ok(/ViewColumn\.One/.test(tab),
+  "a window with no editor to sit beside takes the editor column rather than splitting off an empty pane");
 
 if (failures > 0) {
   console.error(failures + " placement check(s) failed");

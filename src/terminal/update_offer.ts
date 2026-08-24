@@ -6,6 +6,7 @@ import { DEV_VERSION } from "../update/version_compare.ts";
 import { resolveInstallRoot, resolveBinDir, detectRunningExePath, isManagedInstall, INSTALL_ROOT_ENV, BIN_DIR_ENV } from "../update/install_detect.ts";
 import { configureInstallWorker, spawnInstallWorker, TAG_INSTALLED, TAG_UP_TO_DATE, TAG_ERR } from "../update/install_worker.ts";
 import { loadConfigFile, saveConfigFile, configFilePath, ConfigFile } from "../providers/config.ts";
+import { envOr, homeDir } from "../vendor/platform/platform.ts";
 
 export class PendingUpdateInstall {
   running: bool;
@@ -63,9 +64,9 @@ export function updateInstallDecision(running: bool, currentVersion: string, exe
 }
 
 export function beginUpdateInstall(install: PendingUpdateInstall, currentVersion: string, sb: Scrollback): void {
-  let home = process.env("HOME") ?? "";
-  let installRoot = resolveInstallRoot(process.env(INSTALL_ROOT_ENV) ?? "", home);
-  let binDir = resolveBinDir(process.env(BIN_DIR_ENV) ?? "", home);
+  let home = homeDir();
+  let installRoot = resolveInstallRoot(envOr(INSTALL_ROOT_ENV, ""), home);
+  let binDir = resolveBinDir(envOr(BIN_DIR_ENV, ""), home);
   let exePath = detectRunningExePath();
   let decline = updateInstallDecision(install.running, currentVersion, exePath, installRoot);
   if (decline != "") {

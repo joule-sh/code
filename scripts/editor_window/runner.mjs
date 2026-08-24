@@ -282,7 +282,8 @@ async function main() {
       + " prompt a second client on the same session produced, learned that session's state when it attached to it"
       + " afterwards, painted nothing of a previous session in the same folder, left no daemon behind,"
       + " and both pinned editors showed the joule icon in the activity bar at startup"
-      + " without the view ever being opened");
+      + " without the view ever being opened, and opened the session in an editor tab without being asked,"
+      + " beside the open file and without taking focus from it");
   }
 }
 

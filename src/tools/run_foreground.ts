@@ -1,4 +1,5 @@
-import { shellQuoteSingle } from "./shell_quote.ts";
+import { powershellQuoteSingle, shellQuoteSingle } from "./shell_quote.ts";
+import { isWindows, shellArgs, shellProgram, tempDir } from "../vendor/platform/platform.ts";
 import { appendMailbox } from "../tasks/mailbox.ts";
 import { ForegroundResult, ForegroundRunner, waitForForegroundRun } from "./run_wait.ts";
 import { ToolsRegistry } from "./registry.ts";
@@ -15,10 +16,26 @@ export function configureForegroundRun(command: string, root: string, mailboxPat
   g_fg_mailbox = mailboxPath;
 }
 
+// The interactive run tool streams, so it needs the same three things from a
+// shell on either platform: start in the workspace, merge stderr into stdout
+// so one stream carries both in order, and print the status behind a marker
+// the reader can recognise.
+//
+// PowerShell's $LASTEXITCODE is the closest thing it has to $?, and it is not
+// the same thing: it is set by native commands, so a cmdlet that fails leaves
+// the previous value behind. Clearing it first at least makes the marker a
+// number every time rather than sometimes empty (#173).
+export function foregroundScript(root: string, command: string): string {
+  if (isWindows()) {
+    return "$LASTEXITCODE = 0; Set-Location -LiteralPath " + powershellQuoteSingle(root)
+      + "; & { " + command + " } 2>&1; Write-Output \"" + FG_EXIT_MARK + "$LASTEXITCODE\"";
+  }
+  return "cd " + shellQuoteSingle(root) + " && { " + command + " ; } 2>&1; echo " + FG_EXIT_MARK + "$?";
+}
+
 export function foregroundRunLoop(): int {
-  let inRoot = "cd " + shellQuoteSingle(g_fg_root) + " && { " + g_fg_command + " ; } 2>&1; echo " + FG_EXIT_MARK + "$?";
-  let args: string[] = ["-c", inRoot];
-  let cp = child_process.spawn("/bin/sh", args);
+  let args: string[] = shellArgs(foregroundScript(g_fg_root, g_fg_command));
+  let cp = child_process.spawn(shellProgram(), args);
   let count: int = 0;
   while (true) {
     let line = cp.readLine();
@@ -41,7 +58,7 @@ export function spawnForegroundRun(): Promise<int> {
 }
 
 export function runForeground(root: string, command: string, timeoutMs: int, stdinFd: int): ForegroundResult {
-  let mailboxPath = "/tmp/joule-fg-" + crypto.randomUUID() + ".log";
+  let mailboxPath = tempDir() + "/joule-fg-" + crypto.randomUUID() + ".log";
   fs.writeFileSync(mailboxPath, "");
   configureForegroundRun(command, root, mailboxPath);
   spawnForegroundRun();

@@ -37,13 +37,11 @@ function makeProfile(joule, openInEditorTab) {
 }
 
 function writeSetting(dirs, joule, openInEditorTab) {
+  const settings = { "joule.path": joule, "joule.attachOnStartup": false };
+  if (openInEditorTab !== null) { settings["joule.openInEditorTab"] = openInEditorTab; }
   fs.writeFileSync(
     path.join(dirs.workspace, ".vscode", "settings.json"),
-    JSON.stringify({
-      "joule.path": joule,
-      "joule.attachOnStartup": false,
-      "joule.openInEditorTab": openInEditorTab,
-    }, null, 2) + "\n",
+    JSON.stringify(settings, null, 2) + "\n",
   );
 }
 
@@ -138,28 +136,29 @@ export async function assertTabSurvivesRestart(kit) {
     return;
   }
 
-  const asked = makeProfile(kit.joule, true);
+  const asked = makeProfile(kit.joule, null);
   const control = makeProfile(kit.joule, false);
   try {
     note("restart check: VS Code " + version + ", installed from " + path.basename(VSIX));
     install(kit.cache, version, asked);
     install(kit.cache, version, control);
 
-    await openThenQuit(kit, asked, "the window that was told to open the tab");
+    await openThenQuit(kit, asked, "a window that set the tab setting nowhere");
     if (!stateHoldsTheTab(asked)) {
-      die("restart check: the editor did not carry the session tab into its saved state, so there is"
-        + " nothing for a restart to bring back");
+      die("restart check: an installed extension left to its own default opened no session tab, so the tab"
+        + " is not the placement a window opens in");
       return;
     }
-    note("restart check: the editor saved the session tab as an editor of the workspace");
+    note("restart check: the default opened the session tab in an installed build, and the editor saved it"
+      + " as an editor of the workspace");
 
-    await openThenQuit(kit, control, "a window that was never told to open the tab");
+    await openThenQuit(kit, control, "a window that turned the setting off");
     if (stateHoldsTheTab(control)) {
-      die("restart check: a window that never opened the tab saved one anyway, so the check cannot tell"
-        + " a restored tab from a fresh one");
+      die("restart check: a window with the setting off opened a tab anyway, so the setting no longer turns"
+        + " the default off and the check cannot tell a restored tab from a fresh one");
       return;
     }
-    note("restart check: a window that never opened one saves no session tab, so the mark means what it says");
+    note("restart check: turning the setting off leaves the editor area alone, so the mark means what it says");
 
     writeSetting(asked, kit.joule, false);
     await openThenQuit(kit, asked, "the same profile reopened with the setting turned off");

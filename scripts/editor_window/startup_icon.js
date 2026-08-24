@@ -106,6 +106,22 @@ async function assertStartupIcons(kit) {
   }
   ok(found, "the joule container icon rendered in the activity bar, " + ACTIVITY_ICONS.withJoule
     + " icons where the editor's own are " + ACTIVITY_ICONS.withoutJoule + ", without the view ever being opened");
+  await assertTabCameToo(kit);
+}
+
+async function assertTabCameToo(kit) {
+  const { ok, say } = kit;
+  const { sessionTabs } = require("./editor_tab.js");
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline && sessionTabs().length === 0) { await sleep(2000); }
+  const open = sessionTabs();
+  say("  the editor's own tab list holds " + JSON.stringify(open));
+  ok(open.length === 1,
+    "the same window that painted the icon also opened the session in an editor tab, without being asked for either");
+  const after = measure().activityIcons;
+  ok(after === ACTIVITY_ICONS.withJoule,
+    "the activity bar still holds " + ACTIVITY_ICONS.withJoule + " icons with the tab open, so the way back"
+    + " to the session survives a tab the person closes");
 }
 
 module.exports = { measure, activityBarIcons, assertStartupIcons };
