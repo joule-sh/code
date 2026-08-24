@@ -9,6 +9,7 @@ zig-out/
 src/code
 src/relay/relay
 *.exe
+*.pdb
 .lumen-*.zig
 src/vendor/tty/tty_shim.o
 src/vendor/platform/platform_shim.o
