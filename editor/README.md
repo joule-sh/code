@@ -25,6 +25,27 @@ containers and picks between them when it starts.
 Either way the editor remembers a person's own placement: drag the view where
 you want it and that is where it opens, whatever the default says.
 
+## What the panel shows
+
+**Before anything is configured**, a first-run screen: what joule is in one
+sentence, and the three ways it can reach a model, each as its own button
+with its own description - a joule account, your own provider key, or a
+self-hosted joule server. A missing or too-old `joule`, and a configuration
+that exists but cannot start a session, land on the same screen instead of a
+red error.
+
+**An API key is never typed into the panel.** The provider-key route opens
+`~/.config/joule-code/config.json` in the editor and says so; the extension
+reads that file only to answer "is there a key here", never its value, and
+writes nothing to it but a `server` address you asked it to remember.
+
+**In a session**, the composer carries its own controls: the approval mode
+and the model on a row inside the input box, with send at the end of it, and
+a status line beneath saying where the tools will run and what the current
+mode lets run without asking. Mode and model send the daemon's `mode.set`
+and `model.set` frames - the same thing `/mode` and `/model` do in a
+terminal - so a terminal driving the same session moves these controls too.
+
 ## What it needs
 
 `joule` must be on `PATH`, or `joule.path` must point at it. The daemon is
@@ -90,14 +111,23 @@ person makes rather than something a window does on open.
 | `src/binary.js` | the preflight: is there a joule here, and can this build drive it |
 | `src/daemon_link.js` | attach, resume, reconnect |
 | `src/conversation.js` | frames to a chat view model, approval state |
+| `src/setup.js` | what this machine is configured with, without reading a key |
+| `src/onboard.js` | what each first-run route does in the editor |
+| `src/modes.js` | the approval modes and what each one lets run |
 | `src/frames.js` | **generated** - see below |
 | `src/ws.js` | the WebSocket client, shared with `scripts/` |
-| `media/` | the webview |
+| `media/` | the webview: `chat.js` renders, `first_run.js`, `transcript.js` and `composer.js` are its three screens |
 
-`extension.js` and `src/chat_panel.js` are the only files that import
-`vscode`. Everything else is plain Node, which is how
+`extension.js`, `src/chat_panel.js` and `src/onboard.js` are the only files
+that import `vscode`. Everything else is plain Node, which is how
 `scripts/verify_editor_client.mjs` drives the real client against a real
 daemon without an editor running.
+
+`src/modes.js` is the panel's copy of a vocabulary the daemon owns, so
+`scripts/verify_editor_modes.mjs` checks it against `src/approval/gate.ts`
+and the sentences `src/terminal/welcome.ts` uses, and `make editor-check`
+fails if the panel has started describing a mode differently from the
+terminal.
 
 ## src/frames.js is generated
 

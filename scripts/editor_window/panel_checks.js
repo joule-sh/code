@@ -10,6 +10,10 @@ function panelChecks(kit) {
     return path.join(home, ".config", "joule-code", "config.json");
   }
 
+  function namesTheWorkspace(text) {
+    return text.includes(workspace) || text.includes(real(workspace));
+  }
+
   function sessionMode(panel) {
     const session = panel.session.conversation.session;
     return session === null ? "" : session.mode;
@@ -72,7 +76,7 @@ function panelChecks(kit) {
     ok(placeholder.found === 1, "the input says what to type rather than sitting empty");
 
     const where = await shown(panel, ".composer-status .status-where");
-    ok(where.includes(workspace) && where.includes("this machine") && where.includes("never in the editor"),
+    ok(namesTheWorkspace(where) && where.includes("this machine") && where.includes("never in the editor"),
       "the status line says where the tools will run, naming the folder and the machine");
 
     const mode = sessionMode(panel);
@@ -115,7 +119,7 @@ function panelChecks(kit) {
 
   async function approvalDesign(panel) {
     const where = await shown(panel, ".approval-where");
-    ok(where.includes(workspace) && where.includes("not in the editor"),
+    ok(namesTheWorkspace(where) && where.includes("not in the editor"),
       "the approval card says where the command will run before it is approved");
     const note = await shown(panel, ".approval-note");
     ok(note.includes("whoever answers first"),

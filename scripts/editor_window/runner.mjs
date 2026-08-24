@@ -141,9 +141,11 @@ function printSuiteLog(root) {
   const file = path.join(root, "suite.log");
   if (!fs.existsSync(file)) {
     note("the suite left no log, so it never reached its first assertion");
-    return;
+    return 0;
   }
-  process.stdout.write(fs.readFileSync(file, "utf8"));
+  const text = fs.readFileSync(file, "utf8");
+  process.stdout.write(text);
+  return text.split("\n").filter((line) => line.startsWith("ok: ") || line.startsWith("FAIL")).length;
 }
 
 async function runScenario({ name: scenario, version }) {
@@ -207,9 +209,12 @@ async function runScenario({ name: scenario, version }) {
     launchFailure = e;
   }
 
-  printSuiteLog(dirs.root);
+  const asserted = printSuiteLog(dirs.root);
   if (launchFailure !== null) {
     die(scenario + ": the editor window run failed: " + (launchFailure.message || launchFailure));
+  } else if (asserted === 0) {
+    die(scenario + ": the editor window opened and closed again without the suite asserting anything,"
+      + " so this scenario proved nothing");
   }
 
   reap(dirs, env);
@@ -243,6 +248,7 @@ async function main() {
 
   for (const scenario of SCENARIOS) {
     await runScenario(scenario);
+    await sleep(3000);
   }
 
   if (!failed) {
