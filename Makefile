@@ -134,7 +134,7 @@ editor-check:
 	node scripts/syntax_check.mjs
 	node scripts/gen_editor_frames.mjs --check
 	node --check editor/extension.js
-	for f in editor/src/*.js editor/media/*.js scripts/editor_window/suite.js; do node --check $$f || exit 1; done
+	for f in editor/src/*.js editor/media/*.js scripts/editor_window/*.js; do node --check $$f || exit 1; done
 
 editor-harness: build bin/stub_model editor-check
 	node scripts/verify_editor_client.mjs

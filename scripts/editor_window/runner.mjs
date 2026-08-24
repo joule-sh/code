@@ -14,8 +14,13 @@ const EXTENSION = path.join(REPO_ROOT, "editor");
 const SUITE = path.join(HERE, "suite.js");
 const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache", "joule-editor-window");
 const VSCODE_VERSION = "1.134.0";
+const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
-const SCENARIOS = ["conversation", "close-mid-turn"];
+const SCENARIOS = [
+  { name: "conversation", version: VSCODE_VERSION },
+  { name: "close-mid-turn", version: VSCODE_VERSION },
+  { name: "placement", version: OLDER_VSCODE_VERSION },
+];
 
 const teardown = [];
 let failed = false;
@@ -140,7 +145,7 @@ function printSuiteLog(root) {
   process.stdout.write(fs.readFileSync(file, "utf8"));
 }
 
-async function runScenario(scenario) {
+async function runScenario({ name: scenario, version }) {
   const dirs = makeRoot(scenario);
   const stubPort = await freePort();
   const env = {
@@ -169,12 +174,12 @@ async function runScenario(scenario) {
   teardown.push(cleanup);
 
   note("scenario " + scenario + " in " + dirs.workspace + ", stub model on :" + stubPort
-    + ", VS Code " + VSCODE_VERSION + " from " + CACHE);
+    + ", VS Code " + version + " from " + CACHE);
 
   let launchFailure = null;
   try {
     await runTests({
-      version: VSCODE_VERSION,
+      version,
       cachePath: CACHE,
       timeout: DOWNLOAD_IDLE_MS,
       extensionDevelopmentPath: EXTENSION,
@@ -235,7 +240,8 @@ async function main() {
   }
 
   if (!failed) {
-    note("PASS: a real editor window opened the panel, ran a turn, approved a tool from the webview onto disk, and left no daemon behind");
+    note("PASS: a real editor window opened the panel, ran a turn, approved a tool from the webview onto disk, and left no daemon behind,"
+      + " and an editor too old for the secondary side bar opened the same view in the activity bar");
   }
 }
 

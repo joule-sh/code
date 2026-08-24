@@ -81,33 +81,53 @@ do before it does it.
 
 ## Where the view opens (#199)
 
-**The session view is declared into the secondary side bar.**
-`contributes.viewsContainers` takes three keys in the editor this client is
-built against - `activitybar`, `panel` and `secondarySidebar` - and the third
-registers the container at the auxiliary bar, the right-hand side bar whose
-containers are the strip of icons across its top. So the placement is
-declarable after all, and the change is one key in the manifest rather than a
-window rearranging itself on first run. The container id is unchanged, and
-the icon appears in whichever bar the container ends up in.
+**The session view is declared into the secondary side bar where the editor
+can take that, and into the activity bar where it cannot.**
+`contributes.viewsContainers` takes three keys - `activitybar`, `panel` and
+`secondarySidebar` - and the third registers a container at the auxiliary
+bar, the right-hand side bar whose containers are the strip across its top.
+So the placement is declarable rather than something a window rearranges on
+first run. But `secondarySidebar` is younger than the rest of the manifest:
+unknown before 1.104, behind a proposed API in 1.104 and 1.105, final from
+1.106.
 
-`secondarySidebar` is younger than the rest of the manifest: it arrived in
-1.104 behind a proposed API and was final in 1.106, so `engines.vscode` moves
-from `^1.85.0` to `^1.106.0`. That floor is the point rather than a side
-effect. An older editor does not fall back to the old placement - it ignores
-the key it does not know, no container is registered, and a view with no
-container of its own is dropped into the Explorer beside the file tree.
-Refusing to install is the better of the two failures.
+**Declaring only the new key is not a graceful degradation, it is a broken
+install.** Driven in a real 1.105 window, an extension that contributes only
+`secondarySidebar` registers no container at all - the proposal check throws
+where the key is handled - and the view, having no container of its own,
+lands in the Explorer under the file tree. Before 1.104 the key is simply
+unknown and the same thing happens quietly. So the choice is not between a
+right-hand default and a left-hand one; it is between shipping both
+containers and refusing to install below 1.106.
 
-**Someone who has already moved it keeps where they put it.** A container's
-location is resolved as the stored customization first and the declared
-default only when there is none: `views.customizations` in global storage
-holds a `viewContainerLocations` entry for every container a person has
-dragged, keyed by container id, and `workbench.view.extension.joule` does not
-change here. An install where the view was dragged to the right is already
-where this change points; one where it was dragged to the panel stays in the
-panel. An install that never touched it has nothing stored and moves with the
-default, which is the one case where an upgrade relocates the view, and is
-the change the issue asks for.
+**Both containers ship, and a context key decides which one holds the view.**
+`activitybar` carries `joule` and `secondarySidebar` carries
+`joule-secondary`, in that order, because on 1.104 and 1.105 the throw ends
+the manifest's container list where it stands and everything declared before
+it has already registered. Each container's view is gated on
+`joule.noSecondarySidebar`, which `extension.js` sets from `vscode.version`
+at activation, so exactly one of them is ever populated; a container with no
+visible view is hidden, so the other never appears. The `when` on the
+containers themselves is declared for the same reason and does nothing today
+- the editor reads `id`, `title` and `icon` and ignores the rest - so it is
+the views' clauses that decide, and the empty container that disappears. `engines.vscode` stays at
+`^1.85.0`: nobody has to move editors to keep the extension, and nobody on a
+recent one has to drag the view to where the comparable assistant extensions
+sit. Every one of those extensions contributes to `activitybar` with a floor
+between 1.79 and 1.101, and the ones that reach the right-hand bar by default
+do it exactly this way, with a second container and a version-gated view.
+
+**Someone who has already moved it keeps where they put it, on the editors
+where that has been possible.** A container's location is resolved as the
+stored customization first and the declared default only when there is none:
+`views.customizations` in global storage holds a `viewContainerLocations`
+entry for every container a person has dragged, keyed by container id. The
+container that has shipped until now is `joule`, and it stays the activity
+bar's, so an install below 1.106 - where dragging has been the only way to
+reach the right-hand bar - keeps its drag exactly. Above 1.106 the view moves
+into `joule-secondary`, which has no stored entry and therefore opens where
+this change points. That is the default change the issue asks for, and it is
+the one case where an upgrade relocates the view.
 
 **The icon is the console's mark, drawn for the size the strip uses.** That
 strip renders a container's title by default and its icon when a person turns
@@ -125,12 +145,22 @@ with the bar it now lives in.
 **The two alternatives are worse.** `panel` is declarable and needs no engine
 floor, but the bottom panel is where output and terminals live: a
 conversation there is a strip under the editor rather than a column beside
-it, and it is not where comparable assistant extensions sit. Moving the
-container from code on first activation is not something the API offers -
-`vscode.moveViews` moves views into a container that already exists, and
-nothing exposed to an extension moves a container to a location - and an
+it, and it is not where comparable assistant extensions sit - the ones that
+contribute a panel container use it for a log, not for the conversation.
+Moving the container from code on first activation is not something the API
+offers - `vscode.moveViews` moves views into a container that already exists,
+and nothing exposed to an extension moves a container to a location - and an
 approximation built out of the workbench's own commands would be a window
 rearranging a person's layout without being asked.
+
+**The window harness runs on both sides of the line.** The placement
+assertions are version-aware: they ask the editor for the container this
+version is meant to use, check that opening it shows the view - which fails
+if the view has spilled into the Explorer - and then close each of the three
+bars in turn, so only the bar that owns the view makes it disappear. The
+`conversation` and `close-mid-turn` scenarios run on the pinned 1.134.0 and
+assert the secondary side bar; a third scenario runs the same assertions on
+1.105.1, below the line, and asserts the activity bar.
 
 ## Trust level
 

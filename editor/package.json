@@ -16,7 +16,7 @@
   },
   "private": true,
   "engines": {
-    "vscode": "^1.106.0"
+    "vscode": "^1.85.0"
   },
   "extensionKind": [
     "workspace"
@@ -37,11 +37,20 @@
   ],
   "contributes": {
     "viewsContainers": {
-      "secondarySidebar": [
+      "activitybar": [
         {
           "id": "joule",
           "title": "Joule",
-          "icon": "media/icon.svg"
+          "icon": "media/icon.svg",
+          "when": "joule.noSecondarySidebar"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "joule-secondary",
+          "title": "Joule",
+          "icon": "media/icon.svg",
+          "when": "!joule.noSecondarySidebar"
         }
       ]
     },
@@ -50,7 +59,16 @@
         {
           "id": "joule.chat",
           "name": "Session",
-          "type": "webview"
+          "type": "webview",
+          "when": "joule.noSecondarySidebar"
+        }
+      ],
+      "joule-secondary": [
+        {
+          "id": "joule.chat.secondary",
+          "name": "Session",
+          "type": "webview",
+          "when": "!joule.noSecondarySidebar"
         }
       ]
     },

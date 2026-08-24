@@ -7,7 +7,6 @@ const { EditorSession } = require("./session.js");
 const { findDaemonInfo } = require("./daemon_link.js");
 const { unsupportedPlatform } = require("./binary.js");
 
-const VIEW_ID = "joule.chat";
 const CONN_ID_KEY = "joule.connId";
 
 function nonce() {
@@ -208,4 +207,4 @@ ${this.probeTag(webview, media, n)}
   }
 }
 
-module.exports = { ChatPanel, VIEW_ID };
+module.exports = { ChatPanel };
