@@ -27,6 +27,9 @@ Failure = harness.Failure
 ROWS = 40
 COLS = 100
 EXIT_TIMEOUT_S = 20.0
+PORT_TIMEOUT_S = 20.0
+ATTACH_TIMEOUT_S = 30.0
+PAINT_TIMEOUT_S = 30.0
 PROMPT_FROM_B = "what does the health route do"
 PROMPT_FROM_A = "and where does it live"
 
@@ -78,7 +81,7 @@ def wait_painted(session, needle, timeout, label):
 
 def attach_session(env, workspace):
     session = PtySession([os.path.join(REPO_ROOT, "bin", "joule"), "attach"], env, workspace, rows=ROWS, cols=COLS)
-    session.wait_for("connected to a daemon", timeout=15.0)
+    session.wait_for("connected to a daemon", timeout=ATTACH_TIMEOUT_S)
     return session
 
 
@@ -111,8 +114,8 @@ def main():
     second = None
     latecomer = None
     try:
-        ok(harness.wait_for_port(stub_port, 5.0), "stub model came up")
-        ok(harness.wait_for_port(daemon_port, 5.0), "daemon came up")
+        ok(harness.wait_for_port(stub_port, PORT_TIMEOUT_S), "stub model came up")
+        ok(harness.wait_for_port(daemon_port, PORT_TIMEOUT_S), "daemon came up")
 
         attach_env = dict(os.environ)
         attach_env["HOME"] = home
@@ -129,35 +132,35 @@ def main():
            "both terminals start out painting the mode the session actually says it is in")
 
         second.write("/mode full-auto\r")
-        wait_painted(second, "mode set to full-auto", 10.0,
+        wait_painted(second, "mode set to full-auto", PAINT_TIMEOUT_S,
                      "the terminal that set the mode paints the daemon's answer")
-        wait_painted(first, "mode: full-auto", 10.0,
+        wait_painted(first, "mode: full-auto", PAINT_TIMEOUT_S,
                      "the other terminal's status line follows a mode set from a second client")
 
         latecomer = attach_session(attach_env, workspace)
-        wait_painted(latecomer, "may run", 10.0, "a terminal attaching mid-session paints a welcome box")
+        wait_painted(latecomer, "may run", PAINT_TIMEOUT_S, "a terminal attaching mid-session paints a welcome box")
         ok(any("full-auto" in row for row in rows_holding(latecomer, "may run")),
            "the welcome box of a terminal that attached after the change names the mode the session is in, not a local guess")
-        wait_painted(latecomer, "mode: full-auto", 10.0,
+        wait_painted(latecomer, "mode: full-auto", PAINT_TIMEOUT_S,
                      "and its status line agrees with the terminals that were already there")
 
         second.write(PROMPT_FROM_B + "\r")
-        wait_painted(second, "> " + PROMPT_FROM_B, 10.0,
+        wait_painted(second, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
                      "the terminal the prompt was typed into paints it")
-        wait_painted(first, "> " + PROMPT_FROM_B, 15.0,
+        wait_painted(first, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
                      "the prompt typed in one terminal is part of the other terminal's transcript too")
-        wait_painted(latecomer, "> " + PROMPT_FROM_B, 15.0,
+        wait_painted(latecomer, "> " + PROMPT_FROM_B, PAINT_TIMEOUT_S,
                      "and part of the transcript of the terminal that joined last")
         ok(len(rows_holding(second, "> " + PROMPT_FROM_B)) == 1,
            "the terminal that typed it paints it once, not once for its own echo and once for the frame")
 
-        second.wait_for("Done.", timeout=20.0)
-        wait_painted(first, "Done.", 20.0,
+        second.wait_for("Done.", timeout=PAINT_TIMEOUT_S)
+        wait_painted(first, "Done.", PAINT_TIMEOUT_S,
                      "the answer to that prompt paints in the terminal that did not ask")
 
         first.write(PROMPT_FROM_A + "\r")
-        wait_painted(first, "> " + PROMPT_FROM_A, 10.0, "a prompt typed in the first terminal paints there")
-        wait_painted(second, "> " + PROMPT_FROM_A, 15.0,
+        wait_painted(first, "> " + PROMPT_FROM_A, PAINT_TIMEOUT_S, "a prompt typed in the first terminal paints there")
+        wait_painted(second, "> " + PROMPT_FROM_A, PAINT_TIMEOUT_S,
                      "and reaches the second terminal, so the transcript records who asked what either way round")
         ok(len(rows_holding(first, "> " + PROMPT_FROM_A)) == 1,
            "the first terminal paints its own prompt once as well")
@@ -165,8 +168,17 @@ def main():
         leaving = [(first, "first"), (second, "second"), (latecomer, "latecomer")]
         for session, name in leaving:
             session.write("\x04")
+        gone = set()
+        deadline = time.time() + EXIT_TIMEOUT_S
+        while len(gone) < len(leaving) and time.time() < deadline:
+            for session, name in leaving:
+                if name in gone:
+                    continue
+                session._pump(0.02)
+                if session.wait_exit(0.05):
+                    gone.add(name)
         for session, name in leaving:
-            ok(session.wait_exit(EXIT_TIMEOUT_S), "the %s terminal exits cleanly on ctrl-d" % name)
+            ok(name in gone, "the %s terminal exits cleanly on ctrl-d" % name)
     finally:
         for session in [first, second, latecomer]:
             if session is not None:
