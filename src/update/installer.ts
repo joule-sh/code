@@ -1,6 +1,6 @@
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { DEV_VERSION, isNewerVersion, stripLeadingV } from "./version_compare.ts";
-import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, RELEASE_REPO } from "./platform.ts";
+import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, isMacosPlatform, RELEASE_REPO } from "./platform.ts";
 import { isRunnableBinaryForPlatform, readMagic4, fileSize } from "./archive.ts";
 import { isUpdateTmpName, UPDATE_TMP_PREFIX } from "./install_detect.ts";
 
@@ -16,6 +16,7 @@ const SMOKE_SHELL: string = "/bin/sh";
 const SMOKE_SCRIPT: string = "exec \"$0\" --version";
 const REASON_MAX_CHARS: int = 160;
 const LINK_STAGING_SUFFIX: string = ".update-staging";
+export const CODESIGN: string = "/usr/bin/codesign";
 
 export type InstallResult = { kind: string, fromVersion: string, toVersion: string, error: string };
 export type FetchTagResult = { ok: bool, tag: string, error: string };
@@ -100,6 +101,29 @@ export function wontRunError(name: string, binPath: string, r: ShellResult): str
   return "the downloaded " + name + " would not run on this machine (" + refusalReason(binPath, r.status, r.stderr, r.stdout) + ") - nothing was relinked, so your existing install still works";
 }
 
+export function signingFailedError(name: string, binPath: string, r: ShellResult): string {
+  return "the downloaded " + name + " carries no code signature this machine accepts, and signing it here failed (" + refusalReason(binPath, r.status, r.stderr, r.stdout) + ") - nothing was relinked, so your existing install still works";
+}
+
+export function ensureCodeSignature(binPath: string, name: string, releaseTarget: string, runCmd: (cmd: string, args: string[]) => ShellResult): VerifyResult {
+  if (!isMacosPlatform(releaseTarget)) {
+    let elsewhere: VerifyResult = { ok: true, error: "" };
+    return elsewhere;
+  }
+  let checked = runCmd(CODESIGN, ["--verify", "--strict", binPath]);
+  if (checked.status == 0) {
+    let already: VerifyResult = { ok: true, error: "" };
+    return already;
+  }
+  let signed = runCmd(CODESIGN, ["--sign", "-", "--force", binPath]);
+  if (signed.status != 0) {
+    let failed: VerifyResult = { ok: false, error: signingFailedError(name, binPath, signed) };
+    return failed;
+  }
+  let ok: VerifyResult = { ok: true, error: "" };
+  return ok;
+}
+
 export function smokeRunBinary(binPath: string, runCmd: (cmd: string, args: string[]) => ShellResult): ShellResult {
   return runCmd(SMOKE_SHELL, ["-c", SMOKE_SCRIPT, binPath]);
 }
@@ -116,6 +140,8 @@ export function verifyDownloadedJoule(newJoule: string, releaseTarget: string, v
     let r: VerifyResult = { ok: false, error: "the downloaded joule binary does not look like a valid " + releaseTarget + " executable (refusing to install it)" };
     return r;
   }
+  let signature = ensureCodeSignature(newJoule, "joule", releaseTarget, runCmd);
+  if (!signature.ok) { return signature; }
   let smoke = smokeRunBinary(newJoule, runCmd);
   if (smoke.status != 0) {
     let r: VerifyResult = { ok: false, error: wontRunError("joule", newJoule, smoke) };
@@ -138,6 +164,8 @@ export function verifyDownloadedCompanion(path: string, name: string, releaseTar
     return r;
   }
   fs.chmodSync(path, 0o755);
+  let signature = ensureCodeSignature(path, name, releaseTarget, runCmd);
+  if (!signature.ok) { return signature; }
   let smoke = smokeRunBinary(path, runCmd);
   if (smoke.status != 0) {
     let r: VerifyResult = { ok: false, error: wontRunError(name, path, smoke) };

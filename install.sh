@@ -47,14 +47,49 @@ for bin in $binaries; do
   cp "$work/code-$platform/$bin" "$target/"
 done
 
+# On Apple Silicon a binary whose signature is missing, or no longer matches
+# the bytes on disk, is not turned away by the loader: the kernel kills it as
+# the image is mapped, leaving no message to relay and exit 137 as the only
+# evidence (#196). An ad-hoc signature costs nothing - no account, no
+# certificate - and one made here is made against the bytes that actually
+# landed, so it holds regardless of what the archive, the download or the copy
+# above did to them. A signature that already verifies is left alone, so a
+# sound release is not re-signed on every install.
+if [ "$os" = "Darwin" ]; then
+  for bin in $binaries; do
+    if codesign --verify --strict "$target/$bin" >/dev/null 2>&1; then
+      continue
+    fi
+    if ! signing="$(codesign --sign - --force "$target/$bin" 2>&1)"; then
+      echo "joule: $bin has no valid code signature and signing it here failed:" >&2
+      printf '%s\n' "$signing" | sed 's/^/       /' >&2
+      echo "       the check below decides whether it can still be installed." >&2
+    fi
+  done
+fi
+
 # An install is not finished until the binaries start. Anything a release still
 # needs and this machine does not have fails here, quoting the loader, instead
 # of reporting success over a binary that cannot run (#184). Nothing reaches
 # PATH until every one of them has answered.
+#
+# A binary the kernel killed on exec answers with nothing at all, so the status
+# has to carry the report on its own; printing an empty reason is how this last
+# arrived as three unrelated silent failures (#196).
 for bin in $binaries; do
-  if ! output="$("$target/$bin" --version 2>&1)"; then
+  status=0
+  output="$("$target/$bin" --version 2>&1)" || status=$?
+  if [ "$status" -ne 0 ]; then
     echo "joule: $bin was unpacked into $target but will not run:" >&2
-    printf '%s\n' "$output" | sed 's/^/       /' >&2
+    if [ -n "$output" ]; then
+      printf '%s\n' "$output" | sed 's/^/       /' >&2
+    else
+      echo "       it exited $status without printing anything." >&2
+    fi
+    if [ "$status" -eq 137 ]; then
+      echo "       137 is SIGKILL on exec, which on Apple Silicon means the" >&2
+      echo "       kernel refused the binary's code signature." >&2
+    fi
     echo "       nothing was linked into $bin_dir." >&2
     echo "       please report this at https://github.com/$repo/issues with the" >&2
     echo "       lines above and the output of 'uname -a'." >&2

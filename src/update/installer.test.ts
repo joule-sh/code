@@ -1,9 +1,11 @@
-import { runInstallOnceWith, verifyDownloadedJoule, refusalReason, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
+import { runInstallOnceWith, verifyDownloadedJoule, ensureCodeSignature, refusalReason, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, CODESIGN, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
 import { MIN_BINARY_BYTES } from "./archive.ts";
-import { PLATFORM_LINUX_X64 } from "./platform.ts";
+import { PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64 } from "./platform.ts";
 
 const TARGET: string = PLATFORM_LINUX_X64;
 const ELF_MAGIC: string = String.fromCharCode(0x7f) + String.fromCharCode(0x45) + String.fromCharCode(0x4c) + String.fromCharCode(0x46);
+const MACH_O_MAGIC: string = String.fromCharCode(0xcf) + String.fromCharCode(0xfa) + String.fromCharCode(0xed) + String.fromCharCode(0xfe);
+const MACOS_TARGET: string = PLATFORM_MACOS_ARM64;
 
 function padding(n: int): string {
   let out = "x";
@@ -13,6 +15,10 @@ function padding(n: int): string {
 
 function validJouleBytes(): string {
   return ELF_MAGIC + padding(MIN_BINARY_BYTES);
+}
+
+function validMachOBytes(): string {
+  return MACH_O_MAGIC + padding(MIN_BINARY_BYTES);
 }
 
 function freshDir(name: string): string {
@@ -254,6 +260,119 @@ test("an archive missing the joule binary for this platform is refused end to en
   let result = runInstallOnceWith("0.1.0", root, bin, "linux", "x64", ok("v0.2.0"), runCmd);
   expect(result.kind == RESULT_ERROR);
   expect(result.error.indexOf("did not contain") >= 0);
+  expect(fs.readdirSync(root).length == 0);
+});
+
+class Signing {
+  verifies: int;
+  signs: int;
+  signed: string[];
+  constructor() { this.verifies = 0; this.signs = 0; this.signed = []; }
+}
+
+function signingRun(trace: Signing, verifyStatus: int, signStatus: int): (cmd: string, args: string[]) => ShellResult {
+  return (cmd: string, args: string[]) => {
+    if (cmd == CODESIGN && args[0] == "--verify") {
+      trace.verifies = trace.verifies + 1;
+      return shell(verifyStatus, "", "code object is not signed at all");
+    }
+    if (cmd == CODESIGN && args[0] == "--sign") {
+      trace.signs = trace.signs + 1;
+      trace.signed.push(lastArg(args));
+      return shell(signStatus, "", "the codesign tool is not on this machine");
+    }
+    return shell(0, "joule 0.2.0\n", "");
+  };
+}
+
+test("a Linux install never reaches for codesign", () => {
+  let trace = new Signing();
+  let v = ensureCodeSignature("/tmp/anywhere/joule-daemon", "joule-daemon", PLATFORM_LINUX_X64, signingRun(trace, 1, 0));
+  expect(v.ok);
+  expect(trace.verifies == 0);
+  expect(trace.signs == 0);
+});
+
+test("a macOS binary whose signature already verifies is left exactly as it came", () => {
+  let trace = new Signing();
+  let v = ensureCodeSignature("/tmp/anywhere/joule-daemon", "joule-daemon", PLATFORM_MACOS_ARM64, signingRun(trace, 0, 0));
+  expect(v.ok);
+  expect(trace.verifies == 1);
+  expect(trace.signs == 0);
+});
+
+test("a macOS binary carrying no signature this machine accepts is signed before anything tries to run it", () => {
+  let trace = new Signing();
+  let v = ensureCodeSignature("/tmp/anywhere/joule-daemon", "joule-daemon", PLATFORM_MACOS_ARM64, signingRun(trace, 1, 0));
+  expect(v.ok);
+  expect(trace.verifies == 1);
+  expect(trace.signs == 1);
+});
+
+test("a macOS binary that cannot be signed is named and refused, not installed to be killed on exec", () => {
+  let trace = new Signing();
+  let v = ensureCodeSignature("/tmp/anywhere/joule-daemon", "joule-daemon", PLATFORM_MACOS_ARM64, signingRun(trace, 1, 1));
+  expect(!v.ok);
+  expect(v.error.indexOf("joule-daemon") >= 0);
+  expect(v.error.indexOf("signing it here failed") >= 0);
+  expect(v.error.indexOf("existing install still works") >= 0);
+});
+
+test("a macOS update signs the daemon too, not only the two commands a person launches", () => {
+  let root = freshDir("macos-signing");
+  let bin = freshDir("macos-signing-bin");
+  let trace = new Signing();
+  let runCmd = (cmd: string, args: string[]) => {
+    if (cmd == CODESIGN) { return signingRun(trace, 1, 0)(cmd, args); }
+    if (cmd == "curl") { fs.writeFileSync(lastArg(args), "fake-archive-bytes"); return shell(0, "", ""); }
+    if (cmd == "tar" && args[0] == "-tzf") { return shell(0, "code-" + MACOS_TARGET + "/joule\n", ""); }
+    if (cmd == "tar" && args[0] == "-xzf") {
+      let innerDir = lastArg(args) + "/code-" + MACOS_TARGET;
+      fs.mkdirSync(innerDir, true);
+      fs.writeFileSync(innerDir + "/joule", validMachOBytes());
+      fs.writeFileSync(innerDir + "/relay", validMachOBytes());
+      fs.writeFileSync(innerDir + "/joule-daemon", validMachOBytes());
+      return shell(0, "", "");
+    }
+    return shell(0, "joule 0.2.0\n", "");
+  };
+  let result = runInstallOnceWith("0.1.0", root, bin, "darwin", "arm64", ok("v0.2.0"), runCmd);
+  expect(result.kind == RESULT_INSTALLED);
+  expect(trace.signs == 3);
+  let sawDaemon = false;
+  let i = 0;
+  while (i < trace.signed.length) {
+    if (trace.signed[i].endsWith("/joule-daemon")) { sawDaemon = true; }
+    i = i + 1;
+  }
+  expect(sawDaemon);
+});
+
+test("a macOS update that cannot sign the daemon relinks nothing and keeps the working install", () => {
+  let root = freshDir("macos-signing-fail");
+  let bin = freshDir("macos-signing-fail-bin");
+  let trace = new Signing();
+  let runCmd = (cmd: string, args: string[]) => {
+    if (cmd == CODESIGN) {
+      if (args[0] == "--sign" && lastArg(args).endsWith("/joule-daemon")) { return shell(1, "", "codesign refused"); }
+      return signingRun(trace, 1, 0)(cmd, args);
+    }
+    if (cmd == "curl") { fs.writeFileSync(lastArg(args), "fake-archive-bytes"); return shell(0, "", ""); }
+    if (cmd == "tar" && args[0] == "-tzf") { return shell(0, "code-" + MACOS_TARGET + "/joule\n", ""); }
+    if (cmd == "tar" && args[0] == "-xzf") {
+      let innerDir = lastArg(args) + "/code-" + MACOS_TARGET;
+      fs.mkdirSync(innerDir, true);
+      fs.writeFileSync(innerDir + "/joule", validMachOBytes());
+      fs.writeFileSync(innerDir + "/relay", validMachOBytes());
+      fs.writeFileSync(innerDir + "/joule-daemon", validMachOBytes());
+      return shell(0, "", "");
+    }
+    return shell(0, "joule 0.2.0\n", "");
+  };
+  let result = runInstallOnceWith("0.1.0", root, bin, "darwin", "arm64", ok("v0.2.0"), runCmd);
+  expect(result.kind == RESULT_ERROR);
+  expect(result.error.indexOf("joule-daemon") >= 0);
+  expect(!fs.existsSync(bin + "/joule"));
   expect(fs.readdirSync(root).length == 0);
 });
 
