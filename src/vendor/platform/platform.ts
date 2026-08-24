@@ -156,6 +156,7 @@ test("chmodPath reports applied on POSIX and unsupported on Windows", () => {
   let p = tempDir() + "/joule-platform-chmod-test.txt";
   fs.writeFileSync(p, "x");
   let outcome = chmodPath(p, 0o600);
+  expect(outcome != CHMOD_FAILED);
   if (isWindows()) {
     expect(outcome == CHMOD_UNSUPPORTED);
   } else {

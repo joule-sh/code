@@ -5,7 +5,6 @@ export const BIN_DIR_ENV: string = "CODE_BIN_DIR";
 export const DEFAULT_INSTALL_ROOT: string = ".joule-code";
 export const DEFAULT_BIN_DIR: string = ".local/bin";
 export const SELF_EXE_LINK: string = "/proc/self/exe";
-export const PATH_ENV_SEP: string = ":";
 export const UPDATE_TMP_PREFIX: string = ".update-tmp-";
 
 export function defaultInstallRoot(home: string): string {
