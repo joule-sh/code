@@ -24,8 +24,6 @@
 # What it deliberately does not assert, because it does not work yet and is
 # tracked on #173 rather than hidden here:
 #   the streamed transcript renders cleanly
-#   ctrl-d quits - the key arrives, the loop does not exit, so this kills the
-#     child on the way out
 #   the daemon, background tasks and --share, none of which start on Windows
 
 import glob
@@ -179,6 +177,14 @@ def main():
                     "the model's own text came back")
         checks.that(os.path.exists(stub_log) and os.path.getsize(stub_log) > 0,
                     "the model server saw a real request")
+
+        pty.write("\x04")
+        deadline = time.time() + 20
+        while time.time() < deadline and pty.exit_code() is None:
+            time.sleep(0.2)
+        checks.that(pty.exit_code() == 0, "ctrl-d quits with a zero status")
+        checks.that("\x1b[?1049l" in pty.text(),
+                    "the alternate screen is left on the way out")
     except AssertionError as e:
         print("FAIL %s" % e)
         checks.failed += 1
