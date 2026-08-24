@@ -4,7 +4,7 @@ const path = require("node:path");
 const modes = require("../../editor/src/modes.js");
 
 function panelChecks(kit) {
-  const { ok, probe, shown, waitForShown, waitFor, real, workspace, home } = kit;
+  const { ok, probe, shown, waitForShown, waitFor, real, capture, workspace, home } = kit;
 
   function configFile() {
     return path.join(home, ".config", "joule-code", "config.json");
@@ -51,6 +51,7 @@ function panelChecks(kit) {
   async function firstRunScreen(panel) {
     await waitForShown(panel, ".first-run-lead", "coding agent", 60000,
       "the first-run screen introducing joule in a sentence, with nothing configured");
+    await capture(panel, "first-run");
     const problems = await probe(panel, { op: "read", selector: ".first-run-problem, .badge-failed, .gate" });
     ok(problems.found === 0, "an unconfigured window gets the introduction rather than a failure or a session view");
 
@@ -67,6 +68,7 @@ function panelChecks(kit) {
     ok(gone.found === 0, "a configured window is not shown the first-run screen again");
     await waitForShown(panel, ".fact-value", "the provider key in", 15000,
       "the gate saying how this window reaches a model, without printing the key");
+    await capture(panel, "gate");
   }
 
   async function composerControls(panel) {
@@ -98,6 +100,7 @@ function panelChecks(kit) {
     ok(send === "send", "send sits at the end of that row rather than as a button below the box");
     const below = await probe(panel, { op: "read", selector: ".composer-actions" });
     ok(below.found === 0, "the old row of buttons under the box is gone");
+    await capture(panel, "composer");
   }
 
   async function driveModeFromComposer(panel) {
@@ -126,6 +129,7 @@ function panelChecks(kit) {
       "the approval card says the first answer wins, here or in a terminal on the same session");
     const running = await shown(panel, ".composer-controls .composer-send");
     ok(running === "stop", "while a turn is running, the send control is what stops it");
+    await capture(panel, "approval");
   }
 
   return { firstRunScreen, composerControls, driveModeFromComposer, approvalDesign };

@@ -142,6 +142,15 @@ make editor-harness  # the end-to-end check, no browser automation
 make editor-package  # build dist/joule-editor-<version>.vsix
 ```
 
+`make editor-window-harness` drives the panel in a real editor window and
+asserts against the DOM it painted. Two environment variables help while
+working on the interface:
+
+```
+JOULE_EDITOR_SCENARIOS=first-run          # run one scenario instead of all three
+JOULE_EDITOR_CAPTURE=/tmp/panel           # also write what the panel rendered, as HTML
+```
+
 ## Packaging and the version
 
 `make editor-package` writes `dist/joule-editor-<version>.vsix` through

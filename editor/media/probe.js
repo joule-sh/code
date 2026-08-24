@@ -24,6 +24,10 @@
       target.click();
       return;
     }
+    if (msg.op === "html") {
+      reply.texts = found.map(function (node) { return node.outerHTML; });
+      return;
+    }
     if (msg.op === "choose") {
       target.value = msg.value;
       target.dispatchEvent(new Event("change", { bubbles: true }));

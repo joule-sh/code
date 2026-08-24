@@ -12,6 +12,7 @@ const WORKSPACE = process.env.JOULE_EDITOR_TEST_WORKSPACE || "";
 const STUB = process.env.JOULE_EDITOR_TEST_STUB || "";
 const STUB_PORT = Number(process.env.JOULE_EDITOR_TEST_STUB_PORT || "0");
 const HOME = process.env.HOME || "";
+const CAPTURES = process.env.JOULE_EDITOR_CAPTURE || "";
 const LOG = path.join(ROOT, "suite.log");
 
 const PROMPT = "fix the health route";
@@ -23,7 +24,7 @@ let probeSeq = 0;
 let stub = null;
 
 const checks = panelChecks({
-  ok, probe, shown, waitForShown, waitFor, real, workspace: WORKSPACE, home: HOME,
+  ok, probe, shown, waitForShown, waitFor, real, capture, workspace: WORKSPACE, home: HOME,
 });
 
 function say(line) {
@@ -140,6 +141,18 @@ async function waitForShown(panel, selector, needle, timeoutMs, label) {
     throw e;
   }
   ok(true, label);
+}
+
+async function capture(panel, name) {
+  if (CAPTURES === "") { return; }
+  try {
+    const reply = await probe(panel, { op: "html", selector: "#root" });
+    fs.mkdirSync(CAPTURES, { recursive: true });
+    fs.writeFileSync(path.join(CAPTURES, SCENARIO + "-" + name + ".html"), reply.texts.join("\n") + "\n");
+    say("  captured what the panel renders: " + SCENARIO + "-" + name);
+  } catch (e) {
+    say("  could not capture " + name + ": " + (e && e.message ? e.message : e));
+  }
 }
 
 function recordStub(pid) {
