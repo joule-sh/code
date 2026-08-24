@@ -39,12 +39,14 @@ red error.
 reads that file only to answer "is there a key here", never its value, and
 writes nothing to it but a `server` address you asked it to remember.
 
-**In a session**, the composer carries its own controls: the approval mode
-and the model on a row inside the input box, with send at the end of it, and
-a status line beneath saying where the tools will run and what the current
-mode lets run without asking. Mode and model send the daemon's `mode.set`
-and `model.set` frames - the same thing `/mode` and `/model` do in a
-terminal - so a terminal driving the same session moves these controls too.
+**In a session**, the composer carries its own controls: a chip row at the
+top of the box naming the file open beside the panel - what will be named at
+the top of the message, dismissable with a click - then the input, then the
+approval mode and the model as icon chips on a row with send at the end of
+it, and a status line beneath saying where the tools will run and what the
+current mode lets run without asking. Mode and model send the daemon's
+`mode.set` and `model.set` frames - the same thing `/mode` and `/model` do in
+a terminal - so a terminal driving the same session moves these controls too.
 
 ## What it needs
 
