@@ -105,8 +105,8 @@
         },
         "joule.openInEditorTab": {
           "type": "boolean",
-          "default": false,
-          "description": "Open the session in an editor tab beside your code when the window opens, instead of waiting to be asked. The activity bar icon stays where it is either way, and a tab you close stays closed until the command opens it again."
+          "default": true,
+          "description": "Open the session in an editor tab beside your code when the window opens. It takes no focus from the file you opened the window on, and the activity bar icon stays where it is either way, so a tab you close stays closed until the icon, the title bar button or the command opens it again. Turn this off to leave the editor area to your files and work from the activity bar."
         },
         "joule.attachOnStartup": {
           "type": "boolean",

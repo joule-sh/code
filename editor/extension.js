@@ -35,7 +35,7 @@ function activate(context) {
   );
 
   if (vscode.workspace.getConfiguration("joule").get("openInEditorTab") === true) {
-    tab.open();
+    tab.openOnStartup();
   }
 
   if (vscode.workspace.getConfiguration("joule").get("attachOnStartup") === true) {

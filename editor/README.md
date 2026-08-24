@@ -71,9 +71,15 @@ working; open it again and the panel picks the session back up.
 
 1. Install `joule` (above) and run it once in a terminal to sign in or point
    it at a provider.
-2. Open a folder in your editor.
-3. Open the Joule view from the activity bar, on the left.
-4. Press **Attach**.
+2. Open a folder in your editor. The session opens in a tab beside your code,
+   without taking focus from the file you opened.
+3. Press **Attach**.
+
+Close that tab and the joule icon in the activity bar, on the left, is still
+the way back to the session, as is **Joule: Open the session in an editor
+tab** and the button in the view's own title bar. Set
+`joule.openInEditorTab` to `false` if you would rather the editor area stayed
+yours and the session lived in the activity bar.
 
 Attaching is deliberately a button rather than something that happens on
 open: a workspace's daemon may already be driven from a terminal, and joining
@@ -85,6 +91,7 @@ happen every time.
 | setting | default | what it does |
 | --- | --- | --- |
 | `joule.path` | `joule` | the binary the daemon is started and stopped through |
+| `joule.openInEditorTab` | `true` | open the session in an editor tab beside your code when the window opens |
 | `joule.attachOnStartup` | `false` | attach as soon as the window opens, instead of waiting for the button |
 | `joule.resumeOnStart` | `false` | when this window starts the daemon, resume the folder's previous session |
 
@@ -95,6 +102,7 @@ started and stopped through it.
 
 | command | what it does |
 | --- | --- |
+| `Joule: Open the session in an editor tab` | open the tab beside your code, or reveal the one already open |
 | `Joule: Attach to this workspace's session` | start or join the daemon for this folder |
 | `Joule: Detach from the session` | leave the session running and stop rendering it |
 | `Joule: Cancel the current turn` | stop the agent mid-turn |
