@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -159,6 +159,25 @@ editor-window-harness: build bin/stub_model editor-check
 
 editor-package: editor-check
 	node scripts/package_editor.mjs
+
+# The npm packages need no toolchain: they repack binaries a release already
+# built. So these checks build their own fixture archives, pack them, install
+# what they packed into a scratch prefix and run it, which is the only way to
+# see the things that actually break an npm CLI - a lost execute bit, an
+# optional dependency npm skipped, and a wrapper that resolves nothing.
+npm-check:
+	node --check npm/code/bin/joule
+	node --check npm/code/bin/relay
+	for f in npm/code/lib/*.js; do node --check $$f || exit 1; done
+	node scripts/verify_npm_wrapper.mjs
+	node scripts/verify_npm_publish.mjs
+
+# Takes the release archives, so it wants --artifacts pointing at a directory
+# holding code-x86_64-linux.tar.gz and the two macOS ones. It never builds a
+# binary of its own; a package with a binary nobody released is the one thing
+# this must not be able to produce.
+npm-package:
+	node scripts/package_npm.mjs
 
 relay-reconnect-harness: bin/relay
 	node scripts/verify_relay_reconnect.mjs

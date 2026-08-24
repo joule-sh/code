@@ -147,6 +147,17 @@ jobs:
       - if: always()
         run: pkill -f 'Xvfb :' || true
 
+  # No lumen here on purpose. The npm packages carry binaries a release built
+  # rather than binaries this job builds, so the checks make their own fixture
+  # archives and never need a compiler.
+  npm-packaging:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --version && npm --version
+      - run: make npm-check
+
   daemon-attach:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
