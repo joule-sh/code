@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -157,6 +157,12 @@ share-bridge-harness: build bin/stub_model
 
 console-association-harness: build bin/stub_model
 	node scripts/verify_console_association.mjs
+
+# The Windows sibling of terminal-harness. It drives the real binary through a
+# ConPTY, which is what Windows Terminal hosts a console program with, rather
+# than asserting anything about a build that only exited 0.
+windows-harness: build $(STUB_MODEL)
+	python scripts/win_terminal_harness.py
 
 editor-frames:
 	node scripts/gen_editor_frames.mjs

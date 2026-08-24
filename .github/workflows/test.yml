@@ -250,6 +250,43 @@ jobs:
       - run: make two-client-harness
       - run: make ws-peer-lifecycle-harness
 
+  # The Windows counterpart to `macos`, and it exists for the same reason that
+  # job does: nothing here ran on Windows, so nothing here could tell a Windows
+  # build that works from one that compiles. It builds the three binaries,
+  # runs each, and then drives the real joule.exe through a pseudoconsole
+  # against the stub model - because `--version` exiting 0 proves nothing about
+  # a terminal layer that had to be written from scratch.
+  #
+  # `make test` is not run here and cannot be: `lumen test` builds for the host
+  # and a host build stops at the missing Boehm collector, which only naming a
+  # target gets built. The suite runs on Linux and macOS, and the parts of it
+  # that are about platform behaviour rather than about this repo are the
+  # harness below instead.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      LUMEN_VERSION: v0.7.2
+      LUMEN_TARGET: x86_64-windows-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - run: choco install make -y --no-progress
+      - run: |
+          curl -fsSL -o lumen.zip "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-windows.zip"
+          tar -xf lumen.zip
+          echo "$PWD/lumen-x86_64-windows" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-windows/zig" >> "$GITHUB_PATH"
+      - run: lumen --version && zig version && make --version && python --version
+      - run: make build bin/stub_model.exe
+      - run: |
+          ./bin/joule.exe --version
+          ./bin/relay.exe --version
+          ./bin/joule-daemon.exe --version
+      - run: make windows-harness
+
   linux-release:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10

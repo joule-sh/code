@@ -24,27 +24,49 @@ jobs:
             runs_on: [self-hosted, diff]
             lumen_dist: lumen-x86_64-linux
             lumen_version: v0.7.2
+            exe: ""
           - target: aarch64-macos
             runs_on: macos-14
             lumen_dist: lumen-aarch64-macos
             lumen_version: v0.7.1
+            exe: ""
           - target: x86_64-macos
             runs_on: macos-15-intel
             lumen_dist: lumen-x86_64-macos
             lumen_version: v0.7.1
+            exe: ""
+          - target: x86_64-windows
+            runs_on: windows-latest
+            lumen_dist: lumen-x86_64-windows
+            lumen_version: v0.7.2
+            exe: ".exe"
     runs-on: ${{ matrix.runs_on }}
+    # Every step here is written for a POSIX shell, and the Windows runner's
+    # default is PowerShell. Naming bash once is less to get wrong than
+    # maintaining a second spelling of each step, and Git for Windows - which
+    # supplies it - is also where make finds an sh to run the Makefile's own
+    # `find` under.
+    defaults:
+      run:
+        shell: bash
     env:
       LUMEN_VERSION: ${{ matrix.lumen_version }}
     steps:
       - uses: actions/checkout@v4
+      - if: runner.os == 'Windows'
+        run: choco install make -y --no-progress
       # Lumen's allocator links the Boehm collector as a system library. macOS
       # has none, so Homebrew provides it. Linux needs nothing installed here:
       # the static build below compiles its own - see the Linux step.
       - if: runner.os == 'macOS'
         run: brew install bdw-gc
+      # The Windows toolchain is published as a .zip rather than a .tar.gz; the
+      # tar that ships with the runner is bsdtar and reads both.
       - run: |
-          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.tar.gz"
-          tar -xzf lumen.tar.gz
+          ext=tar.gz
+          if [ "$RUNNER_OS" = "Windows" ]; then ext=zip; fi
+          curl -fsSL -o "lumen.$ext" "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.$ext"
+          tar -xf "lumen.$ext"
           echo "$PWD/${{ matrix.lumen_dist }}" >> "$GITHUB_PATH"
           echo "$PWD/${{ matrix.lumen_dist }}/zig" >> "$GITHUB_PATH"
       - run: |
@@ -71,6 +93,14 @@ jobs:
       # nothing at all from the machine it lands on.
       - if: runner.os == 'Linux'
         run: echo "LUMEN_TARGET=x86_64-linux-musl" >> "$GITHUB_ENV"
+      # Windows names a target for a different reason than Linux does. There is
+      # no Boehm collector to find on a Windows runner and no package manager
+      # step above puts one there, so a host build stops at "unable to find
+      # dynamic system library 'gc'"; naming the target has lumen build the
+      # collector itself, exactly as the musl build does. The -gnu suffix picks
+      # mingw over msvc, whose libc needs a Windows SDK the backend cannot find.
+      - if: runner.os == 'Windows'
+        run: echo "LUMEN_TARGET=x86_64-windows-gnu" >> "$GITHUB_ENV"
       - run: make release
       # The backend ad-hoc signs what it links for Apple Silicon and leaves
       # x86_64 unsigned, so half of every macOS release went out carrying no
@@ -86,15 +116,27 @@ jobs:
             codesign --sign - --force "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
-      - run: ./bin/joule --version
-      - run: ./bin/joule-daemon --version
+      - run: ./bin/joule${{ matrix.exe }} --version
+      - run: ./bin/joule-daemon${{ matrix.exe }} --version
       - if: runner.os == 'Linux'
         run: scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
+      # A --version that exits 0 says nothing about the terminal, which is the
+      # half of a Windows build that had to be written from scratch. This
+      # starts the binary it just built inside a real pseudoconsole - the same
+      # mechanism Windows Terminal hosts a console program with - and drives a
+      # turn against the stub model. What it asserts is what works today; the
+      # gaps it deliberately does not assert are listed in its header.
+      - if: runner.os == 'Windows'
+        run: make windows-harness
       - run: |
           dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
-          cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
-          tar -czf "$dir.tar.gz" "$dir"
+          cp bin/joule${{ matrix.exe }} bin/relay${{ matrix.exe }} bin/joule-daemon${{ matrix.exe }} README.md "$dir/"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "$dir.zip" "$dir" > /dev/null
+          else
+            tar -czf "$dir.tar.gz" "$dir"
+          fi
       # Against the archive, not against bin/. The binaries above are the ones
       # this runner just built and has already run; a signature or packaging
       # fault only exists in the thing that gets published, which is why a
@@ -106,7 +148,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: code-${{ matrix.target }}
-          path: code-${{ matrix.target }}.tar.gz
+          path: |
+            code-${{ matrix.target }}.tar.gz
+            code-${{ matrix.target }}.zip
           if-no-files-found: error
 
   extension:
@@ -163,9 +207,9 @@ jobs:
         with:
           pattern: code-*
           merge-multiple: true
-      - run: ls -l code-*.tar.gz *.vsix
+      - run: ls -l code-*.tar.gz code-*.zip *.vsix
       - run: |
-          gh release create "$GITHUB_REF_NAME" code-*.tar.gz *.vsix \
+          gh release create "$GITHUB_REF_NAME" code-*.tar.gz code-*.zip *.vsix \
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
