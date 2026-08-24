@@ -129,6 +129,11 @@ and the sentences `src/terminal/welcome.ts` uses, and `make editor-check`
 fails if the panel has started describing a mode differently from the
 terminal.
 
+`scripts/verify_editor_setup.mjs`, in the same target, drives `src/setup.js`
+over throwaway config files: what counts as configured, which server is
+chosen, and - on every path - that neither a provider key nor an account
+credential appears anywhere in the state the panel is sent.
+
 ## src/frames.js is generated
 
 It is produced from `src/relay/web/page_js_frames.ts`, the one JavaScript

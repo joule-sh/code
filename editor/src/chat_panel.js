@@ -9,6 +9,7 @@ const setup = require("./setup.js");
 const onboard = require("./onboard.js");
 
 const CONN_ID_KEY = "joule.connId";
+const SETUP_TTL_MS = 2000;
 
 function nonce() {
   return crypto.randomBytes(16).toString("hex");
@@ -24,6 +25,9 @@ class ChatPanel extends EventEmitter {
     this.binary = null;
     this.checkingBinary = false;
     this.note = "";
+    this.host = os.hostname();
+    this.setupFacts = null;
+    this.setupReadAt = 0;
     this.probing = context.extensionMode === vscode.ExtensionMode.Test;
   }
 
@@ -204,18 +208,20 @@ ${assets.scripts}
         env: process.env,
         jouleBin: this.jouleBin(),
         cwd: folder === null ? undefined : folder.uri.fsPath,
-        server: setup.setupState(process.env).server,
+        server: this.setup().server,
       });
       if (note !== "") { this.note = note; }
     } catch (e) {
       this.note = String(e && e.message ? e.message : e);
     }
+    this.setupReadAt = 0;
     this.post();
   }
 
   recheck() {
     this.note = "";
     this.binary = null;
+    this.setupReadAt = 0;
     this.post();
   }
 
@@ -256,8 +262,16 @@ ${assets.scripts}
     return {
       root: folder === null ? "" : folder.uri.fsPath,
       remote: vscode.env.remoteName || "",
-      host: os.hostname(),
+      host: this.host,
     };
+  }
+
+  setup() {
+    const now = Date.now();
+    if (this.setupFacts !== null && now - this.setupReadAt < SETUP_TTL_MS) { return this.setupFacts; }
+    this.setupFacts = setup.setupState(process.env);
+    this.setupReadAt = now;
+    return this.setupFacts;
   }
 
   idleState(folders) {
@@ -283,7 +297,7 @@ ${assets.scripts}
       ? this.idleState(folders)
       : Object.assign(this.session.view(), { folders });
     state.blocked = blocked;
-    state.setup = setup.setupState(process.env);
+    state.setup = this.setup();
     state.where = this.where();
     state.binary = this.binary;
     state.note = this.note;
