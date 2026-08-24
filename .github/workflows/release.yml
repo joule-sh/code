@@ -72,18 +72,22 @@ jobs:
       - if: runner.os == 'Linux'
         run: echo "LUMEN_TARGET=x86_64-linux-musl" >> "$GITHUB_ENV"
       - run: make release
-      - run: ./bin/joule --version
-      - run: ./bin/joule-daemon --version
-      # Guard the property the archives depend on: if a future toolchain change
-      # reintroduces a dynamic libgc, the release should fail here rather than
-      # ship binaries that die on a machine without Homebrew.
+      # The backend ad-hoc signs what it links for Apple Silicon and leaves
+      # x86_64 unsigned, so half of every macOS release went out carrying no
+      # signature at all (#196). Signing both here gives the two one rule, and
+      # costs nothing to do: an ad-hoc signature needs no Apple account and no
+      # certificate. It is not notarisation - a downloaded archive is still
+      # unknown to Gatekeeper - but it settles the part that was fatal, which
+      # is the kernel on Apple Silicon killing on exec anything it cannot check
+      # a signature for.
       - if: runner.os == 'macOS'
         run: |
-          otool -L bin/joule bin/relay bin/joule-daemon
-          if otool -L bin/joule bin/relay bin/joule-daemon | grep -q libgc; then
-            echo "a macOS binary still links libgc dynamically" >&2
-            exit 1
-          fi
+          for bin in bin/joule bin/relay bin/joule-daemon; do
+            codesign --sign - --force "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+      - run: ./bin/joule --version
+      - run: ./bin/joule-daemon --version
       - if: runner.os == 'Linux'
         run: scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
       - run: |
@@ -91,6 +95,14 @@ jobs:
           mkdir -p "$dir"
           cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
           tar -czf "$dir.tar.gz" "$dir"
+      # Against the archive, not against bin/. The binaries above are the ones
+      # this runner just built and has already run; a signature or packaging
+      # fault only exists in the thing that gets published, which is why a
+      # green macOS job and a download killed on exec were consistent for three
+      # releases (#196). The dynamic-libgc guard lives in there too now, for
+      # the same reason and to match how Linux is checked.
+      - if: runner.os == 'macOS'
+        run: scripts/check_macos_release.sh "code-${{ matrix.target }}.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: code-${{ matrix.target }}

@@ -214,6 +214,16 @@ jobs:
           ./bin/joule --version
           ./bin/relay --version
           ./bin/joule-daemon --version
+      # Packaging the binaries the way a release does, and then checking the
+      # archive, is what keeps the macOS guard honest between tags: the release
+      # workflow only runs on one, so without this the guard itself would go
+      # untested until the moment it is relied on (#196).
+      - run: |
+          dir="code-aarch64-macos"
+          mkdir -p "$dir"
+          cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
+          tar -czf "$dir.tar.gz" "$dir"
+          scripts/check_macos_release.sh "$dir.tar.gz"
       - run: make macos-test
       - run: make daemon-concurrent-harness
       - run: make daemon-attach-harness
