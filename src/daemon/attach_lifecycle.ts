@@ -172,17 +172,17 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     let daemonBinPath = defaultDaemonBinPath();
     let binFailure = daemonBinFailure(daemonBinPath);
     if (binFailure != "") {
-      console.log(binFailure);
+      notes.push(binFailure);
       client.disconnect();
-      let unusable: AttachResult = { client: client, spawned: false, pending: [], port: port };
+      let unusable: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
       return unusable;
     }
     let args = daemonSpawnArgs(workspaceRoot, port, daemonLogPath(workspaceRoot), resumeFlag, daemonBinPath);
     let spawn = child_process.spawnSync("/bin/sh", args);
     if (spawn.status != 0) {
-      console.log(spawnFailureText(daemonBinPath, spawn.status, spawn.stderr));
+      notes.push(spawnFailureText(daemonBinPath, spawn.status, spawn.stderr));
       client.disconnect();
-      let unstarted: AttachResult = { client: client, spawned: false, pending: [], port: port };
+      let unstarted: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
       return unstarted;
     }
     let second = waitForReady(client, SPAWN_WAIT_TICKS);
