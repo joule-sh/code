@@ -151,9 +151,9 @@ rearranging a person's layout without being asked.
 everywhere (#238).** `vscode.window.createWebviewPanel` opens a webview as an
 editor in a `ViewColumn`, and it is not a `viewsContainers` contribution at
 all, so the proposal check that rules out `secondarySidebar` below 1.106 has
-nothing to say about it. `joule.openInEditorTab` opens the session in
-`ViewColumn.Beside` - a tab with a close button in the tab row, beside the
-file it was asked from - and it renders the same on 1.105.1 as on 1.134.0.
+nothing to say about it. The session opens in `ViewColumn.Beside` - a tab
+with a close button in the tab row, beside the file it was asked from - and
+it renders the same on 1.105.1 as on 1.134.0.
 That is the placement people ask for when they ask for the panel next to
 their code, and it is available on every version the extension installs on.
 
@@ -180,11 +180,40 @@ any of that to happen - an extension that disposes its own panel on
 comes back.
 
 **The tab is an addition to the container, never a replacement.** It draws no
-icon of its own and a window that has never opened one has no entry point, so
-#234's ungated activity bar container still carries discoverability and still
-answers #233. Beyond the command palette, the session view's own title bar
-carries the command, and `joule.openInEditorTab` as a setting opens the tab
-when a window opens for anyone who wants that placement by default.
+icon of its own, so #234's ungated activity bar container still carries
+discoverability and still answers #233. Beyond the command palette, the
+session view's own title bar carries the command.
+
+**The tab is where a window opens the session, and `joule.openInEditorTab`
+turns that off.** The setting ships on: a window that asks for nothing gets
+the session beside its code, because that is the placement people describe
+when they describe wanting it, and a sidebar a person has to find first is
+not that. The cost is real and taken knowingly - an editor is destroyed when
+it is closed rather than hidden, and it competes with files for the editor
+area - which is why the icon and the title bar command below are load
+bearing rather than decoration. Comparable assistant extensions default to
+their sidebar and offer the tab as an alternate; this one is the other way
+round on purpose.
+
+**It opens on every window, and it opens quietly.** Per window rather than
+per workspace, because a window is what has an editor area to put a tab in:
+each one runs its own extension host with no shared state to elect a first
+among them, `workspaceStorage` is per folder and two windows on one folder
+would race for it, and a second window that silently had no session in it
+would be the more surprising outcome now that the tab is the placement. What
+is per window is the closing: a tab closed in one window stays closed in that
+window until it is asked for again, and says nothing about the next one.
+Quietly means two things the harness pins. The startup open passes
+`preserveFocus: true`, so a window opened on a file - `joule` in a terminal,
+or a `code src/thing.ts` - leaves the caret in that file and finds the
+session beside it rather than in front of it; the command, which somebody
+asked for, still takes focus. And `ViewColumn.Beside` splits the editor area,
+which on a window with nothing open leaves a blank pane next to the tab, so
+the startup open takes `ViewColumn.One` when there is no editor to sit beside
+and `Beside` when there is. A window whose editor is already restoring a
+session tab opens none at all - `restoring()` reads the editor's own tab list
+and leaves the panel to the serializer, rather than creating a second one for
+`adopt()` to dispose a moment later.
 
 **The window harness asserts the icon, not just the view.** The placement
 assertions check that opening the joule container shows the view - which
@@ -195,24 +224,43 @@ can open is not yet an icon a person can see, a `startup-icon` scenario runs
 on both pinned versions without ever activating the extension or opening the
 view: it screenshots the window's display and counts the marks in the
 activity bar, and passes only when the joule icon has rendered on its own.
+That scenario now also reads the editor's own tab list, so both pinned
+versions prove the same window that painted the icon opened the session in a
+tab, and that the icon count is unchanged with the tab open - the way back
+from a closed tab is asserted on the same screenshot that proves the icon
+exists at all.
 
-An `editor-tab` scenario runs on both pinned versions too: it opens the tab,
-reads the editor's own tab list to see that exactly one opened in a column
-beside the file, checks the activity bar holds the same icons afterwards as
-before, hands the extension a fresh panel through the `adopt()` the
-serializer calls and drives the rest of the turn through that one, and asks
-again to prove a second request reveals the tab rather than stacking another.
+An `editor-tab` scenario runs on both pinned versions too. No scenario's
+workspace sets `joule.openInEditorTab` anywhere, so what opens a tab is the
+shipped default and nothing else. It reads the editor's own tab list to see
+that exactly one tab opened before anything asked for one, in a single editor
+group rather than beside a blank pane, and that the folder gained no file, so
+the Explorer shows what it showed before. Then it closes that tab, opens
+README.md, drives the same `openOnStartup()` a window runs, and checks the
+tab landed in a column beside the file with the caret still in README.md and
+the tab not the active editor. Then it closes the tab again and proves the
+command brings one back and takes focus this time, that asking twice reveals
+rather than stacks, and that the activity bar held the same icons throughout.
+It hands the extension a fresh panel through the `adopt()` the serializer
+calls, drives the rest of the turn through that one, and calls
+`openOnStartup()` against a tab that is already open to prove it opens
+nothing.
 
 The restart is proved outside the test host, because it cannot be proved
 inside it: a window opened with `--extensionTestsPath` keeps its storage at
 `:memory:`, so no editor state is ever written and nothing can survive a
 restart by construction. `restart_check.mjs` installs a packaged vsix into a
-fresh profile instead, opens a window with the setting on, quits it
-gracefully, and reads the saved workspace state for the tab's editor input;
-then reopens the same profile with the setting off and finds the tab still
-there, having been opened by nothing. A third profile that never opened a tab
-saves no such input, so the mark distinguishes a restored tab from a fresh
-one rather than matching anything the manifest happens to contain.
+fresh profile instead - an installed extension, not a source folder, since
+installed extensions activate differently and that difference has hidden two
+bugs already. It opens a window that configures the setting nowhere, quits it
+gracefully, and reads the saved workspace state for the tab's editor input,
+which is where the default is proved on a real installed build on both pinned
+versions; then reopens the same profile with the setting off and finds the
+tab still there, having been opened by nothing. A second profile that turns
+the setting off opens no tab and saves no such input, so the mark
+distinguishes a restored tab from a fresh one rather than matching anything
+the manifest happens to contain, and the off switch is proved to still be an
+off switch.
 
 ## Trust level
 
