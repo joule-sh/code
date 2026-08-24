@@ -258,8 +258,8 @@ async function approveFromWebview(panel) {
 
   const buttons = await probe(panel, { op: "read", selector: ".approval-button" });
   ok(buttons.found === 3, "the approval card offers three choices");
-  ok(buttons.texts.includes("Allow") && buttons.texts.includes("Deny")
-    && buttons.texts.some((t) => t.startsWith("Always allow")),
+  ok(buttons.texts.includes("allow") && buttons.texts.includes("deny")
+    && buttons.texts.some((t) => t.startsWith("always allow")),
     "the choices are allow, always-allow and deny, rendered as real buttons");
 
   const readme = path.join(WORKSPACE, "README.md");
