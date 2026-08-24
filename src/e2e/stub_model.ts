@@ -1,4 +1,4 @@
-import { scriptedResponseBody } from "./stub_script.ts";
+import { scriptedResponseBodyFor } from "./stub_script.ts";
 import { chunkedSseResponse, readStubRequest } from "./stub_http.ts";
 
 function envInt(name: string, fallback: int): int {
@@ -8,6 +8,7 @@ function envInt(name: string, fallback: int): int {
 
 const PORT: int = envInt("E2E_STUB_PORT", 0);
 const LOG_PATH: string = process.env("E2E_STUB_LOG") ?? "";
+const SCRIPT: string = process.env("E2E_STUB_SCRIPT") ?? "";
 
 let requestCount: int = 0;
 
@@ -25,7 +26,7 @@ function handleConnection(socket: Socket): void {
   logRequest(parsed.body);
   let step = requestCount;
   requestCount = requestCount + 1;
-  socket.write(chunkedSseResponse(scriptedResponseBody(step)));
+  socket.write(chunkedSseResponse(scriptedResponseBodyFor(SCRIPT, step)));
   socket.close();
 }
 

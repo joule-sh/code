@@ -106,196 +106,6 @@ body {
   color: #fff;
 }
 
-.transcript {
-  flex: 1 1 auto;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.item pre {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: var(--vscode-editor-font-family);
-  font-size: var(--vscode-editor-font-size);
-}
-
-.prompt {
-  border-left: 2px solid var(--vscode-textLink-foreground);
-  padding-left: 8px;
-}
-
-.prompt-text {
-  color: var(--vscode-textLink-foreground);
-}
-
-.tool,
-.approval {
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
-  padding: 8px;
-}
-
-.tool-head,
-.approval-title {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
-.tool-name,
-.approval-tool {
-  font-weight: 600;
-}
-
-.tool-label,
-.approval-summary {
-  color: var(--vscode-descriptionForeground);
-  overflow-wrap: anywhere;
-}
-
-.tool-running {
-  opacity: 0.8;
-}
-
-.tool-failed {
-  border-color: var(--vscode-errorForeground);
-}
-
-.tool-output {
-  margin-top: 6px;
-  max-height: 16em;
-  overflow: auto;
-  color: var(--vscode-descriptionForeground);
-}
-
-.approval-pending {
-  border-color: var(--vscode-focusBorder);
-  background: var(--vscode-editorWidget-background);
-}
-
-.approval-detail {
-  margin-top: 6px;
-}
-
-.approval-where,
-.approval-note {
-  margin-top: 6px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-
-.approval-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.approval-state {
-  margin-top: 8px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-
-.approval-elsewhere,
-.approval-unanswered {
-  color: var(--vscode-editorWarning-foreground, #cca700);
-}
-
-.diff {
-  margin-top: 6px;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 4px;
-}
-
-.diff-head {
-  display: flex;
-  gap: 8px;
-  padding: 4px 6px;
-  background: var(--vscode-editorWidget-background);
-  font-size: 0.9em;
-}
-
-.diff-path {
-  overflow-wrap: anywhere;
-}
-
-.diff-add {
-  color: var(--vscode-gitDecoration-addedResourceForeground, #6ebe73);
-}
-
-.diff-del {
-  color: var(--vscode-gitDecoration-deletedResourceForeground, #e5484d);
-}
-
-.diff-note {
-  color: var(--vscode-descriptionForeground);
-}
-
-.diff-body {
-  margin: 0;
-  padding: 4px 0;
-  max-height: 20em;
-  overflow: auto;
-  white-space: pre;
-  font-family: var(--vscode-editor-font-family);
-}
-
-.diff-row {
-  display: inline;
-}
-
-.diff-gutter {
-  display: inline-block;
-  min-width: 3em;
-  padding-right: 6px;
-  text-align: right;
-  color: var(--vscode-editorLineNumber-foreground);
-}
-
-.diff-mark {
-  display: inline-block;
-  width: 1.2em;
-}
-
-.diff-add .diff-text,
-.diff-add .diff-mark {
-  color: var(--vscode-gitDecoration-addedResourceForeground, #6ebe73);
-}
-
-.diff-del .diff-text,
-.diff-del .diff-mark {
-  color: var(--vscode-gitDecoration-deletedResourceForeground, #e5484d);
-}
-
-.notice {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-
-.notice-error {
-  color: var(--vscode-errorForeground);
-}
-
-.notice-warn {
-  color: var(--vscode-editorWarning-foreground, #cca700);
-}
-
-.turn-end {
-  height: 4px;
-}
-
-.turn-cancelled,
-.turn-error {
-  height: auto;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-
 button {
   cursor: pointer;
   border: 1px solid transparent;
@@ -305,22 +115,18 @@ button {
   font-size: inherit;
 }
 
-button.primary,
-.approval-allow,
-.approval-always {
+button.primary {
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
 }
 
-button.secondary,
-.approval-deny {
+button.secondary {
   color: var(--vscode-button-secondaryForeground);
   background: var(--vscode-button-secondaryBackground);
 }
 
 button.primary:hover,
-button.secondary:hover,
-.approval-button:hover {
+button.secondary:hover {
   background: var(--vscode-button-hoverBackground);
 }
 

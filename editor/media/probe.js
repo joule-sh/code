@@ -24,6 +24,10 @@
       target.click();
       return;
     }
+    if (msg.op === "scroll") {
+      target.scrollIntoView({ block: msg.block || "center" });
+      return;
+    }
     if (msg.op === "html") {
       reply.texts = found.map(function (node) { return node.outerHTML; });
       return;

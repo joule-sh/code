@@ -2,8 +2,9 @@ import { PAGE_CSS } from "./page_css.ts";
 import { PAGE_HTML_BODY } from "./page_html.ts";
 import { PAGE_JS_FRAMES } from "./page_js_frames.ts";
 import { PAGE_JS_MARKDOWN } from "./page_js_markdown.ts";
+import { PAGE_JS_VIEW } from "./page_js_view.ts";
 import { PAGE_JS_CLIENT } from "./page_js_client.ts";
-import { renderWebPage, WEB_PAGE_PATH } from "./web_page.ts";
+import { renderWebPage, renderFramesAsset, WEB_PAGE_PATH } from "./web_page.ts";
 
 test("PAGE_CSS is non-empty and mentions the transcript", () => {
   expect(PAGE_CSS.length > 0);
@@ -42,6 +43,18 @@ test("PAGE_JS_FRAMES carries the same tool output collapse policy the terminal u
   expect(PAGE_JS_FRAMES.indexOf("function planToolOutputCollapseJs") >= 0);
   expect(PAGE_JS_FRAMES.indexOf("TOOL_OUTPUT_COLLAPSE_HEAD_LINES = 6") >= 0);
   expect(PAGE_JS_FRAMES.indexOf("TOOL_OUTPUT_COLLAPSE_MIN_LINES = 10") >= 0);
+});
+
+test("PAGE_JS_VIEW turns escape sequences into classes and a call into a fact", () => {
+  expect(PAGE_JS_VIEW.indexOf("function ansiSegmentsJs") >= 0);
+  expect(PAGE_JS_VIEW.indexOf("function toolFactJs") >= 0);
+  expect(PAGE_JS_VIEW.indexOf("function toolTargetJs") >= 0);
+});
+
+test("the frames asset carries the view helpers, so no client writes them a second time", () => {
+  let asset = renderFramesAsset();
+  expect(asset.indexOf("function ansiSegmentsJs") >= 0);
+  expect(asset.indexOf("function renderFrameText") >= 0);
 });
 
 test("PAGE_JS_CLIENT builds a disclosure element for long tool output", () => {
