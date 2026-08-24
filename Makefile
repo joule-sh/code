@@ -3,14 +3,31 @@
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
 
+# The triple to build for, empty for a build that only has to run where it was
+# built. Naming one makes the result self-contained: `lumen compile` links musl
+# and its own copy of the Boehm collector into the binary, so nothing is
+# resolved on the machine it lands on (#184). The C shim has to be compiled for
+# the same target, because a static link cannot take an object built against
+# the host's libc headers.
+LUMEN_TARGET ?=
+
+ifeq ($(strip $(LUMEN_TARGET)),)
+SHIM_CC := cc
+TARGET_FLAGS :=
+else
+SHIM_CC := zig cc -target $(LUMEN_TARGET)
+TARGET_FLAGS := --target $(LUMEN_TARGET) --static
+endif
+
 # Extra flags for `lumen compile`. Empty for a local build, where the Boehm
 # collector is whatever the machine already has: a normal system library on
 # Linux, Homebrew's keg on macOS (Zig only knows about Apple Silicon's prefix,
 # so a Mac build passes it as `--link -L<dir>`).
 #
-# The release workflow fills this in on both platforms, pointing at a directory
-# holding nothing but a static `libgc.a`, so a released binary carries the
-# collector instead of hoping to find one on the machine it lands on.
+# The release workflow fills this in on macOS, pointing at a directory holding
+# nothing but a static `libgc.a`, so a released binary carries the collector
+# instead of hoping to find one on the machine it lands on. Linux needs nothing
+# here: LUMEN_TARGET already builds the collector into the binary.
 LUMEN_FLAGS ?=
 
 # How many mailbox entries `make bench-mailbox` writes per mode. The rewrite
@@ -20,35 +37,35 @@ BENCH_ENTRIES ?= 2000
 build: bin/joule bin/relay bin/joule-daemon
 
 src/vendor/tty/tty_shim.o: src/vendor/tty/tty_shim.c
-	cc -c src/vendor/tty/tty_shim.c -o src/vendor/tty/tty_shim.o
+	$(SHIM_CC) -c src/vendor/tty/tty_shim.c -o src/vendor/tty/tty_shim.o
 
 bin/joule: $(ALL_TS) src/vendor/tty/tty_shim.o
 	mkdir -p bin
-	lumen compile $(LUMEN_FLAGS) src/code.ts
+	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/code.ts
 	mv code bin/joule
 
 bin/relay: $(ALL_TS)
 	mkdir -p bin
-	lumen compile $(LUMEN_FLAGS) src/relay/relay.ts
+	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
 
 bin/joule-daemon: $(ALL_TS)
 	mkdir -p bin
-	lumen compile $(LUMEN_FLAGS) src/daemon/daemon_main.ts
+	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/daemon/daemon_main.ts
 	mv daemon_main bin/joule-daemon
 
 bin/stub_model: $(ALL_TS)
 	mkdir -p bin
-	lumen compile $(LUMEN_FLAGS) src/e2e/stub_model.ts
+	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/e2e/stub_model.ts
 	mv stub_model bin/stub_model
 
 release: src/vendor/tty/tty_shim.o
 	mkdir -p bin
-	lumen compile --release-fast $(LUMEN_FLAGS) src/code.ts
+	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/code.ts
 	mv code bin/joule
-	lumen compile --release-fast $(LUMEN_FLAGS) src/relay/relay.ts
+	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/relay/relay.ts
 	mv relay bin/relay
-	lumen compile --release-fast $(LUMEN_FLAGS) src/daemon/daemon_main.ts
+	lumen compile --release-fast $(TARGET_FLAGS) $(LUMEN_FLAGS) src/daemon/daemon_main.ts
 	mv daemon_main bin/joule-daemon
 
 test: src/vendor/tty/tty_shim.o
@@ -124,7 +141,7 @@ ws-peer-lifecycle-harness: build bin/stub_model
 
 bin/mailbox_bench: $(ALL_TS)
 	mkdir -p bin
-	lumen compile $(LUMEN_FLAGS) src/bench/mailbox_bench.ts
+	lumen compile $(TARGET_FLAGS) $(LUMEN_FLAGS) src/bench/mailbox_bench.ts
 	mv mailbox_bench bin/mailbox_bench
 
 bench-mailbox: bin/mailbox_bench

@@ -1,5 +1,7 @@
 .lumen-packages/
 .lumen-libxev-*/
+.lumen-bdwgc-*/
+.lumen-gc-*/
 .lumen-api.log
 zig-out/
 .zig-cache/
@@ -13,4 +15,3 @@ scripts/__pycache__/
 scripts/editor_window/node_modules/
 scripts/editor_window/.vscode-test/
 /dist/
-/gcstatic/

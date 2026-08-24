@@ -43,13 +43,12 @@ clear message and point at building from source below.
 
 Every archive carries the garbage collector it needs, so there is no library to
 install alongside it. A macOS binary needs nothing beyond the system's own
-libSystem. A Linux binary still needs glibc 2.36 or newer - Ubuntu 24.04 LTS,
-Debian 13, Fedora 37 and up - which leaves out Ubuntu 22.04 LTS, and with it
-the WSL install Windows hands most people;
-[#184](https://github.com/joule-sh/code/issues/184) tracks removing that floor
-rather than lowering it. The installer runs each binary before it links
-anything onto your `PATH`, so an install that reports success is one that runs,
-and an install that cannot says what stopped it.
+libSystem. A Linux binary is linked statically against musl and needs nothing
+at all - no libc version, no loader, no shared library - so it runs the same on
+Ubuntu 22.04, on a decade-old enterprise release and on Alpine. The installer
+runs each binary before it links anything onto your `PATH`, so an install that
+reports success is one that runs, and an install that cannot says what stopped
+it.
 
 ## Build from source
 
@@ -72,15 +71,18 @@ only has Apple Silicon's `/opt/homebrew` in its built-in search paths, so an
 Intel build fails without it.
 
 The release archives link that library statically on both platforms, so an
-installed release carries it. macOS uses Homebrew's `libgc.a`; Linux builds its
-own, because a distribution's is compiled against newer glibc headers than the
-binaries should require. To reproduce what a Linux release ships:
+installed release carries it. macOS uses Homebrew's `libgc.a`. Linux names a
+target instead, which links musl and a collector the compiler builds for that
+target, leaving a binary with nothing to resolve. To reproduce what a Linux
+release ships:
 
 ```sh
-scripts/linux_static_gc.sh "$PWD/gcstatic"
-make release LUMEN_FLAGS="--link -L$PWD/gcstatic"
+make release LUMEN_TARGET=x86_64-linux-musl
 scripts/check_linux_release.sh bin/joule bin/relay bin/joule-daemon
 ```
+
+`LUMEN_TARGET` also compiles the vendored `tty_shim.o` for that target, so
+switch it on a tree that was already built and `make clean` first.
 
 ```sh
 git clone https://github.com/joule-sh/code.git
