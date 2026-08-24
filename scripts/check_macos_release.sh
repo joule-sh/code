@@ -66,6 +66,20 @@ if [ ! -d "$root" ]; then
 fi
 
 status=0
+run_with_deadline() {
+  deadline=$1
+  shift
+  "$@" &
+  pid=$!
+  ( sleep "$deadline"; kill -9 "$pid" 2>/dev/null ) &
+  watcher=$!
+  wait "$pid" 2>/dev/null
+  code=$?
+  kill -9 "$watcher" 2>/dev/null
+  if [ "$code" -ge 128 ]; then return 124; fi
+  return "$code"
+}
+
 for bin in joule relay joule-daemon; do
   echo "$bin:"
   path="$root/$bin"
@@ -112,9 +126,15 @@ for bin in joule relay joule-daemon; do
   fi
 
   set +e
-  output="$("$path" --version 2>&1)"
+  output="$(run_with_deadline 20 "$path" --version 2>&1)"
   run_status=$?
   set -e
+  if [ "$run_status" -eq 124 ]; then
+    echo "  $bin did not print its version within 20s" >&2
+    echo "    it started but never returned, so the archive cannot be verified" >&2
+    status=1
+    continue
+  fi
   if [ "$run_status" -eq 0 ]; then
     echo "  runs: $output"
   else
