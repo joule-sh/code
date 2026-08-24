@@ -1,10 +1,15 @@
 {
   "name": "joule-editor",
   "displayName": "Joule",
-  "description": "Drive a joule daemon session from the editor.",
+  "description": "An agentic coding session in a side panel, driven by the joule daemon on your own machine.",
   "version": "0.0.0",
   "publisher": "joule-sh",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#101418",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/joule-sh/code.git",
@@ -14,6 +19,7 @@
   "bugs": {
     "url": "https://github.com/joule-sh/code/issues"
   },
+  "qna": "https://github.com/joule-sh/code/issues",
   "private": true,
   "engines": {
     "vscode": "^1.85.0"

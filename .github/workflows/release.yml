@@ -135,3 +135,37 @@ jobs:
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Publishing is downstream of the release, in its own job, and takes the file
+  # the release already carries rather than packaging a second one. Two reasons.
+  # A registry serving different bytes from the `.vsix` on the release is a
+  # difference nobody would ever find, and a token that expired last week, or a
+  # marketplace having an afternoon, then costs nobody the release itself - it
+  # is already cut by the time this runs.
+  #
+  # It is inert until someone adds a token. `scripts/publish_editor.mjs` skips a
+  # registry it has no secret for, names the secret that was missing, and exits
+  # 0, so a repository with neither secret set releases exactly as it does with
+  # this job absent. What it will not do is stay quiet: a skip and a publish
+  # read differently in the log and in the job summary, and a release that
+  # reached one registry and not the other fails the job saying which is which.
+  # docs/05-publishing.md is what the two secrets need behind them.
+  #
+  # The tag and the artifact path are left to the script, which derives both the
+  # same way `package_editor.mjs` does and is checked against them by
+  # `scripts/verify_editor_publish.mjs` in `make editor-check`.
+  publish:
+    needs: [release]
+    runs-on: [self-hosted, diff]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: code-editor-extension
+          path: dist
+      - run: node scripts/publish_editor.mjs
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

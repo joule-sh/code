@@ -330,3 +330,76 @@ of CI on purpose.
 The frame processing loop draws once per frame, not once per batch. #147 fixed
 exactly that bug in the terminal, where fast replies landed in scrollback
 unpainted. `Conversation.apply` takes one frame and emits one change.
+
+## The files, and the checks over them
+
+`editor/README.md` is the extension's marketplace listing page, not a place
+for any of this. It is written for someone deciding whether to install, which
+is why the layout below moved here when publishing was wired up (#175).
+
+| file | what it is |
+| --- | --- |
+| `extension.js` | activation, commands |
+| `src/chat_panel.js` | the webview host, folder picking |
+| `src/session.js` | one folder's daemon session |
+| `src/binary.js` | the preflight: is there a joule here, and can this build drive it |
+| `src/daemon_link.js` | attach, resume, reconnect |
+| `src/conversation.js` | frames to a chat view model, approval state |
+| `src/setup.js` | what this machine is configured with, without reading a key |
+| `src/onboard.js` | what each first-run route does in the editor |
+| `src/modes.js` | the approval modes and what each one lets run |
+| `src/frames.js` | generated from `src/relay/web/page_js_frames.ts`, never edited by hand |
+| `src/ws.js` | the WebSocket client, shared with `scripts/` |
+| `media/` | the webview: `chat.js` renders, `first_run.js`, `transcript.js` and `composer.js` are its three screens |
+| `media/icon.png` | the marketplace tile, written by `make editor-icon` from the same J as `media/icon.svg` |
+
+`extension.js`, `src/chat_panel.js` and `src/onboard.js` are the only files
+that import `vscode`. Everything else is plain Node, which is how
+`scripts/verify_editor_client.mjs` drives the real client against a real
+daemon without an editor running.
+
+`src/modes.js` is the panel's copy of a vocabulary the daemon owns, so
+`scripts/verify_editor_modes.mjs` checks it against `src/approval/gate.ts` and
+the sentences `src/terminal/welcome.ts` uses, and `make editor-check` fails if
+the panel has started describing a mode differently from the terminal.
+
+`scripts/verify_editor_setup.mjs`, in the same target, drives `src/setup.js`
+over throwaway config files: what counts as configured, which server is
+chosen, and - on every path - that neither a provider key nor an account
+credential appears anywhere in the state the panel is sent.
+
+```
+make editor-frames   # regenerate src/frames.js after changing page_js_frames.ts
+make editor-icon     # regenerate editor/media/icon.png
+make editor-check    # fails if either has drifted, plus syntax checks
+make editor-harness  # the end-to-end check, no browser automation
+make editor-package  # build dist/joule-editor-<version>.vsix
+```
+
+Two environment variables help while working on the interface:
+
+```
+JOULE_EDITOR_SCENARIOS=first-run          # run one scenario instead of all three
+JOULE_EDITOR_CAPTURE=/tmp/panel           # also write what the panel rendered, as HTML
+```
+
+## Packaging and the version
+
+`make editor-package` writes `dist/joule-editor-<version>.vsix` through
+`@vscode/vsce`, pinned by `scripts/package_editor.mjs` and fetched with `npx`
+so nothing is vendored into the repository.
+
+The version in `package.json` is `0.0.0` in the tree and is never edited by
+hand, for the same reason `src/version.ts` says `dev`: the tag is the one
+source of truth, and a number kept in a file is a number that drifts from the
+binaries it is supposed to match. `scripts/package_editor.mjs` takes the
+version from `--version` or from `GITHUB_REF_NAME`, writes it into the
+manifest for the length of the packaging run, and restores the file
+afterwards, so a local build never leaves the tree dirty. The release workflow
+packages the extension in the same run as the binaries, from the same tag, and
+attaches the `.vsix` to the same release.
+
+Because the version is the tag, a tag that is not `major.minor.patch` fails
+the packaging step rather than producing a `.vsix` the marketplace would
+refuse. Publishing is downstream of that and is covered in
+[05-publishing.md](05-publishing.md).
