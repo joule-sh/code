@@ -32,8 +32,23 @@ tool.
 ## Install
 
 ```sh
+npm i -g @joule-sh/code
+```
+
+or, with no Node on the machine:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
+
+Both put the same two commands on your `PATH` at the same version, and both
+run every binary before reporting success. npm pins and uninstalls cleanly;
+the script needs nothing installed first. The npm package is a wrapper whose
+binaries live in `@joule-sh/code-linux-x64`, `@joule-sh/code-darwin-x64` and
+`@joule-sh/code-darwin-arm64`, installed as optional dependencies so npm takes
+only the one that matches. There is no Windows package yet, because there is
+no Windows binary yet ([#173](https://github.com/joule-sh/code/issues/173));
+installing there says so and points at WSL.
 
 Installs as `joule`, not `code` - `code` is already taken by VS Code's CLI on
 most machines, and this project would silently shadow or lose to it depending

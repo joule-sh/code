@@ -121,6 +121,40 @@ jobs:
           path: dist/*.vsix
           if-no-files-found: error
 
+  # The npm packages are cut from the archives the build jobs already produced,
+  # not from a second build, for the same reason the extension is: what the
+  # registry serves has to be the bytes the release carries. Unpacking an
+  # archive and repacking it as a tarball is all this does, so it needs no
+  # toolchain and takes seconds.
+  #
+  # A signed macOS binary survives that round trip untouched - `npm pack` is a
+  # gzipped tar and `npm install` restores the bytes exactly, which
+  # `scripts/verify_npm_wrapper.mjs` checks by installing what it packed and
+  # running it. The signature lives inside the Mach-O itself, so there is
+  # nothing beside the file for packing to lose.
+  #
+  # #235 does not arise here the way it does for install.sh. The kernel caches
+  # a signature against the vnode rather than the path, and npm extracts a new
+  # file for every install rather than writing over the one already there, so
+  # no binary is ever execed through a vnode the kernel has already judged. The
+  # install step verifies and ad-hoc signs on macOS anyway, the way install.sh
+  # does, because it costs nothing and it checks the bytes that actually landed.
+  npm:
+    needs: [build]
+    runs-on: [self-hosted, diff]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: code-*
+          merge-multiple: true
+      - run: node scripts/package_npm.mjs --version "$GITHUB_REF_NAME" --artifacts .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm
+          if-no-files-found: error
+
   release:
     needs: [build, extension]
     runs-on: [self-hosted, diff]
@@ -169,3 +203,36 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+  # Downstream of the release for the same reasons the extension's publish job
+  # is, and inert in the same way: with no NPM_TOKEN, `scripts/publish_npm.mjs`
+  # says which secret was missing and exits 0, so a repository without the
+  # secret releases exactly as it does with this job absent.
+  #
+  # Order is the thing this job exists to get right. Every platform package is
+  # published before the wrapper, because the wrapper names them as
+  # optionalDependencies and npm treats one it cannot find as a package to skip
+  # rather than an error - so a wrapper published first is a version that
+  # installs cleanly and then has no binary. If a platform package fails, the
+  # wrapper is held back and the job fails saying so. That leaves a release
+  # with no wrapper version at all, which is recoverable: re-running the job
+  # skips whatever is already on the registry and publishes the rest. The
+  # alternative is a permanently broken version, and npm only allows an
+  # unpublish within 72 hours of the publish.
+  #
+  # The token is never written down. The npmrc this creates holds the literal
+  # `${NPM_TOKEN}`, which npm expands out of the environment when it reads it.
+  publish-npm:
+    needs: [release, npm]
+    runs-on: [self-hosted, diff]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm
+      - run: node scripts/publish_npm.mjs
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
