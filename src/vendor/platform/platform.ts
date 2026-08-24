@@ -3,6 +3,7 @@ declare function plat_env(name: string): string;
 declare function plat_env_present(name: string): int;
 declare function plat_append(path: string, text: string): int;
 declare function plat_chmod(path: string, mode: int): int;
+declare function plat_gc_interior_pointers(): int;
 
 export const WINDOWS: string = "win32";
 
@@ -70,6 +71,12 @@ export function appendFile(filePath: string, text: string): void {
   plat_append(filePath, text);
 }
 
+export const GC_INTERIOR_POINTERS_NOT_APPLICABLE: int = -1;
+
+export function gcInteriorPointers(): int {
+  return plat_gc_interior_pointers();
+}
+
 export const CHMOD_APPLIED: int = 0;
 export const CHMOD_UNSUPPORTED: int = 1;
 export const CHMOD_FAILED: int = -1;
@@ -99,6 +106,14 @@ export function shellArgs(script: string): string[] {
   if (isWindows()) { return ["-NoProfile", "-NonInteractive", "-Command", script]; }
   return ["-c", script];
 }
+
+test("a Windows build collects with interior pointers on, which is what keeps a retained line alive", () => {
+  if (isWindows()) {
+    expect(gcInteriorPointers() == 1);
+  } else {
+    expect(gcInteriorPointers() == GC_INTERIOR_POINTERS_NOT_APPLICABLE);
+  }
+});
 
 test("envOr returns the fallback for a name nothing has set", () => {
   expect(envOr("JOULE_PLATFORM_UNSET_PROBE_1", "fallback") == "fallback");

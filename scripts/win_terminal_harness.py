@@ -12,18 +12,15 @@
 # the banner renders, the alternate screen is entered, a typed line echoes.
 # Those are the things only a terminal can tell you and they are stable.
 #
-# What the turn did is asserted against the session joule persisted and the
-# requests the model server logged - not against the screen. That is not
-# indirection for its own sake: on Windows the transcript pane renders some
-# streamed lines as unrelated memory (#173), so a tool result that ran
-# perfectly well may or may not be legible on screen, and asserting on the
-# screen made this harness fail one run in three for a reason that had nothing
-# to do with the tool. The session file is where the turn's outcome actually
-# lives, and it is byte-correct.
+# What the turn did is asserted twice over: against the session joule
+# persisted and the requests the model server logged, and against the screen.
+# The session file is where the turn's outcome lives and it stayed
+# byte-correct all through #248; the screen is where #248 actually was, so a
+# harness that reads only the first of the two would have stayed green through
+# a build nobody could use.
 #
 # What it deliberately does not assert, because it does not work yet and is
 # tracked on #173 rather than hidden here:
-#   the streamed transcript renders cleanly
 #   the daemon, background tasks and --share, none of which start on Windows
 
 import glob
@@ -52,6 +49,30 @@ STUB = os.path.join(REPO_ROOT, "bin", "stub_model.exe")
 
 PROMPT = "summarise the readme"
 README = "# demo workspace\n\nA line the model will read.\n"
+
+ASSISTANT_LINES = ["Let me check the README first.",
+                   "No health route yet. I will fix it.",
+                   "Done."]
+
+WINDOWS_DAEMON_NOTE = ("joule: the daemon does not run on Windows yet (#173)"
+                       " - running in-process instead")
+
+# The shapes #248 drew into the pane: a window into the request body, and a
+# line carrying a C0 byte after the pane has already had its escapes stripped.
+# Neither can reach the screen from anything the renderer legitimately holds.
+LEAKED_MARKERS = ['"tool_calls"', '"content":"', '"role":"assistant"',
+                  '"messages":', "Bearer "]
+
+
+def leaked_lines(pane):
+    out = []
+    for line in pane.splitlines():
+        if any(m in line for m in LEAKED_MARKERS):
+            out.append(line)
+            continue
+        if any(ord(c) < 32 and c != "\t" for c in line):
+            out.append(line)
+    return out
 
 
 def free_port():
@@ -148,6 +169,8 @@ def main():
         pty.wait_for(r"type a request", 60, "the banner")
         checks.that(True, "the banner renders in a pseudoconsole")
         checks.that("\x1b[?1049h" in pty.text(), "the alternate screen is entered")
+        checks.that(WINDOWS_DAEMON_NOTE in pty.plain(),
+                    "the daemon's Windows decline reaches the startup screen")
 
         pty.write(PROMPT + "\r")
         pty.wait_for(re.escape(PROMPT), 30, "the typed line echoed back")
@@ -177,6 +200,16 @@ def main():
                     "the model's own text came back")
         checks.that(os.path.exists(stub_log) and os.path.getsize(stub_log) > 0,
                     "the model server saw a real request")
+
+        pane = pty.plain()
+        for line in ASSISTANT_LINES:
+            checks.that(line in pane,
+                        "the transcript holds the assistant line %r" % line)
+        leaked = leaked_lines(pane)
+        if leaked:
+            print("     leaked rows: %r" % leaked[:4])
+        checks.that(not leaked,
+                    "the transcript holds nothing but what was rendered into it")
 
         pty.write("\x04")
         deadline = time.time() + 20

@@ -104,3 +104,51 @@ int plat_chmod(const char *path, int mode) {
     return chmod(path, (mode_t)mode) == 0 ? 0 : -1;
 #endif
 }
+
+// The third platform-specific runtime fault this repo has had to carry, after
+// the append mode of lumen#40 and the `process.env` of lumen#41, and the one
+// that made the Windows build unusable rather than merely awkward (#248).
+//
+// A Lumen string is a pointer and a length. `split` and `slice` hand back a
+// window into the string they were given rather than a copy, so a renderer
+// that keeps a line keeps a pointer into the middle of the buffer that line
+// came from, and nothing points at that buffer's first byte. Boehm keeps such
+// an object alive only when GC_all_interior_pointers is on. It is on by
+// default and it is on in the collector Lumen builds for Linux and macOS; it
+// is off in the one it builds for x86_64-windows-gnu, so on Windows those
+// buffers were collected while the transcript still held windows into them,
+// and the next allocation - a request body, a frame of rendered output -
+// landed on top and was drawn to the screen in their place.
+//
+// This turns it back on. It has to happen before the collector's first
+// allocation, because the flag decides how the heap is laid out; a constructor
+// is before main and therefore before Lumen's runtime has allocated anything.
+// plat_gc_interior_pointers reads it back so a test can say it took, rather
+// than the whole thing resting on link order nobody checks.
+//
+// The fix belongs upstream, which is lumen-lang-org/lumen#42, and this comes
+// out when a Lumen release carries it.
+#ifdef _WIN32
+extern void GC_set_all_interior_pointers(int);
+extern int GC_get_all_interior_pointers(void);
+
+__attribute__((constructor)) static void plat_gc_enable_interior_pointers(void) {
+    GC_set_all_interior_pointers(1);
+    if (GC_get_all_interior_pointers() != 1) {
+        const char *msg = "joule: the collector kept interior pointers off; "
+                          "this build would render other people's memory (#248)\n";
+        DWORD written = 0;
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), msg,
+                  (DWORD)strlen(msg), &written, NULL);
+        ExitProcess(70);
+    }
+}
+
+int plat_gc_interior_pointers(void) {
+    return GC_get_all_interior_pointers();
+}
+#else
+int plat_gc_interior_pointers(void) {
+    return -1;
+}
+#endif
