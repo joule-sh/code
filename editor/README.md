@@ -9,6 +9,21 @@ run, lifecycle, and what is reused from the terminal client rather than
 rewritten - are in
 [docs/04-editor.md](https://github.com/joule-sh/code/blob/main/docs/04-editor.md).
 
+## Where it opens
+
+The session view opens in the **secondary side bar**, on the right, where the
+other assistant extensions sit and next to the editor rather than in front of
+the file tree. Its icon is in the strip along the top of that bar. The
+placement is declared, not something the extension does at run time, so an
+install where someone has already dragged the view somewhere else keeps it
+there: the editor remembers a person's own placement and only falls back to
+this default when there is none.
+
+Declaring it needs **VS Code 1.106 or newer**, which is what `engines.vscode`
+now says. That is the release where `secondarySidebar` became a final
+contribution point; an older editor would ignore it and leave the view in the
+Explorer, so the extension asks not to be installed there instead.
+
 ## What it needs
 
 `joule` must be on `PATH`, or `joule.path` must point at it. The daemon is

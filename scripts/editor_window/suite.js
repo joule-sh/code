@@ -160,6 +160,41 @@ function real(p) {
   try { return fs.realpathSync(p); } catch (e) { void e; return p; }
 }
 
+async function showJoule(panel) {
+  await vscode.commands.executeCommand("workbench.view.extension.joule");
+  await waitFor(() => panel.view !== null && panel.view.visible === true, 20000,
+    "the joule view to open where the editor keeps it");
+}
+
+async function runAndSettle(command) {
+  await vscode.commands.executeCommand(command);
+  await sleep(500);
+}
+
+async function assertOpensInSecondarySidebar(panel) {
+  const commands = await vscode.commands.getCommands(true);
+  ok(commands.includes("workbench.view.extension.joule"),
+    "the editor built a joule view container from the manifest, so the view is not sitting in someone else's container");
+
+  await showJoule(panel);
+  await runAndSettle("workbench.action.closeSidebar");
+  ok(panel.view.visible === true,
+    "closing the primary side bar leaves the joule view showing, so it did not open in the activity bar");
+  await runAndSettle("workbench.action.closePanel");
+  ok(panel.view.visible === true,
+    "closing the bottom panel leaves the joule view showing, so it did not open in the panel");
+
+  await vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
+  try {
+    await waitFor(() => panel.view.visible === false, 20000, "the joule view to close with the secondary side bar");
+  } catch (e) {
+    void e;
+  }
+  ok(panel.view.visible === false,
+    "closing the secondary side bar takes the joule view with it, so that is where a fresh window opens it");
+  await showJoule(panel);
+}
+
 async function openPanel() {
   const ext = vscode.extensions.getExtension("joule-sh.joule-editor");
   if (!ok(ext !== undefined, "the joule extension is present in this editor window")) {
@@ -187,11 +222,12 @@ async function openPanel() {
     }
     for (let i = 0; i < 100 && panel.view === null; i++) { await sleep(100); }
   }
-  ok(panel.view !== null, "opening the joule view in the activity bar built the panel's webview");
+  ok(panel.view !== null, "opening the joule view built the panel's webview");
   if (panel.view === null) { throw new Error("the joule view never resolved a webview"); }
+  await assertOpensInSecondarySidebar(panel);
   panel.view.show(true);
   ok(await webviewReady(panel, hello, 120000), "the panel's webview loaded its scripts and answers from the editor window");
-  ok(panel.view.visible === true, "the joule view is the visible one in the side bar");
+  ok(panel.view.visible === true, "the joule view is the visible one in the secondary side bar");
   return panel;
 }
 
