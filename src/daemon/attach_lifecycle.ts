@@ -174,7 +174,7 @@ export function daemonBinFailure(daemonBinPath: string): string {
   return spawnFailureText(daemonBinPath, probe.status, probe.stderr);
 }
 
-export const WINDOWS_DAEMON_NOTE: string = "joule: the daemon does not run on Windows yet - it is started through /bin/sh with nohup, which has no equivalent here (#173) - running in-process instead";
+export const WINDOWS_DAEMON_NOTE: string = "joule: the daemon does not run on Windows yet (#173) - running in-process instead";
 
 export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
   let notes: string[] = [];
