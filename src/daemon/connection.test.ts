@@ -27,14 +27,14 @@ test("an unrecognised type is refused, not silently accepted", () => {
   expect(!isAcceptedInboundType(""));
 });
 
-function entry(seq: int): MailboxEntry {
+function seqEntry(seq: int): MailboxEntry {
   let e: MailboxEntry = { recvAt: 0, tag: "F", payload: "{\"v\":1,\"seq\":" + `${seq}` + ",\"type\":\"text.delta\"}" };
   return e;
 }
 
 test("highestSeq is the largest seq the log holds, and -1 for an empty one", () => {
   expect(highestSeq([]) == -1);
-  expect(highestSeq([entry(1), entry(7), entry(4)]) == 7);
+  expect(highestSeq([seqEntry(1), seqEntry(7), seqEntry(4)]) == 7);
 });
 
 test("a client resuming inside the session it left keeps the point it left at", () => {
