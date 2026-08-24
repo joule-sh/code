@@ -60,7 +60,9 @@ var jouleTranscript = (function () {
     const card = el("div", "item approval approval-" + item.state);
     const title = el("div", "approval-title");
     title.appendChild(el("span", "approval-tool", item.tool));
-    title.appendChild(el("span", "approval-summary", item.summary));
+    if (item.summary && item.summary !== item.tool) {
+      title.appendChild(el("span", "approval-summary", item.summary));
+    }
     card.appendChild(title);
     if (item.label && item.label !== item.summary) {
       card.appendChild(el("pre", "approval-detail", item.label));

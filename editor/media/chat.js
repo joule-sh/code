@@ -35,7 +35,7 @@
     right.appendChild(el("span", "badge badge-" + state.state, state.state));
     if (attached()) { right.appendChild(button("link header-detach", "detach", () => post("detach"))); }
     head.appendChild(right);
-    if (state.detail && state.state !== "failed") { head.appendChild(el("div", "header-detail", state.detail)); }
+    if (state.detail && state.state === "retrying") { head.appendChild(el("div", "header-detail", state.detail)); }
     return head;
   }
 
