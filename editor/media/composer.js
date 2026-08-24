@@ -138,7 +138,7 @@ var jouleComposer = (function () {
     const lead = where.remote
       ? "tools run on " + where.host + ", where the files are: "
       : "tools run on this machine, in ";
-    return [["", lead], ["status-path", where.root], ["", " - never in the editor"]];
+    return [["status-lead", lead], ["status-path", where.root], ["status-tail", " - never in the editor"]];
   }
 
   function whereText(where) {

@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 5px 8px 6px;
+  padding: 5px 6px 6px;
   background: var(--vscode-sideBar-background);
   border-top: 1px solid var(--vscode-panel-border);
   font-family: var(--vscode-font-family);
@@ -238,9 +238,9 @@ select.mode-chip option {
 .composer-status {
   display: flex;
   flex-direction: column;
-  padding: 0 3px;
+  padding: 0 2px;
   color: var(--vscode-descriptionForeground);
-  font-size: 0.85em;
+  font-size: 0.82em;
   line-height: 1.5;
 }
 
@@ -248,7 +248,7 @@ select.mode-chip option {
 .status-mode {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -268,6 +268,11 @@ select.mode-chip option {
   white-space: nowrap;
 }
 
+.status-lead {
+  flex: none;
+}
+
 .status-path {
   flex-shrink: 999;
+  min-width: 1.1em;
 }
