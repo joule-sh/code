@@ -121,10 +121,59 @@ export function isUnderInstallRoot(exeRealPath: string, installRoot: string): bo
   return exeRealPath.slice(0, prefix.length) == prefix;
 }
 
-export function isManagedInstall(exeRealPath: string, installRoot: string): bool {
-  return isUnderInstallRoot(exeRealPath, installRoot);
-}
-
 export function isUpdateTmpName(name: string): bool {
   return name.startsWith(UPDATE_TMP_PREFIX);
+}
+
+export const INSTALL_METHOD_SCRIPT: string = "script";
+export const INSTALL_METHOD_NPM: string = "npm";
+export const INSTALL_METHOD_UNKNOWN: string = "unknown";
+
+export const NODE_MODULES_DIR: string = "node_modules";
+export const NPM_SCOPE_DIR: string = "@joule-sh";
+export const NPM_PACKAGE_STEM: string = "code";
+
+export function pathSegments(candidate: string): string[] {
+  let out: string[] = [];
+  let current = "";
+  let i = 0;
+  while (i < candidate.length) {
+    let c = candidate.charAt(i);
+    if (c == "/" || c == "\\") {
+      if (current != "") { out.push(current); }
+      current = "";
+    } else {
+      current = current + c;
+    }
+    i = i + 1;
+  }
+  if (current != "") { out.push(current); }
+  return out;
+}
+
+export function isNpmPackageDirName(name: string): bool {
+  return name == NPM_PACKAGE_STEM || name.startsWith(NPM_PACKAGE_STEM + "-");
+}
+
+export function isUnderNpmPackage(exeRealPath: string): bool {
+  if (exeRealPath == "") { return false; }
+  let segs = pathSegments(exeRealPath);
+  let i = 0;
+  while (i + 2 < segs.length) {
+    if (segs[i] == NODE_MODULES_DIR && segs[i + 1] == NPM_SCOPE_DIR && isNpmPackageDirName(segs[i + 2])) {
+      return true;
+    }
+    i = i + 1;
+  }
+  return false;
+}
+
+export function detectInstallMethod(exeRealPath: string, installRoot: string): string {
+  if (isUnderInstallRoot(exeRealPath, installRoot)) { return INSTALL_METHOD_SCRIPT; }
+  if (isUnderNpmPackage(exeRealPath)) { return INSTALL_METHOD_NPM; }
+  return INSTALL_METHOD_UNKNOWN;
+}
+
+export function canSelfUpdate(method: string): bool {
+  return method == INSTALL_METHOD_SCRIPT || method == INSTALL_METHOD_NPM;
 }

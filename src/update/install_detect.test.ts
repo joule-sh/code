@@ -1,4 +1,4 @@
-import { resolveInstallRoot, resolveBinDir, defaultInstallRoot, defaultBinDir, isUnderInstallRoot, isManagedInstall, resolveArgv0Path, isUpdateTmpName } from "./install_detect.ts";
+import { resolveInstallRoot, resolveBinDir, defaultInstallRoot, defaultBinDir, isUnderInstallRoot, resolveArgv0Path, isUpdateTmpName, pathSegments, isUnderNpmPackage, detectInstallMethod, canSelfUpdate, INSTALL_METHOD_SCRIPT, INSTALL_METHOD_NPM, INSTALL_METHOD_UNKNOWN } from "./install_detect.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/install-detect-test-" + name;
@@ -28,7 +28,7 @@ test("a running exe path under the install root is a managed install", () => {
   let exe = versionDir + "/joule";
   fs.writeFileSync(exe, "binary");
   expect(isUnderInstallRoot(exe, root));
-  expect(isManagedInstall(exe, root));
+  expect(detectInstallMethod(exe, root) == INSTALL_METHOD_SCRIPT);
 });
 
 test("a running exe path elsewhere, such as a source build, is not a managed install", () => {
@@ -113,4 +113,61 @@ test("isUpdateTmpName recognizes the scratch-directory naming convention", () =>
   expect(isUpdateTmpName(".update-tmp-1700000000000"));
   expect(!isUpdateTmpName("0.6.1"));
   expect(!isUpdateTmpName("latest"));
+});
+
+test("pathSegments splits on either separator and drops the empty runs", () => {
+  let posix = pathSegments("/usr/lib/node_modules/@joule-sh/code-linux-x64/bin/joule");
+  expect(posix[0] == "usr");
+  expect(posix[3] == "@joule-sh");
+  expect(posix[posix.length - 1] == "joule");
+  let win = pathSegments("C:\\Users\\a\\node_modules\\@joule-sh\\code-win32-x64\\bin\\joule.exe");
+  expect(win[3] == "node_modules");
+  expect(win[4] == "@joule-sh");
+});
+
+test("the binary npm installs is recognized under the per-platform optional dependency", () => {
+  expect(isUnderNpmPackage("/usr/lib/node_modules/@joule-sh/code/node_modules/@joule-sh/code-linux-x64/bin/joule"));
+  expect(isUnderNpmPackage("/home/a/.npm-global/lib/node_modules/@joule-sh/code-darwin-arm64/bin/joule"));
+});
+
+test("the binary npm installs is recognized when the wrapper vendored it itself", () => {
+  expect(isUnderNpmPackage("/usr/lib/node_modules/@joule-sh/code/vendor/bin/joule"));
+});
+
+test("a Windows npm layout is recognized too, backslashes and all", () => {
+  expect(isUnderNpmPackage("C:\\Users\\a\\AppData\\Roaming\\npm\\node_modules\\@joule-sh\\code-win32-x64\\bin\\joule.exe"));
+});
+
+test("some other package under a node_modules is not joule's npm install", () => {
+  expect(!isUnderNpmPackage("/usr/lib/node_modules/@joule-sh/codex/bin/joule"));
+  expect(!isUnderNpmPackage("/usr/lib/node_modules/@other/code-linux-x64/bin/joule"));
+  expect(!isUnderNpmPackage("/home/a/src/project/node_modules/.bin/joule"));
+  expect(!isUnderNpmPackage(""));
+});
+
+test("detectInstallMethod names the script install for a binary under the install root", () => {
+  let root = freshRoot("method-script");
+  let versionDir = root + "/0.22.0";
+  fs.mkdirSync(versionDir, true);
+  fs.writeFileSync(versionDir + "/joule", "binary");
+  expect(detectInstallMethod(versionDir + "/joule", root) == INSTALL_METHOD_SCRIPT);
+});
+
+test("detectInstallMethod names npm for a binary under an npm package", () => {
+  let root = freshRoot("method-npm");
+  let exe = "/usr/lib/node_modules/@joule-sh/code-linux-x64/bin/joule";
+  expect(detectInstallMethod(exe, root) == INSTALL_METHOD_NPM);
+});
+
+test("detectInstallMethod declines to guess for a binary neither installer owns", () => {
+  let root = freshRoot("method-unknown");
+  expect(detectInstallMethod("/usr/local/bin/joule", root) == INSTALL_METHOD_UNKNOWN);
+  expect(detectInstallMethod("", root) == INSTALL_METHOD_UNKNOWN);
+});
+
+test("only the two installers joule knows how to drive can self-update", () => {
+  expect(canSelfUpdate(INSTALL_METHOD_SCRIPT));
+  expect(canSelfUpdate(INSTALL_METHOD_NPM));
+  expect(!canSelfUpdate(INSTALL_METHOD_UNKNOWN));
+  expect(!canSelfUpdate(""));
 });
