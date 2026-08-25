@@ -11,8 +11,7 @@ export function scratchBase() {
   return named;
 }
 
-export function sweepStale(prefix, base) {
-  const dir = base || scratchBase();
+export function sweepMatching(dir, matches) {
   const cutoff = Date.now() - STALE_MS;
   let names = [];
   try {
@@ -22,7 +21,7 @@ export function sweepStale(prefix, base) {
     return;
   }
   for (const name of names) {
-    if (!name.startsWith(prefix)) { continue; }
+    if (!matches(name)) { continue; }
     const full = path.join(dir, name);
     try {
       if (fs.lstatSync(full).mtimeMs > cutoff) { continue; }
@@ -31,6 +30,10 @@ export function sweepStale(prefix, base) {
       void e;
     }
   }
+}
+
+export function sweepStale(prefix, base) {
+  sweepMatching(base || scratchBase(), (name) => name.startsWith(prefix));
 }
 
 export function scratchDir(prefix) {

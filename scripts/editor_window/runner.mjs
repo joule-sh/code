@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 import { assertTabSurvivesRestart } from "./restart_check.mjs";
-import { scratchDir, sweepStale } from "../scratch.mjs";
+import { scratchDir, sweepStale, sweepMatching } from "../scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -99,6 +99,22 @@ async function startDisplay() {
   }
   die("could not start an Xvfb display for the editor window");
   return null;
+}
+
+function pruneSdkPartials() {
+  const listing = (dir) => {
+    try {
+      return fs.readdirSync(dir);
+    } catch (e) {
+      void e;
+      return [];
+    }
+  };
+  for (const agent of listing(SDK_CACHE)) {
+    for (const version of listing(path.join(SDK_CACHE, agent))) {
+      sweepMatching(path.join(SDK_CACHE, agent, version), (name) => name.includes(".tmp."));
+    }
+  }
 }
 
 function shareSdkCache(userData) {
@@ -290,6 +306,7 @@ async function main() {
   fs.mkdirSync(CACHE, { recursive: true });
 
   sweepStale("joule-editor-");
+  pruneSdkPartials();
 
   display = await startDisplay();
   if (failed) { return; }
