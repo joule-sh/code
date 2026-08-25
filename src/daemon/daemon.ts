@@ -7,7 +7,8 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest, frameType, TURN_START, TURN_END, decodeTurnStart } from "../protocol/frames.ts";
-import { loadProjectInstructions } from "../session/project_instructions.ts";
+import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
+import { startupSkillsText } from "../terminal/skills_ui.ts";
 import { loadWorkspaceSession, saveWorkspaceSession } from "../session/persistence.ts";
 import { startupMemoryText } from "../terminal/memory_ui.ts";
 import { TaskManager } from "../tasks/manager.ts";
@@ -93,7 +94,8 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
-  session.injectSystemContext(loadProjectInstructions(workspaceRoot));
+  session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
+  session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
   let resumeRequested = (envOr("JOULE_DAEMON_RESUME", "")) == "1";
   if (resumeRequested) {

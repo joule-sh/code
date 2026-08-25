@@ -17,7 +17,8 @@ import { DaemonClient } from "../daemon/attach_client.ts";
 import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel } from "../daemon/attach_lifecycle.ts";
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
@@ -204,7 +205,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let mouse = enterScreen();
   rawEnable(STDIN);
 
-  sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase.base));
+  sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase.base) + skillsStartupNote(workspaceRoot));
   if (announceDaemon) {
     sb.append("\n" + styleBanner("joule attach - connected to a daemon at " + workspaceRoot));
     sb.append("\n" + styleBanner("type a request, /help for commands, ctrl-d to detach"));
@@ -363,6 +364,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (cmd.kind == CMD_HELP) { sb.append("\n" + attachHelpText()); drawScreen(sb, input, approvalLog.mode, rk); continue; }
+    if (cmd.kind == CMD_SKILLS) { let skillInput = runSkillCommand(workspaceRoot, cmd.arg, sb); drawScreen(sb, input, approvalLog.mode, rk); if (skillInput != "") { sendInput(skillInput); } continue; }
 
     if (cmd.kind == CMD_MODEL) {
       if (cmd.arg == "") {

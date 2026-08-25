@@ -1,4 +1,4 @@
-import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { CMD_SKILLS, parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -165,4 +165,27 @@ test("the shared command list covers every command parseCommand knows", () => {
     expect(parseCommand(cmds[i].name).kind != CMD_NONE);
     i = i + 1;
   }
+});
+
+test("/skills parses with no argument, for listing", () => {
+  let c = parseCommand("/skills");
+  expect(c.kind == CMD_SKILLS);
+  expect(c.arg == "");
+});
+
+test("/skills takes a skill name as its argument", () => {
+  let c = parseCommand("/skills deploy");
+  expect(c.kind == CMD_SKILLS);
+  expect(c.arg == "deploy");
+});
+
+test("/skill is the same command, so either spelling works when typing one by name", () => {
+  let c = parseCommand("/skill deploy staging");
+  expect(c.kind == CMD_SKILLS);
+  expect(c.arg == "deploy staging");
+});
+
+test("/skills is listed in the help output, so it can be found without reading the source", () => {
+  expect(helpText().indexOf("/skills") >= 0);
+  expect(helpText().indexOf("where each came from") >= 0);
 });
