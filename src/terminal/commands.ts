@@ -7,6 +7,7 @@ export const CMD_LOGOUT: string = "logout";
 export const CMD_CAT: string = "cat";
 export const CMD_TASKS: string = "tasks";
 export const CMD_MEMORY: string = "memory";
+export const CMD_SKILLS: string = "skills";
 export const CMD_UPDATE: string = "update";
 export const CMD_MOUSE: string = "mouse";
 export const CMD_CLEAR: string = "clear";
@@ -49,6 +50,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "cat") { return withKind(CMD_CAT, arg); }
   if (name == "tasks") { return withKind(CMD_TASKS, arg); }
   if (name == "memory") { return withKind(CMD_MEMORY, arg); }
+  if (name == "skills" || name == "skill") { return withKind(CMD_SKILLS, arg); }
   if (name == "update") { return withKind(CMD_UPDATE, arg); }
   if (name == "mouse") { return withKind(CMD_MOUSE, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
@@ -67,6 +69,7 @@ export function commandList(): CommandInfo[] {
     { name: "/cat", args: "<path>", description: "show a file's contents without asking the model" },
     { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
     { name: "/memory", args: "[add <text>|forget <n>|clear]", description: "show, add to, or edit what joule remembers about you" },
+    { name: "/skills", args: "[name]", description: "list skills and where each came from, or use one by name" },
     { name: "/update", args: "", description: "download and install the latest release" },
     { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (default off, so drags select text)" },
     { name: "/clear", args: "", description: "clear the scrollback" },

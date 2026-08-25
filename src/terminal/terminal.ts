@@ -8,11 +8,12 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
-import { loadProjectInstructions } from "../session/project_instructions.ts";
+import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
+import { startupSkillsText, skillsStartupNote, runSkillCommand } from "./skills_ui.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
@@ -141,7 +142,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);
-  session.injectSystemContext(loadProjectInstructions(workspaceRoot));
+  session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
+  session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
   if (resume.history != null) { session.history = resume.history; }
   live.setSession(session);
@@ -219,7 +221,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   rawEnable(STDIN);
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
-  sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
+  sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit") + skillsStartupNote(workspaceRoot));
   for (const n of startupNotes) { sb.append("\n" + styleBanner(n)); }
   if (resume.note != "") { sb.append(resume.note); }
   drawScreen(sb, input, gate.mode, rk);
@@ -365,6 +367,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     }
 
     if (cmd.kind == CMD_HELP) { sb.append("\n" + helpText()); drawScreen(sb, input, gate.mode, rk); continue; }
+    if (cmd.kind == CMD_SKILLS) { let skillInput = runSkillCommand(workspaceRoot, cmd.arg, sb); drawScreen(sb, input, gate.mode, rk); if (skillInput != "") { bridge.runNow(session, skillInput); drawScreen(sb, input, gate.mode, rk); } continue; }
 
     if (cmd.kind == CMD_MODEL) {
       if (cmd.arg == "") {

@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e skills-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -137,6 +137,9 @@ layout-harness: build bin/stub_model
 
 onboarding-harness: build bin/stub_model
 	python3 scripts/verify_onboarding.py
+
+skills-harness: build bin/stub_model
+	python3 scripts/verify_skills_pty.py
 
 login-server-harness: build bin/stub_model
 	python3 scripts/verify_login_server.py

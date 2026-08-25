@@ -13,6 +13,8 @@ export function runFixCommand(): string {
   if (isWindows()) { return WINDOWS_RUN_FIX_COMMAND; }
   return POSIX_RUN_FIX_COMMAND;
 }
+const SKILLS_SCRIPT: string = "skills";
+const SKILLS_RUN_COMMAND: string = "sh .claude/skills/deploy/deploy.sh";
 const TRANSCRIPT_SCRIPT: string = "transcript";
 const TRANSCRIPT_READ_PATH: string = "server.js";
 const TRANSCRIPT_RUN_COMMAND: string = "sh noisy.sh";
@@ -132,7 +134,20 @@ function transcriptRunStepBody(): string {
     + DONE_LINE;
 }
 
+function skillsRunStepBody(): string {
+  let args = toolCallArgs([strField("command", SKILLS_RUN_COMMAND)]);
+  let fragment = toolCallFragmentJson(0, "call_run_1", "run", args);
+  return textDeltaChunk("The skill says to run its deploy script.")
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
 export function scriptedResponseBodyFor(script: string, step: int): string {
+  if (script == SKILLS_SCRIPT) {
+    if (step <= 0) { return skillsRunStepBody(); }
+    return finalStepBody();
+  }
   if (script != TRANSCRIPT_SCRIPT) { return scriptedResponseBody(step); }
   if (step <= 0) { return transcriptReadStepBody(); }
   if (step == 1) { return transcriptRunStepBody(); }
@@ -189,6 +204,13 @@ test("the transcript script reads a file and then runs a command that prints a l
   let run = scriptedResponseBodyFor("transcript", 1);
   expect(run.indexOf("sh noisy.sh") >= 0);
   expect(scriptedResponseBodyFor("transcript", 2) == finalStepBody());
+});
+
+test("the skills script proposes running the script a skill carries, so it meets the approval gate", () => {
+  let run = scriptedResponseBodyFor("skills", 0);
+  expect(run.indexOf(".claude/skills/deploy/deploy.sh") >= 0);
+  expect(run.indexOf("\"name\":\"run\"") >= 0);
+  expect(scriptedResponseBodyFor("skills", 1) == finalStepBody());
 });
 
 test("an unnamed script is the one every other harness drives", () => {

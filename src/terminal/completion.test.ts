@@ -389,6 +389,9 @@ test("dropping the rule lets one more match row fit in the same budget", () => {
   let budget = panelBudget(16, 0, 1);
   let withRule = completionRows(c, 80, budget, true);
   let withoutRule = completionRows(c, 80, budget, false);
-  expect(!anyRowHas(withRule, "/exit"));
-  expect(anyRowHas(withoutRule, "/exit"));
+  let revealed = "";
+  for (const cmd of commandList()) {
+    if (!anyRowHas(withRule, cmd.name) && anyRowHas(withoutRule, cmd.name)) { revealed = cmd.name; }
+  }
+  expect(revealed != "");
 });

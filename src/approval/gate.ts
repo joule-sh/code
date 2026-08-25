@@ -15,7 +15,7 @@ export const REPLY_ALWAYS: string = "always";
 const DEFAULT_POLL_MS: int = 100;
 
 function isReadTool(tool: string): bool {
-  return tool == "read" || tool == "list" || tool == "grep";
+  return tool == "read" || tool == "list" || tool == "grep" || tool == "skill";
 }
 
 export class Gate {

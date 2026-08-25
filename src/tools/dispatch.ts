@@ -2,6 +2,7 @@ import { jsonStringMemberAt, jsonIntMemberAt } from "https://lumen-lang.org/pack
 import { ToolResult } from "../session/types.ts";
 import { readFile, writeFile, editFile, listDir, grep } from "./files.ts";
 import { run } from "./run.ts";
+import { discoverSkills, findSkill, skillBodyText } from "../session/skills.ts";
 
 export const DEFAULT_RUN_TIMEOUT_MS: int = 30000;
 
@@ -84,6 +85,14 @@ function dispatchRun(root: string, args: string): ToolResult {
   return ok(body, r.truncated);
 }
 
+function dispatchSkill(root: string, args: string): ToolResult {
+  let name = jsonStringMemberAt(args, 0, "name");
+  if (name == "") { return fail("skill: a name is required"); }
+  let hit = findSkill(discoverSkills(root), name);
+  if (hit.length == 0) { return fail("no skill named \"" + name + "\" is available in this workspace"); }
+  return ok(skillBodyText(hit[0]), false);
+}
+
 export function dispatchCoreTool(root: string, tool: string, args: string): ToolResult {
   if (tool == "read") { return dispatchRead(root, args); }
   if (tool == "write") { return dispatchWrite(root, args); }
@@ -91,5 +100,6 @@ export function dispatchCoreTool(root: string, tool: string, args: string): Tool
   if (tool == "list") { return dispatchList(root, args); }
   if (tool == "grep") { return dispatchGrep(root, args); }
   if (tool == "run") { return dispatchRun(root, args); }
+  if (tool == "skill") { return dispatchSkill(root, args); }
   return fail("unknown tool: " + tool);
 }
