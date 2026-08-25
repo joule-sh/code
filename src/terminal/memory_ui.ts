@@ -1,4 +1,4 @@
-import { memoryFilePath, addMemoryEntryText, removeMemoryEntryAt, clearMemoryFile, listMemoryText, loadUserMemoryText } from "../session/memory.ts";
+import { memoryStorePath, addMemoryEntryText, removeMemoryEntryAt, clearMemoryDir, listMemoryText, loadUserMemoryText } from "../session/memory.ts";
 
 const MEMORY_USAGE: string = "\nusage: /memory, /memory add <text>, /memory forget <n>, or /memory clear";
 
@@ -8,14 +8,14 @@ function forgetArg(arg: string): string {
 }
 
 export function memoryCommandText(arg: string): string {
-  let file = memoryFilePath();
+  let dir = memoryStorePath();
 
   if (arg == "" || arg == "list") {
-    return listMemoryText(file);
+    return listMemoryText(dir);
   }
 
   if (arg.startsWith("add ")) {
-    let r = addMemoryEntryText(file, arg.slice(4, arg.length));
+    let r = addMemoryEntryText(dir, arg.slice(4, arg.length));
     return "\n" + r.message;
   }
 
@@ -25,14 +25,14 @@ export function memoryCommandText(arg: string): string {
     if (n <= 0) {
       return "\nusage: /memory forget <n>, where <n> is a number from /memory list";
     }
-    if (removeMemoryEntryAt(file, n)) {
+    if (removeMemoryEntryAt(dir, n)) {
       return "\nforgot entry " + `${n}` + ".";
     }
     return "\nno entry " + `${n}` + " to forget.";
   }
 
   if (arg == "clear") {
-    clearMemoryFile(file);
+    clearMemoryDir(dir);
     return "\ncleared everything joule remembers about you.";
   }
 
@@ -40,5 +40,5 @@ export function memoryCommandText(arg: string): string {
 }
 
 export function startupMemoryText(): string {
-  return loadUserMemoryText(memoryFilePath());
+  return loadUserMemoryText(memoryStorePath());
 }
