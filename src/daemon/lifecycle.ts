@@ -1,6 +1,7 @@
 import { sessionKeyFor } from "../session/persistence.ts";
 import { detectRunningExePath } from "../update/install_detect.ts";
-import { exeSuffix, homeDir } from "../vendor/platform/platform.ts";
+import { powershellQuoteSingle } from "../tools/shell_quote.ts";
+import { exeSuffix, homeDir, isWindows, shellArgs } from "../vendor/platform/platform.ts";
 
 export type DaemonInfo = { workspace: string, port: int, startedAt: string };
 
@@ -75,16 +76,46 @@ export function defaultDaemonBinPath(): string {
   return daemonBinNameFor(detectRunningExePath());
 }
 
-export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+export function posixDaemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   let resumeEnv = "";
   if (resumeFlag) { resumeEnv = "JOULE_DAEMON_RESUME=1 "; }
   return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + " >" + logPath + " 2>&1 &";
 }
 
+export function windowsDaemonStartCommand(workspaceRoot: string, logPath: string, daemonBinPath: string): string {
+  return "Start-Process -FilePath " + powershellQuoteSingle(daemonBinPath)
+    + " -WorkingDirectory " + powershellQuoteSingle(workspaceRoot)
+    + " -WindowStyle Hidden"
+    + " -RedirectStandardOutput " + powershellQuoteSingle(logPath)
+    + " -RedirectStandardError " + powershellQuoteSingle(daemonErrorLogPath(logPath));
+}
+
+export function windowsDaemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+  let resumeValue = "";
+  if (resumeFlag) { resumeValue = "1"; }
+  return "$ErrorActionPreference = 'Stop'; "
+    + "$env:JOULE_DAEMON_PORT = '" + `${port}` + "'; "
+    + "$env:JOULE_DAEMON_RESUME = '" + resumeValue + "'; "
+    + "Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden"
+    + " -ArgumentList '-NoProfile','-NonInteractive','-Command',"
+    + powershellQuoteSingle(windowsDaemonStartCommand(workspaceRoot, logPath, daemonBinPath));
+}
+
+export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+  if (isWindows()) {
+    return windowsDaemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath);
+  }
+  return posixDaemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath);
+}
+
 export function daemonSpawnArgs(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string[] {
-  return ["-c", daemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath)];
+  return shellArgs(daemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath));
 }
 
 export function daemonLogPath(workspaceRoot: string): string {
   return daemonInfoDir() + "/" + sessionKeyFor(workspaceRoot) + ".log";
+}
+
+export function daemonErrorLogPath(logPath: string): string {
+  return logPath + ".err";
 }

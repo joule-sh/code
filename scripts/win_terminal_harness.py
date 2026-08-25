@@ -19,9 +19,14 @@
 # harness that reads only the first of the two would have stayed green through
 # a build nobody could use.
 #
+# The turn it drives runs through a daemon, because that is what joule does on
+# Windows now (#173). What the daemon itself has to do - spawn detached,
+# outlive its client, take a second client, stop on request - is asserted by
+# win_daemon_harness.py rather than here.
+#
 # What it deliberately does not assert, because it does not work yet and is
 # tracked on #173 rather than hidden here:
-#   the daemon, background tasks and --share, none of which start on Windows
+#   background tasks and --share, neither of which start on Windows
 
 import glob
 import json
@@ -53,9 +58,6 @@ README = "# demo workspace\n\nA line the model will read.\n"
 ASSISTANT_LINES = ["Let me check the README first.",
                    "No health route yet. I will fix it.",
                    "Done."]
-
-WINDOWS_DAEMON_NOTE = ("joule: the daemon does not run on Windows yet (#173)"
-                       " - running in-process instead")
 
 # The shapes #248 drew into the pane: a window into the request body, and a
 # line carrying a C0 byte after the pane has already had its escapes stripped.
@@ -124,6 +126,14 @@ def session_history(home, timeout):
     return None
 
 
+def stop_daemon(ws, env):
+    try:
+        subprocess.run([JOULE, "--stop"], cwd=ws, env=env, timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 class Checks(object):
     def __init__(self):
         self.failed = 0
@@ -169,8 +179,6 @@ def main():
         pty.wait_for(r"type a request", 60, "the banner")
         checks.that(True, "the banner renders in a pseudoconsole")
         checks.that("\x1b[?1049h" in pty.text(), "the alternate screen is entered")
-        checks.that(WINDOWS_DAEMON_NOTE in pty.plain(),
-                    "the daemon's Windows decline reaches the startup screen")
 
         pty.write(PROMPT + "\r")
         pty.wait_for(re.escape(PROMPT), 30, "the typed line echoed back")
@@ -223,6 +231,7 @@ def main():
         checks.failed += 1
     finally:
         pty.close()
+        stop_daemon(ws, joule_env(home, port))
         stub.kill()
 
     if checks.failed:
