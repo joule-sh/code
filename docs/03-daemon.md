@@ -357,6 +357,29 @@ The rest follows from that shape:
   PowerShell exits 0 after. A missing or unrunnable daemon binary is caught
   before any of this, by the `--version` probe in `daemonBinFailure`.
 
+### Asking before connecting
+
+`ensureAttached` finds out whether a daemon is there by polling its port, and
+on Windows the runtime's own `net.connect` answers "nothing is listening" by
+printing a diagnostic and a stack trace to stderr before recovering - the
+NTSTATUS reaches Zig's `windows.unexpectedStatus` rather than being mapped to
+`error.ConnectionRefused`. It is not a fault and the call returns what the
+caller wanted, but the trace lands on the user's console, in a release build
+as much as a debug one.
+
+So the port is asked about first. `plat_port_open` in the platform shim asks
+Winsock directly - 1 open, 0 closed, -1 the platform has no answer - and
+`worthConnectingTo` is what `ensureAttached`, `runAttachStop` and
+`DaemonClient.maybeReconnect` consult before connecting at all. POSIX answers
+-1 to everything, so all three behave there exactly as they did: this is a
+question POSIX declines rather than a POSIX branch. `ws2_32` is on the Windows
+link line for it, because the backend links it for its own socket layer but
+not where a shim object can resolve against it.
+
+Filed upstream as lumen-lang-org/lumen#44. `win_daemon_harness.py` asserts
+that a cold start writes no `NTSTATUS` line to stderr, so taking the shim out
+again when a Lumen release carries the mapping is something CI notices.
+
 ### The runtime directory on Windows
 
 It does not move. `~/.config/joule-code/daemon/<key>.json` and
