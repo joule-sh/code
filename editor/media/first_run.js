@@ -35,7 +35,6 @@ var jouleFirstRun = (function () {
   }
 
   function problemText(state) {
-    if (state.blocked) { return state.blocked; }
     if (state.binary && !state.binary.ok) { return state.binary.message; }
     if (state.state === "failed" && state.detail) {
       return "the configuration you have did not get a session started: " + state.detail;
@@ -54,7 +53,6 @@ var jouleFirstRun = (function () {
   }
 
   function usable(state) {
-    if (state.blocked) { return false; }
     return !(state.binary && !state.binary.ok);
   }
 

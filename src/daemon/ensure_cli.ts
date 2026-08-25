@@ -1,5 +1,6 @@
 import { ensureAttached } from "./attach_lifecycle.ts";
 import { hasContinueFlag } from "../terminal/resume.ts";
+import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 
 export const ENSURE_COMMAND: string = "daemon-ensure";
 
@@ -35,7 +36,7 @@ export function ensureReport(ready: bool, workspace: string, port: int, spawned:
 }
 
 export function runDaemonEnsure(argv: string[]): void {
-  let workspaceRoot = process.cwd();
+  let workspaceRoot = currentWorkspaceRoot();
   let result = ensureAttached(workspaceRoot, hasContinueFlag(argv));
   let ready = result.client.socketReady;
   let port = result.client.port;

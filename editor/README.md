@@ -19,26 +19,28 @@ curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
 That installs `joule` for x86_64 Linux, Apple Silicon macOS and Intel macOS.
-The extension needs **joule 0.13.0 or newer**. If `joule` is not on `PATH`,
-point [`joule.path`](#settings) at it.
+On Windows the way in is npm - `npm install -g @joule-sh/code` - or the
+`code-x86_64-windows.zip` a release publishes. The extension needs **joule
+0.13.0 or newer**. If `joule` is not on `PATH`, point
+[`joule.path`](#settings) at it.
 
 Credentials stay with the CLI. The panel never asks for an API key, never
 reads one, and never forwards one.
 
-## There is no Windows build yet
+## Windows
 
-**`joule` does not build for Windows**
-([#173](https://github.com/joule-sh/code/issues/173)), so on a Windows machine
-this extension installs, loads, and then tells you there is nothing for it to
-drive. Nothing about the panel will work there. That is a limitation of the
-CLI, not of the extension, and it is being worked on.
+**The panel drives a Windows joule the same way it drives a Linux one.** It
+starts a daemon, attaches to it, runs turns through it and stops it, and a
+real editor window doing exactly that on Windows is part of this project's
+CI. An npm install is found without any setting being pointed at it: npm
+writes a `joule.cmd` on `PATH` rather than a `joule.exe`, and the panel
+resolves and runs that the way a terminal would.
 
-**WSL works today, and is the way to use this on Windows.** Open the folder
-through WSL (or through Remote-SSH, or in a dev container): the extension
-declares itself a workspace extension, so it runs on the remote side, next to
-the Linux `joule` and next to your files. Install `joule` inside the WSL
-distribution with the one-liner above and the panel behaves exactly as it does
-on Linux.
+**WSL and Remote-SSH still work, and are still worth choosing if your files
+live there.** The extension declares itself a workspace extension, so opening
+a folder through WSL, Remote-SSH or a dev container runs it on the remote
+side, next to the `joule` and the files that are there. What changed is that
+a native Windows folder no longer needs that.
 
 ## What the panel does
 

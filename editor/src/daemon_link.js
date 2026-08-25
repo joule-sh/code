@@ -3,7 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
-const { execFile } = require("node:child_process");
+const { execJoule } = require("./joule_bin.js");
 const { connect } = require("./ws.js");
 const frames = require("./frames.js");
 
@@ -45,10 +45,16 @@ function readDaemonInfos(env) {
   return out;
 }
 
+function samePath(a, b) {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  if (process.platform !== "win32") { return left === right; }
+  return left.toLowerCase() === right.toLowerCase();
+}
+
 function findDaemonInfo(workspaceRoot, env) {
-  const wanted = path.resolve(workspaceRoot);
   for (const info of readDaemonInfos(env)) {
-    if (path.resolve(info.workspace) === wanted) { return info; }
+    if (samePath(info.workspace, workspaceRoot)) { return info; }
   }
   return null;
 }
@@ -68,21 +74,16 @@ function ensureDaemon(workspaceRoot, options) {
   const bin = opts.jouleBin || "joule";
   const args = ["daemon-ensure"];
   if (opts.resume) { args.push("--continue"); }
-  return new Promise((resolve, reject) => {
-    execFile(bin, args, {
-      cwd: workspaceRoot,
-      env: opts.env || process.env,
-      timeout: opts.timeoutMs || ENSURE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    }, (err, stdout, stderr) => {
-      const report = parseEnsureReport(stdout);
-      if (report && report.ok) {
-        resolve(report);
-        return;
-      }
-      const detail = String(stderr || "").trim() || String(stdout || "").trim() || (err ? err.message : "no output");
-      reject(new Error("could not start or reach a joule daemon for " + workspaceRoot + ": " + detail));
-    });
+  return execJoule(bin, args, {
+    cwd: workspaceRoot,
+    env: opts.env,
+    timeoutMs: opts.timeoutMs || ENSURE_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
+  }).then(({ err, stdout, stderr }) => {
+    const report = parseEnsureReport(stdout);
+    if (report && report.ok) { return report; }
+    const detail = String(stderr || "").trim() || String(stdout || "").trim() || (err ? err.message : "no output");
+    throw new Error("could not start or reach a joule daemon for " + workspaceRoot + ": " + detail);
   });
 }
 
@@ -193,6 +194,7 @@ module.exports = {
   daemonInfoDir,
   readDaemonInfos,
   findDaemonInfo,
+  samePath,
   ensureDaemon,
   parseEnsureReport,
   OUTBOUND_CAP,

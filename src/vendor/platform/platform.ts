@@ -58,6 +58,49 @@ export function pathListSeparator(): string {
   return ":";
 }
 
+// Windows hands back the drive letter it was given rather than one spelling of
+// it: a process whose current directory was set to c:\x reports c:\x, while
+// PowerShell's -WorkingDirectory gives the same folder to the daemon it starts
+// as C:\x. The workspace root is hashed into the session key and compared
+// against the root a daemon says it is serving, so two spellings are two
+// workspaces - an editor asking with the spelling VS Code uses gets a daemon
+// that answers for the other one and is told the port belongs to someone else.
+// Only the drive letter is folded: the rest of a Windows path is
+// case-insensitive too, but nothing on this machine spells it two ways by
+// itself, and folding it would put a slug nobody typed in the runtime
+// directory.
+export function normalizeWorkspacePath(workspacePath: string): string {
+  if (!isWindows()) { return workspacePath; }
+  if (workspacePath.length < 2) { return workspacePath; }
+  if (workspacePath.charAt(1) != ":") { return workspacePath; }
+  return workspacePath.charAt(0).toUpperCase() + workspacePath.slice(1, workspacePath.length);
+}
+
+export function workspaceRoot(): string {
+  return normalizeWorkspacePath(process.cwd());
+}
+
+test("a workspace path keeps its spelling where the platform has one", () => {
+  if (isWindows()) {
+    expect(normalizeWorkspacePath("c:\\Users\\someone\\proj") == "C:\\Users\\someone\\proj");
+    expect(normalizeWorkspacePath("C:\\Users\\someone\\proj") == "C:\\Users\\someone\\proj");
+    expect(normalizeWorkspacePath("\\\\server\\share\\proj") == "\\\\server\\share\\proj");
+  } else {
+    expect(normalizeWorkspacePath("/home/someone/proj") == "/home/someone/proj");
+    expect(normalizeWorkspacePath("/Home/Someone/Proj") == "/Home/Someone/Proj");
+  }
+});
+
+test("normalizing a workspace path leaves a short one alone rather than reading past it", () => {
+  expect(normalizeWorkspacePath("") == "");
+  expect(normalizeWorkspacePath("/") == "/");
+});
+
+test("the workspace root is the current directory, spelled the way everything else will spell it", () => {
+  expect(workspaceRoot() == normalizeWorkspacePath(process.cwd()));
+  expect(workspaceRoot() != "");
+});
+
 export function exeSuffix(): string {
   if (isWindows()) { return ".exe"; }
   return "";

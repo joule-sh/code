@@ -26,12 +26,13 @@ import { ServerOrigin } from "../auth/server.ts";
 import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
+import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 
 const STDIN: int = 0;
 const POLL_MS: int = 100;
 
 export function runStop(argv: string[]): void {
-  runAttachStop(process.cwd());
+  runAttachStop(currentWorkspaceRoot());
 }
 
 function attachHelpText(): string {
@@ -40,7 +41,7 @@ function attachHelpText(): string {
 }
 
 export function runDaemonJoule(argv: string[]): DaemonAttempt {
-  let workspaceRoot = process.cwd();
+  let workspaceRoot = currentWorkspaceRoot();
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
     process.exit(1);
@@ -59,7 +60,7 @@ export function runDaemonJoule(argv: string[]): DaemonAttempt {
 }
 
 export function runAttach(argv: string[]): void {
-  let workspaceRoot = process.cwd();
+  let workspaceRoot = currentWorkspaceRoot();
 
   if (hasStopFlag(argv)) {
     runAttachStop(workspaceRoot);

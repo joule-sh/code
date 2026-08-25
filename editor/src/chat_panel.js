@@ -5,7 +5,7 @@ const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const { EditorSession } = require("./session.js");
 const { findDaemonInfo } = require("./daemon_link.js");
-const { unsupportedPlatform, checkBinary } = require("./binary.js");
+const { checkBinary } = require("./binary.js");
 const setup = require("./setup.js");
 const onboard = require("./onboard.js");
 
@@ -324,11 +324,9 @@ ${assets.scripts}
     const targets = this.targets();
     if (targets.length === 0) { return; }
     const folders = this.folders().map((f) => ({ name: f.name, path: f.uri.fsPath }));
-    const blocked = unsupportedPlatform("");
     const state = this.session === null
       ? this.idleState(folders)
       : Object.assign(this.session.view(), { folders });
-    state.blocked = blocked;
     state.setup = this.setup();
     state.where = this.where();
     state.activeFile = this.activeFile();

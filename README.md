@@ -44,17 +44,17 @@ curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 Both put the same two commands on your `PATH` at the same version, and both
 run every binary before reporting success. npm pins and uninstalls cleanly;
 the script needs nothing installed first. The npm package is a wrapper whose
-binaries live in `@joule-sh/code-linux-x64`, `@joule-sh/code-darwin-x64` and
-`@joule-sh/code-darwin-arm64`, installed as optional dependencies so npm takes
-only the one that matches. There is no Windows package yet, because there is
-no Windows binary yet ([#173](https://github.com/joule-sh/code/issues/173));
-installing there says so and points at WSL.
+binaries live in `@joule-sh/code-linux-x64`, `@joule-sh/code-darwin-x64`,
+`@joule-sh/code-darwin-arm64` and `@joule-sh/code-win32-x64`, installed as
+optional dependencies so npm takes only the one that matches. `install.sh` has
+no Windows counterpart: npm is the way in there, or the
+`code-x86_64-windows.zip` a release publishes.
 
 Installs as `joule`, not `code` - `code` is already taken by VS Code's CLI on
 most machines, and this project would silently shadow or lose to it depending
 on `PATH` order. Prebuilt for x86_64 Linux, Apple Silicon macOS
-(`aarch64-macos`) and Intel macOS (`x86_64-macos`); other platforms fail with a
-clear message and point at building from source below.
+(`aarch64-macos`), Intel macOS (`x86_64-macos`) and x86_64 Windows; other
+platforms fail with a clear message and point at building from source below.
 
 Every archive carries the garbage collector it needs, so there is no library to
 install alongside it. A macOS binary needs nothing beyond the system's own

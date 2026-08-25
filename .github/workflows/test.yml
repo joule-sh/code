@@ -147,6 +147,49 @@ jobs:
       - if: always()
         run: pkill -f 'Xvfb :' || true
 
+  # The same real editor window, on Windows. The extension refused to start
+  # there at all until #250, and the reason the refusal outlived the Windows
+  # binary, the daemon and the npm package is that every check over the panel
+  # ran on the Linux runner: lifting it was a claim about a platform nothing
+  # tested. This is that claim, run.
+  #
+  # No Xvfb and no GTK stack here - a Windows runner has a desktop already, so
+  # the whole provisioning step above has no counterpart and the same recipe
+  # runs unchanged.
+  #
+  # A subset of the scenarios, named here rather than in the runner so the
+  # Linux job stays the one that runs everything. The three that run are the
+  # ones whose subject is the daemon: a turn driven from the webview with the
+  # approved tool's effect read back off the workspace file, a second client
+  # sharing that session, and a panel closed with a turn still running. The
+  # ones left out are about where a view lands in the workbench and what a
+  # transcript renders - the editor's business rather than the platform's, and
+  # two of them want a second VS Code download for the older version. The
+  # transcript scenario also runs `sh noisy.sh`, which is not a command the
+  # shell on this side has.
+  editor-window-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      LUMEN_VERSION: v0.7.2
+      LUMEN_TARGET: x86_64-windows-gnu
+      JOULE_EDITOR_SCENARIOS: conversation,second-client,close-mid-turn
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          choco install make -y --no-progress
+          cygpath -w /usr/bin >> "$GITHUB_PATH"
+      - run: |
+          curl -fsSL -o lumen.zip "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-windows.zip"
+          7z x -y lumen.zip > /dev/null
+          echo "$PWD/lumen-x86_64-windows" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-windows/zig" >> "$GITHUB_PATH"
+      - run: lumen --version && zig version && make --version && node --version && npm --version
+      - run: make editor-window-harness
+
   # No lumen here on purpose. The npm packages carry binaries a release built
   # rather than binaries this job builds, so the checks make their own fixture
   # archives and never need a compiler.

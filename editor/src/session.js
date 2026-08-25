@@ -1,10 +1,10 @@
 const path = require("node:path");
-const { execFile } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const frames = require("./frames.js");
 const { Conversation } = require("./conversation.js");
 const { DaemonLink, ensureDaemon, findDaemonInfo } = require("./daemon_link.js");
 const { checkBinary } = require("./binary.js");
+const { execJoule } = require("./joule_bin.js");
 
 const STATE_IDLE = "idle";
 const STATE_STARTING = "starting";
@@ -130,18 +130,13 @@ class EditorSession extends EventEmitter {
   }
 
   stopDaemon() {
-    return new Promise((resolve, reject) => {
-      execFile(this.jouleBin, ["--stop"], {
-        cwd: this.workspaceRoot,
-        env: this.env,
-        timeout: 30000,
-      }, (err, stdout, stderr) => {
-        if (err && !stdout) {
-          reject(new Error(String(stderr || err.message)));
-          return;
-        }
-        resolve(String(stdout || "").trim());
-      });
+    return execJoule(this.jouleBin, ["--stop"], {
+      cwd: this.workspaceRoot,
+      env: this.env,
+      timeoutMs: 30000,
+    }).then(({ err, stdout, stderr }) => {
+      if (err && !stdout) { throw new Error(String(stderr || err.message)); }
+      return String(stdout || "").trim();
     });
   }
 

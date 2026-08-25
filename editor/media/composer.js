@@ -23,6 +23,7 @@ var jouleComposer = (function () {
 
   function grow(area) {
     area.style.height = "auto";
+    if (area.value === "") { return; }
     area.style.height = Math.min(area.scrollHeight, GROW_MAX_PX) + "px";
   }
 

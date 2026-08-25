@@ -1,5 +1,18 @@
+import { isWindows } from "../vendor/platform/platform.ts";
+
 const READ_ARG_PATH: string = "README.md";
-const RUN_FIX_COMMAND: string = "echo 'Added a health check note.' >> README.md";
+const POSIX_RUN_FIX_COMMAND: string = "echo 'Added a health check note.' >> README.md";
+const WINDOWS_RUN_FIX_COMMAND: string = "Add-Content -Path README.md -Value 'Added a health check note.'";
+
+// The scripted model writes for the shell it is about to be run in, the way a
+// real one would. Windows PowerShell's >> is Out-File, and Out-File writes
+// UTF-16 there, so the POSIX line appends the note in a form nothing that
+// reads the file as UTF-8 can find - the tool exits 0 and the check that the
+// call landed on disk fails on the encoding rather than on the call.
+export function runFixCommand(): string {
+  if (isWindows()) { return WINDOWS_RUN_FIX_COMMAND; }
+  return POSIX_RUN_FIX_COMMAND;
+}
 const TRANSCRIPT_SCRIPT: string = "transcript";
 const TRANSCRIPT_READ_PATH: string = "server.js";
 const TRANSCRIPT_RUN_COMMAND: string = "sh noisy.sh";
@@ -89,7 +102,7 @@ function readStepBody(): string {
 }
 
 function runStepBody(): string {
-  let args = toolCallArgs([strField("command", RUN_FIX_COMMAND)]);
+  let args = toolCallArgs([strField("command", runFixCommand())]);
   let fragment = toolCallFragmentJson(0, "call_run_1", "run", args);
   return textDeltaChunk("No health route yet. I will fix it.")
     + toolCallChunk(fragment)
@@ -147,6 +160,16 @@ test("runStepBody proposes running the fix command", () => {
   expect(body.indexOf("\"name\":\"run\"") >= 0);
   expect(body.indexOf("Added a health check note.") >= 0);
   expect(body.indexOf("\"finish_reason\":\"tool_calls\"") >= 0);
+});
+
+test("the fix command appends the note in a form the shell it runs in leaves readable", () => {
+  expect(runFixCommand().indexOf("Added a health check note.") >= 0);
+  if (isWindows()) {
+    expect(runFixCommand().indexOf("Add-Content") >= 0);
+    expect(runFixCommand().indexOf(">>") < 0);
+  } else {
+    expect(runFixCommand().indexOf(">> README.md") >= 0);
+  }
 });
 
 test("finalStepBody closes the turn with a stop finish reason", () => {

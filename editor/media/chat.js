@@ -17,7 +17,6 @@
   }
 
   function firstRun() {
-    if (state.blocked) { return true; }
     if (state.binary && !state.binary.ok) { return true; }
     if (state.state === "failed") { return true; }
     return !(state.setup && state.setup.configured);

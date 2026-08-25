@@ -26,7 +26,9 @@ function panelChecks(kit) {
   }
 
   function namesTheWorkspace(text) {
-    return text.includes(workspace) || text.includes(real(workspace));
+    const said = process.platform === "win32" ? text.toLowerCase() : text;
+    const named = process.platform === "win32" ? workspace.toLowerCase() : workspace;
+    return said.includes(named) || said.includes(real(workspace));
   }
 
   function sessionMode(panel) {
@@ -153,9 +155,23 @@ function panelChecks(kit) {
       "the composer types at the panel's own UI font size rather than the document's: " + area.font + "px");
 
     const [box] = await measured(panel, ".composer-box");
+    const [controls] = await measured(panel, ".composer-controls");
     const lines = box.height / area.line;
     ok(lines <= 3.5, "an empty composer is two or three lines of UI text tall rather than a card: "
-      + Math.round(box.height) + "px, " + lines.toFixed(1) + " lines");
+      + Math.round(box.height) + "px, " + lines.toFixed(1) + " lines"
+      + " [input " + Math.round(area.height) + "px, line " + area.line
+      + ", controls " + Math.round(controls.height) + "px]");
+    ok(area.height <= area.line * 1.5, "and the empty box is one line of it, whatever the placeholder"
+      + " would take to write out at this width: " + Math.round(area.height) + "px of input at "
+      + Math.round(area.width) + "px wide");
+
+    await probe(panel, { op: "fill", selector: ".composer-input", text: "one\ntwo\nthree", key: "Shift" });
+    const [grown] = await measured(panel, ".composer-input");
+    ok(grown.height > area.height, "typing three lines still grows it, so the empty case is the only one held back: "
+      + Math.round(grown.height) + "px");
+    await probe(panel, { op: "fill", selector: ".composer-input", text: "", key: "Shift" });
+    const [shrunk] = await measured(panel, ".composer-input");
+    ok(shrunk.height <= area.line * 1.5, "and clearing it puts it back to one line: " + Math.round(shrunk.height) + "px");
 
     for (const line of ["status-where", "status-mode"]) {
       const [said] = await measured(panel, ".composer-status ." + line);
