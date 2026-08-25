@@ -27,9 +27,16 @@ endif
 # SHIM_FLAGS turns off the UBSan instrumentation zig cc adds by default: on a
 # Windows target the calls it emits have nothing to resolve against, and the
 # link fails on __ubsan_handle_type_mismatch_v1 rather than on anything here.
+#
+# ws2_32 is on the link line because the platform shim asks Winsock directly
+# whether a port is accepting, rather than finding out by connecting - see the
+# lumen#44 note where plat_port_open is defined. The backend links it for its
+# own socket layer but does not put it where a shim object can resolve
+# against it, so naming it here is what makes socket/connect/htons resolve.
 ifeq ($(findstring windows,$(LUMEN_TARGET)),windows)
 TTY_SHIM_SRC := src/vendor/tty/tty_shim_win32.c
 SHIM_FLAGS := -fno-sanitize=undefined
+TARGET_FLAGS += --link ws2_32
 EXE := .exe
 else
 TTY_SHIM_SRC := src/vendor/tty/tty_shim.c

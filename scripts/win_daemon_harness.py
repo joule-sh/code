@@ -233,6 +233,19 @@ def main():
         checks.that(report.get("workspace") == ws,
                     "the daemon it started is serving this workspace, %r" % report.get("workspace"))
 
+        # A cold start is the one moment joule asks about a port before
+        # anything is on it. The runtime's own connect answers that with a
+        # diagnostic and a stack trace on Windows rather than an error
+        # (lumen#44), which is why the port is asked about through the
+        # platform shim first. This is what says the shim is still in front
+        # of it.
+        noise = [l for l in ensure.stderr.splitlines()
+                 if "NTSTATUS" in l or "error.Unexpected" in l]
+        if noise:
+            print("     stderr: %r" % noise[:3])
+        checks.that(not noise,
+                    "a cold start writes no runtime trace to the console")
+
         found = records(home)
         checks.that(len(found) == 1, "the daemon wrote exactly one record under the config root")
         if found:

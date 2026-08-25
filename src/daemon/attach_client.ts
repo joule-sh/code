@@ -3,6 +3,7 @@ import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/fr
 import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
 import { configureAttachWorker, currentAttachSocket, attachReceiveLoop } from "./attach_worker.ts";
 import { attachMailboxPath, openAttachMailbox, reapAttachMailbox, drainAttachMailbox } from "./attach_mailbox.ts";
+import { worthConnectingTo } from "../vendor/platform/platform.ts";
 
 export class DaemonClient {
   host: string;
@@ -153,6 +154,10 @@ export class DaemonClient {
     if (!this.attaching || this.socketReady || this.connecting || this.detachRequested) { return; }
     if (this.nextRetryAt == 0) { return; }
     if (Date.now() < this.nextRetryAt) { return; }
+    if (!worthConnectingTo(this.host, this.port)) {
+      this.nextRetryAt = Date.now() + this.backoffMs;
+      return;
+    }
     this.connecting = true;
     configureAttachWorker(this.host, this.port, this.connId, this.lastSeq, this.mailboxPath);
     Worker.run(attachReceiveLoop);

@@ -4,6 +4,7 @@ declare function plat_env_present(name: string): int;
 declare function plat_append(path: string, text: string): int;
 declare function plat_chmod(path: string, mode: int): int;
 declare function plat_gc_interior_pointers(): int;
+declare function plat_port_open(host: string, port: int): int;
 
 export const WINDOWS: string = "win32";
 
@@ -77,6 +78,18 @@ export function gcInteriorPointers(): int {
   return plat_gc_interior_pointers();
 }
 
+export const PORT_CLOSED: int = 0;
+export const PORT_OPEN: int = 1;
+export const PORT_UNKNOWN: int = -1;
+
+export function portOpen(host: string, port: int): int {
+  return plat_port_open(host, port);
+}
+
+export function worthConnectingTo(host: string, port: int): bool {
+  return portOpen(host, port) != PORT_CLOSED;
+}
+
 export const CHMOD_APPLIED: int = 0;
 export const CHMOD_UNSUPPORTED: int = 1;
 export const CHMOD_FAILED: int = -1;
@@ -113,6 +126,19 @@ test("a Windows build collects with interior pointers on, which is what keeps a 
   } else {
     expect(gcInteriorPointers() == GC_INTERIOR_POINTERS_NOT_APPLICABLE);
   }
+});
+
+test("the port probe answers open, closed, or that the platform has nothing to say", () => {
+  let answer = portOpen("127.0.0.1", 8422);
+  expect(answer == PORT_OPEN || answer == PORT_CLOSED || answer == PORT_UNKNOWN);
+  if (!isWindows()) { expect(answer == PORT_UNKNOWN); }
+  expect(worthConnectingTo("127.0.0.1", 8422) == (answer != PORT_CLOSED));
+});
+
+test("a port worth connecting to is anything the probe did not call closed, so POSIX always tries", () => {
+  if (!isWindows()) { expect(worthConnectingTo("127.0.0.1", 8422)); }
+  expect(portOpen("not-an-address", 8422) == PORT_UNKNOWN);
+  expect(portOpen("127.0.0.1", 0) == PORT_UNKNOWN);
 });
 
 test("envOr returns the fallback for a name nothing has set", () => {
