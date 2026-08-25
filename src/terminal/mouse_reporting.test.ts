@@ -64,6 +64,11 @@ test("the state text says what each state costs and what it buys", () => {
   expect(mouseStateText(false).indexOf("PageUp/PageDown") >= 0);
 });
 
+test("each state text fits an 80 column terminal, so neither is clipped where it matters", () => {
+  expect(mouseStateText(true).trim().length <= 80);
+  expect(mouseStateText(false).trim().length <= 80);
+});
+
 test("/mouse with an argument that is neither on nor off changes nothing and says so", () => {
   let m = new MouseReporting(false);
   expect(runMouseCommand(m, "sideways").indexOf("usage: /mouse") >= 0);

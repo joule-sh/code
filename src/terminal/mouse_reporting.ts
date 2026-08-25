@@ -24,9 +24,9 @@ export function mouseSettingWord(on: bool): string {
 
 export function mouseStateText(on: bool): string {
   if (on) {
-    return "\nmouse reporting on - the wheel scrolls the transcript, and selecting text needs your terminal's own bypass (Shift and drag; Option in iTerm2)";
+    return "\nmouse reporting on - the wheel scrolls, Shift+drag still selects text";
   }
-  return "\nmouse reporting off - drag to select and copy the way your terminal always does, PageUp/PageDown scroll the transcript";
+  return "\nmouse reporting off - drag selects text as usual, PageUp/PageDown scroll";
 }
 
 export class MouseReporting {
@@ -76,5 +76,5 @@ export function runMouseCommand(mouse: MouseReporting, arg: string): string {
   let want: bool = word == MOUSE_ON;
   process.stdout().write(mouse.switchSequence(want));
   rememberMouse(mouseSettingWord(want));
-  return mouseStateText(want) + " - saved to " + configFilePath();
+  return mouseStateText(want) + "\nsaved to " + configFilePath();
 }

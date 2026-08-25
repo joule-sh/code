@@ -84,13 +84,14 @@ test("helpText documents the PageUp/PageDown scroll keys", () => {
 
 test("helpText says a plain drag selects text, because that is what it does by default now", () => {
   let h = helpText();
-  expect(h.indexOf("select and copy text with your terminal") >= 0);
+  expect(h.indexOf("select and copy text as your terminal does") >= 0);
   expect(h.indexOf("/mouse on") >= 0);
 });
 
 test("helpText keeps the per-emulator bypass for the people who turn mouse reporting on", () => {
   let h = helpText();
   expect(h.indexOf("Shift+drag") >= 0);
+  expect(h.indexOf("Option+drag") >= 0);
   expect(h.indexOf("GNOME Terminal") >= 0);
   expect(h.indexOf("iTerm2") >= 0);
   expect(h.indexOf("Terminal.app") >= 0);

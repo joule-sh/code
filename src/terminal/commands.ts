@@ -99,7 +99,8 @@ export function helpText(): string {
   }
   out = out + "\n" + padColumn("PageUp/PageDown", HELP_COLUMN) + "scroll the transcript";
   out = out + "\n" + padColumn("ctrl-o", HELP_COLUMN) + "expand or collapse the last long tool output";
-  out = out + "\n" + padColumn("drag", HELP_COLUMN) + "select and copy text with your terminal's own selection, which /mouse on trades away for the wheel";
-  out = out + "\n" + padColumn("Shift+drag", HELP_COLUMN) + "the same selection while /mouse is on (GNOME Terminal, Windows Terminal); iTerm2 uses Option instead; Terminal.app needs View > Allow Mouse Reporting off";
+  out = out + "\n" + padColumn("drag", HELP_COLUMN) + "select and copy text as your terminal does (until /mouse on)";
+  out = out + "\n" + padColumn("Shift+drag", HELP_COLUMN) + "select while /mouse is on (GNOME Terminal, Windows Terminal)";
+  out = out + "\n" + padColumn("Option+drag", HELP_COLUMN) + "the same in iTerm2; Terminal.app has no modifier for it";
   return out;
 }
