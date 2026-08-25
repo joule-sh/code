@@ -3,7 +3,6 @@
 const REPO = "https://github.com/joule-sh/code";
 const SCOPE = "@joule-sh";
 const WRAPPER = SCOPE + "/code";
-const WINDOWS_ISSUE = REPO + "/issues/173";
 const NPM_BUG = "https://github.com/npm/cli/issues/4828";
 const OVERRIDE = "JOULE_BINARY_PATH";
 
@@ -11,6 +10,7 @@ const BUILT = {
   "linux-x64": SCOPE + "/code-linux-x64",
   "darwin-x64": SCOPE + "/code-darwin-x64",
   "darwin-arm64": SCOPE + "/code-darwin-arm64",
+  "win32-x64": SCOPE + "/code-win32-x64",
 };
 
 const BINARIES = ["joule", "relay", "joule-daemon"];
@@ -32,12 +32,12 @@ function isWindows(id) {
   return id.startsWith("win32-");
 }
 
-function windowsNotice() {
-  return [
-    "joule: there is no Windows build of joule yet, so there is no binary for this package to install here.",
-    "       " + WINDOWS_ISSUE + " is the ticket for the Windows binary; watch that rather than this package.",
-    "       Until it lands, joule runs on Windows through WSL: open a WSL shell and install it from inside there.",
-  ].join("\n");
+function exeSuffix(id) {
+  return isWindows(id) ? ".exe" : "";
+}
+
+function binaryFile(name, id) {
+  return name + exeSuffix(id);
 }
 
 function unsupportedNotice(id) {
@@ -63,7 +63,6 @@ function missingNotice(id, version) {
 }
 
 function notice(id, version) {
-  if (isWindows(id)) { return windowsNotice(); }
   if (packageFor(id) === "") { return unsupportedNotice(id); }
   return missingNotice(id, version);
 }
@@ -72,7 +71,6 @@ module.exports = {
   REPO,
   SCOPE,
   WRAPPER,
-  WINDOWS_ISSUE,
   OVERRIDE,
   BINARIES,
   COMMANDS,
@@ -80,7 +78,8 @@ module.exports = {
   packageFor,
   supported,
   isWindows,
-  windowsNotice,
+  exeSuffix,
+  binaryFile,
   unsupportedNotice,
   missingNotice,
   notice,

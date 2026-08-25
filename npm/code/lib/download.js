@@ -34,7 +34,7 @@ function checkIntegrity(bytes, integrity) {
 }
 
 function untar(tarball, into) {
-  const result = spawnSync("tar", ["-xzf", tarball, "-C", into], { encoding: "utf8" });
+  const result = spawnSync("tar", ["--force-local", "-xzf", tarball, "-C", into], { encoding: "utf8" });
   if (result.error) { return "could not run tar: " + result.error.message; }
   if (result.status !== 0) { return "tar exited " + result.status + ": " + (result.stderr || "").trim(); }
   return "";

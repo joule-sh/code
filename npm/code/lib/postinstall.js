@@ -19,10 +19,11 @@ function warn(message) {
   console.error(message);
 }
 
-function makeExecutable(dir) {
+function makeExecutable(dir, id) {
   const changed = [];
+  if (platform.isWindows(id)) { return changed; }
   for (const name of platform.BINARIES) {
-    const file = path.join(dir, name);
+    const file = path.join(dir, platform.binaryFile(name, id));
     if (!fs.existsSync(file)) { continue; }
     const mode = fs.statSync(file).mode & 0o777;
     const wanted = mode | 0o111;
@@ -72,10 +73,10 @@ function restore() {
   for (const command of platform.COMMANDS) { writeCommand(command, ""); }
 }
 
-function smoke(dir) {
+function smoke(dir, id) {
   const failures = [];
   for (const name of platform.BINARIES) {
-    const file = path.join(dir, name);
+    const file = path.join(dir, platform.binaryFile(name, id));
     if (!fs.existsSync(file)) { failures.push(name + " is missing from " + dir); continue; }
     const result = spawnSync(file, ["--version"], { encoding: "utf8" });
     if (result.error) { failures.push(name + " will not run: " + result.error.message); continue; }
@@ -106,10 +107,6 @@ async function obtain(id) {
 }
 
 async function main(id) {
-  if (platform.isWindows(id)) {
-    warn(platform.windowsNotice());
-    return 1;
-  }
   if (platform.packageFor(id) === "") {
     warn(platform.unsupportedNotice(id));
     return 1;
@@ -120,7 +117,7 @@ async function main(id) {
     warn(platform.notice(id, resolve.selfVersion()));
     return 1;
   }
-  const changed = makeExecutable(found.dir);
+  const changed = makeExecutable(found.dir, id);
   if (changed.length > 0) {
     say("joule: restored the execute bit on " + changed.join(", ") + ", which an npm tarball does not carry reliably.");
   }
@@ -134,7 +131,7 @@ async function main(id) {
     const unsigned = adHocSign(found.dir);
     for (const failure of unsigned) { warn("joule: " + failure); }
   }
-  const broken = smoke(found.dir);
+  const broken = smoke(found.dir, id);
   if (broken.length > 0) {
     restore();
     for (const failure of broken) { warn("joule: " + failure); }
@@ -143,7 +140,7 @@ async function main(id) {
     return 1;
   }
   for (const command of platform.COMMANDS) {
-    writeCommand(command, path.join(found.dir, command));
+    writeCommand(command, platform.isWindows(id) ? "" : path.join(found.dir, command));
   }
   say("joule: " + found.source + " installed to " + found.dir + ", and " + platform.COMMANDS.join(" and ") + " point at it.");
   return 0;

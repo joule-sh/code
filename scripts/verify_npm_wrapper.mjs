@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { writeZip } from "./lib/zip.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PACKAGE = path.join(ROOT, "scripts", "package_npm.mjs");
@@ -14,6 +15,7 @@ const TARGETS = [
   { target: "x86_64-linux", id: "linux-x64" },
   { target: "x86_64-macos", id: "darwin-x64" },
   { target: "aarch64-macos", id: "darwin-arm64" },
+  { target: "x86_64-windows", id: "win32-x64", exe: ".exe", archiveExt: "zip" },
 ];
 
 if (process.platform === "win32") {
@@ -25,6 +27,7 @@ const require = createRequire(import.meta.url);
 const platform = require(path.join(WRAPPER_SRC, "lib", "platform.js"));
 const shim = require(path.join(WRAPPER_SRC, "lib", "shim.js"));
 const download = require(path.join(WRAPPER_SRC, "lib", "download.js"));
+const postinstallLib = require(path.join(WRAPPER_SRC, "lib", "postinstall.js"));
 
 let failures = 0;
 
@@ -53,7 +56,7 @@ function fakeArchives() {
     const dir = path.join(work, "code-" + entry.target);
     fs.mkdirSync(dir, { recursive: true });
     for (const name of BINARIES) {
-      const file = path.join(dir, name);
+      const file = path.join(dir, name + (entry.exe || ""));
       fs.writeFileSync(file, [
         "#!/bin/sh",
         `echo "${name} ${VERSION} on ${entry.id}"`,
@@ -65,8 +68,16 @@ function fakeArchives() {
       fs.chmodSync(file, 0o644);
     }
     fs.writeFileSync(path.join(dir, "README.md"), "the archive readme");
-    const packed = run("tar", ["-czf", `code-${entry.target}.tar.gz`, `code-${entry.target}`], { cwd: work });
-    if (packed.status !== 0) { throw new Error("could not build the fixture archive: " + packed.output); }
+    if (entry.archiveExt === "zip") {
+      const entries = fs.readdirSync(dir).map((name) => ({
+        name: `code-${entry.target}/${name}`,
+        data: fs.readFileSync(path.join(dir, name)),
+      }));
+      fs.writeFileSync(path.join(work, `code-${entry.target}.zip`), writeZip(entries));
+    } else {
+      const packed = run("tar", ["-czf", `code-${entry.target}.tar.gz`, `code-${entry.target}`], { cwd: work });
+      if (packed.status !== 0) { throw new Error("could not build the fixture archive: " + packed.output); }
+    }
   }
 }
 
@@ -79,7 +90,7 @@ if (packaged.status !== 0) { console.error(packaged.output); }
 
 const listing = JSON.parse(fs.readFileSync(path.join(dist, "packages.json"), "utf8"));
 ok(listing.version === VERSION, "the version in the listing is the one the tag carried, with no v");
-ok(listing.packages.filter((p) => p.kind === "platform").length === 3, "one package per built platform");
+ok(listing.packages.filter((p) => p.kind === "platform").length === TARGETS.length, "one package per built platform");
 ok(listing.packages[listing.packages.length - 1].kind === "wrapper", "the wrapper is last in publish order");
 
 const wrapperManifest = JSON.parse(fs.readFileSync(path.join(dist, "code", "package.json"), "utf8"));
@@ -89,7 +100,7 @@ ok(wrapperManifest.publishConfig.access === "public", "the wrapper declares publ
 ok(wrapperManifest.scripts.postinstall === "node lib/postinstall.js", "the wrapper runs its install step");
 ok(Object.values(wrapperManifest.optionalDependencies).every((v) => v === VERSION),
   "every optional dependency is pinned to the exact version, so a wrapper never resolves a binary from another release");
-ok(Object.keys(wrapperManifest.optionalDependencies).length === 3, "all three platform packages are optional dependencies");
+ok(Object.keys(wrapperManifest.optionalDependencies).length === TARGETS.length, "every built platform package is an optional dependency, win32-x64 included");
 ok(wrapperManifest.version === VERSION, "the wrapper version comes from the tag");
 
 for (const entry of TARGETS) {
@@ -130,6 +141,8 @@ const platformDir = path.join(scratch, "node_modules", "@joule-sh", "code-linux-
 ok(fs.existsSync(platformDir), "npm installed the platform package that matches this machine");
 ok(fs.existsSync(path.join(scratch, "node_modules", "@joule-sh", "code-darwin-arm64")) === false,
   "npm skipped the platform packages that do not match, because of the os and cpu fields");
+ok(fs.existsSync(path.join(scratch, "node_modules", "@joule-sh", "code-win32-x64")) === false,
+  "including code-win32-x64, even though this machine's override points npm straight at its tarball");
 
 for (const name of BINARIES) {
   const mode = fs.statSync(path.join(platformDir, "bin", name)).mode & 0o111;
@@ -219,21 +232,42 @@ const badOverride = run(path.join(scratch, "node_modules", ".bin", "joule"), [],
 ok(badOverride.status === 1 && badOverride.output.includes("does not exist") && badOverride.output.includes("    at ") === false,
   "an override pointing nowhere says so plainly instead of failing later and stranger");
 
-ok(platform.windowsNotice().includes("/issues/173"),
-  "the Windows message names the ticket for the Windows binary rather than leaving people to search");
-ok(platform.windowsNotice().includes("WSL"), "and says what does work on Windows today");
-ok(platform.notice("win32-x64", VERSION) === platform.windowsNotice(), "win32 gets that message and not the missing-binary one");
-ok(platform.notice("win32-arm64", VERSION) === platform.windowsNotice(), "on either Windows architecture");
+ok(platform.packageFor("win32-x64") === "@joule-sh/code-win32-x64", "win32-x64 has a package now, the same as every other built platform");
+ok(platform.isWindows("win32-x64") === true && platform.isWindows("linux-x64") === false, "isWindows still names the platform family");
+ok(platform.binaryFile("joule", "win32-x64") === "joule.exe" && platform.binaryFile("joule", "linux-x64") === "joule",
+  "the .exe suffix applies only on Windows, and only there");
+ok(platform.notice("win32-arm64", VERSION) === platform.unsupportedNotice("win32-arm64"),
+  "an unbuilt Windows architecture gets the same generic message as any other unbuilt platform, not a Windows-specific one");
+ok(platform.notice("win32-arm64", VERSION).includes("win32-x64"),
+  "and that message names win32-x64 among the platforms that are built");
+
+const winModeCheck = path.join(work, "win-mode-check");
+fs.mkdirSync(winModeCheck);
+for (const name of BINARIES) {
+  fs.writeFileSync(path.join(winModeCheck, name + ".exe"), "not a real binary");
+  fs.chmodSync(path.join(winModeCheck, name + ".exe"), 0o644);
+}
+const noExecuteBit = postinstallLib.makeExecutable(winModeCheck, "win32-x64");
+ok(noExecuteBit.length === 0,
+  "Windows has no POSIX execute bit for the install step to restore, so it leaves a 644 .exe untouched rather than reporting a fix that means nothing there");
+
+const winFixture = path.join(work, "win-fixture");
+fs.mkdirSync(winFixture);
+for (const name of BINARIES) {
+  fs.writeFileSync(path.join(winFixture, name + ".exe"), `#!/bin/sh\necho "${name}.exe ${VERSION}"\n`);
+  fs.chmodSync(path.join(winFixture, name + ".exe"), 0o755);
+}
 
 const windowsInstall = run(process.execPath, [
   "-e",
   `require(${JSON.stringify(postinstall)}).main("win32-x64").then((c) => process.exit(c));`,
-], { cwd: wrapperDir });
-ok(windowsInstall.status === 1,
-  "installing on Windows fails the install, which is both true and the only way npm shows the message at all");
-ok(windowsInstall.output.includes("no Windows build") && windowsInstall.output.includes("/issues/173"),
-  "it prints the message naming the ticket, and nothing else");
-ok(windowsInstall.output.includes("    at ") === false, "with no stack trace");
+], { cwd: wrapperDir, env: { ...process.env, JOULE_BINARY_PATH: winFixture } });
+ok(windowsInstall.status === 0, "win32-x64 now installs, given a binary to find");
+ok(windowsInstall.output.includes("no Windows build") === false, "the old blanket Windows message is gone now that win32-x64 is built");
+
+const windowsShim = fs.readFileSync(path.join(wrapperDir, "bin", "joule"), "utf8");
+ok(windowsShim === shim.source("joule"),
+  "a successful Windows install still leaves bin/joule as the JS shim: npm's generated joule.cmd always runs it through node, so it can never become a symlink the way the POSIX command does");
 
 const oddPlatform = run(process.execPath, [
   "-e",

@@ -249,7 +249,7 @@ rather than on it; nothing in the current setup needs to change until then.
 
 ## 6. What gets published, and in what order
 
-Four packages per release, all at the same version, which is the git tag with
+Five packages per release, all at the same version, which is the git tag with
 its `v` removed - the same single source of truth the `.vsix` and
 `src/version.ts` already use. Nothing in the tree carries a version by hand;
 `scripts/package_npm.mjs` writes every manifest from the tag.
@@ -259,15 +259,22 @@ its `v` removed - the same single source of truth the `.vsix` and
 | `@joule-sh/code-linux-x64` | `joule`, `relay`, `joule-daemon` from `code-x86_64-linux.tar.gz` |
 | `@joule-sh/code-darwin-x64` | the same three from `code-x86_64-macos.tar.gz` |
 | `@joule-sh/code-darwin-arm64` | the same three from `code-aarch64-macos.tar.gz` |
-| `@joule-sh/code` | the wrapper: no binary, a `bin` for `joule` and `relay`, and the three above as `optionalDependencies` |
+| `@joule-sh/code-win32-x64` | `joule.exe`, `relay.exe`, `joule-daemon.exe` from `code-x86_64-windows.zip` |
+| `@joule-sh/code` | the wrapper: no binary, a `bin` for `joule` and `relay`, and the four above as `optionalDependencies` |
 
 Each platform package carries `os` and `cpu`, so npm silently skips the ones
-that do not match. The wrapper's install step points `joule` and `relay`
-straight at the binaries in whichever one did get installed, so no node process
-sits in front of the terminal and `joule-daemon` is still beside `joule`'s real
-path, which is how `joule` finds it.
+that do not match. On every platform but Windows, the wrapper's install step
+points `joule` and `relay` straight at the binaries in whichever platform
+package did get installed, so no node process sits in front of the terminal
+and `joule-daemon` is still beside `joule`'s real path, which is how `joule`
+finds it. Windows never gets that symlink: npm's own generated `joule.cmd`
+always launches `bin/joule` through `node`, so that file has to stay the JS
+shim, and creating a filesystem symlink on Windows needs a privilege an
+ordinary `npm install -g` cannot assume it has. The shim instead resolves
+`joule.exe` at every run, which is the same fallback the other platforms use
+when they have no linked binary yet.
 
-**The three platform packages are published before the wrapper, always.** The
+**The platform packages are published before the wrapper, always.** The
 wrapper names them as `optionalDependencies`, and an optional dependency npm
 cannot find is one it skips rather than an error - so a wrapper published first
 is a version that installs cleanly and then has no binary. If a platform
@@ -278,12 +285,6 @@ already on the registry and publishes the rest. The other order leaves a
 version that is permanently broken for one platform, and npm only lets you
 take a version back within 72 hours.
 
-There is no Windows package, because there is no Windows binary (#173).
-Installing on Windows fails with a message naming that ticket and pointing at
-WSL. It has to fail rather than warn: npm hides the output of an install step
-that exits 0, so a warning would be invisible, and a command that cannot run
-must not look installed.
-
 ## 7. The npm account, the org, and the names
 
 1. Sign in at <https://www.npmjs.com>, with an account the project will still
@@ -291,7 +292,7 @@ must not look installed.
 2. The **`joule-sh` org** has to exist and own the packages:
    <https://www.npmjs.com/org/create>. A free org can only hold public
    packages, which is all this needs.
-3. **Nothing needs reserving in advance.** All four names are unclaimed, and
+3. **Nothing needs reserving in advance.** All five names are unclaimed, and
    the first publish creates each one. What matters is that the account
    publishing them is a member of `joule-sh` with write access. `joule`
    unscoped is somebody else's package, which is the reason the scope is not
@@ -314,7 +315,7 @@ to be one of the two kinds that carry their own authority.
    - **Expiration**: up to 365 days. Take the maximum and put the date in a
      calendar, the same as the Azure one.
    - **Packages and scopes**: *Read and write*, and select the **`joule-sh`**
-     scope rather than individual packages, so it can create the four packages
+     scope rather than individual packages, so it can create the five packages
      on the first publish and any later platform package without being reissued.
    - **Organizations**: `joule-sh`, read only. Publishing does not need more.
    - Leave the IP allow list empty unless the runner has a fixed address.
@@ -358,7 +359,7 @@ token, overwrite the secret, and re-run the failed job.
    npm view @joule-sh/code-linux-x64 version
    ```
 
-   The three optional dependencies must all be pinned to the version you just
+   The four optional dependencies must all be pinned to the version you just
    published. If one is missing from the registry, the wrapper should never
    have gone out - say so on #174 rather than patching around it.
 3. **An actual install**, which is the only check that covers the artifact

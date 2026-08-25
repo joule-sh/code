@@ -32,9 +32,9 @@ function packageDir(pkg) {
   }
 }
 
-function holdsBinaries(dir) {
+function holdsBinaries(dir, id) {
   if (dir === "") { return false; }
-  return platform.BINARIES.every((name) => fs.existsSync(path.join(dir, name)));
+  return platform.BINARIES.every((name) => fs.existsSync(path.join(dir, platform.binaryFile(name, id))));
 }
 
 function vendorDir() {
@@ -42,16 +42,15 @@ function vendorDir() {
 }
 
 function binaryDir(id) {
-  if (platform.isWindows(id)) { return { dir: "", source: "" }; }
   const override = overrideDir();
   if (override !== "") { return { dir: override, source: platform.OVERRIDE }; }
   const pkg = platform.packageFor(id);
   if (pkg !== "") {
     const installed = path.join(packageDir(pkg), "bin");
-    if (holdsBinaries(installed)) { return { dir: installed, source: pkg }; }
+    if (holdsBinaries(installed, id)) { return { dir: installed, source: pkg }; }
   }
   const vendored = path.join(VENDOR, "bin");
-  if (holdsBinaries(vendored)) { return { dir: vendored, source: "vendor" }; }
+  if (holdsBinaries(vendored, id)) { return { dir: vendored, source: "vendor" }; }
   return { dir: "", source: "" };
 }
 
@@ -60,7 +59,7 @@ function binaryPath(name, id) {
   if (found.dir === "") {
     throw new Error(platform.notice(id, selfVersion()));
   }
-  const file = path.join(found.dir, name);
+  const file = path.join(found.dir, platform.binaryFile(name, id));
   if (!fs.existsSync(file)) {
     throw new Error("joule: " + found.source + " has no " + name + " in " + found.dir + ".");
   }
