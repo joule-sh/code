@@ -1,4 +1,5 @@
 import { parseFrontmatter, fieldValue, hasFieldKey, FrontmatterField } from "./frontmatter.ts";
+import { homeDir } from "../vendor/platform/platform.ts";
 
 export type Skill = { name: string, description: string, path: string, origin: string, foreign: bool, error: string, warning: string, shadowed: bool };
 export type SkillDir = { path: string, origin: string, foreign: bool };
@@ -55,7 +56,7 @@ export function capText(text: string, maxBytes: int): string {
 }
 
 export function skillSearchDirs(workspaceRoot: string): SkillDir[] {
-  let home = process.env("HOME") ?? "";
+  let home = homeDir();
   let dirs: SkillDir[] = [];
   let a: SkillDir = { path: home + "/.config/joule-code/skills", origin: ORIGIN_USER, foreign: false };
   let b: SkillDir = { path: home + "/.claude/skills", origin: ORIGIN_USER_CLAUDE, foreign: true };
