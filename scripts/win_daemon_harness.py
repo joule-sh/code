@@ -36,9 +36,9 @@ import socket
 import subprocess
 import sys
 import time
-import scratch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scratch
 from win_conpty import ConPty
 
 if hasattr(sys.stdout, "reconfigure"):
