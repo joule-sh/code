@@ -2,9 +2,9 @@ import { connect } from "./miniws.mjs";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -249,7 +249,7 @@ async function runSurvivesSweepRound(ports, workspace, round) {
 }
 
 async function main() {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-relay-reconnect-"));
+  const workspace = scratchDir("joule-relay-reconnect-");
   const httpPort = await freePort();
   const wsPort = await freePort();
   const browserPort = await freePort();

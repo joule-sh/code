@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -100,10 +100,10 @@ function startConsoleStub(knownSecret, account) {
 }
 
 async function main() {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-console-assoc-"));
+  const workspace = scratchDir("joule-console-assoc-");
   fs.writeFileSync(path.join(workspace, "README.md"), "# demo\n\nNo health route yet.\n");
 
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "joule-console-assoc-home-"));
+  const homeDir = scratchDir("joule-console-assoc-home-");
   const credentialSecret = "e2e-terminal-secret-abc123";
   const account = { id: "acct-e2e-1", email: "e2e@example.com" };
   const server = "http://joule-console-assoc.invalid";

@@ -3,8 +3,8 @@ import sys
 import shutil
 import socket
 import subprocess
-import tempfile
 import time
+import scratch
 import importlib.util
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +35,7 @@ def free_port():
 
 
 def main():
-    workspace = tempfile.mkdtemp(prefix="joule-attach-commands-")
+    workspace = scratch.scratch_dir("joule-attach-commands-")
     with open(os.path.join(workspace, "README.md"), "w") as f:
         f.write("# demo\n")
 

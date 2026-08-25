@@ -29,7 +29,7 @@ import importlib.util
 import os
 import shutil
 import sys
-import tempfile
+import scratch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOULE_BIN = os.path.join(REPO_ROOT, "bin", "joule")
@@ -67,7 +67,7 @@ def wait_or_debug(session, needle, timeout, from_index=0):
 
 
 def make_workspace():
-    work_dir = tempfile.mkdtemp(prefix="joule-118-live-")
+    work_dir = scratch.scratch_dir("joule-118-live-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(repo_dir, exist_ok=True)

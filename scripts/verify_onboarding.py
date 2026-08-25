@@ -11,8 +11,8 @@ import os
 import sys
 import json
 import shutil
-import tempfile
 import subprocess
+import scratch
 import importlib.util
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -124,7 +124,7 @@ def run_second_launch(home_dir, repo_dir, expected_model):
 
 
 def main():
-    work_dir = tempfile.mkdtemp(prefix="joule-onboarding-verify-")
+    work_dir = scratch.scratch_dir("joule-onboarding-verify-")
     stub_log = os.path.join(work_dir, "stub_requests.log")
     stub_port = harness.free_port()
     stub_env = dict(os.environ)

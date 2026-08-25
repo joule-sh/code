@@ -12,9 +12,9 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import importlib.util
+import scratch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 spec = importlib.util.spec_from_file_location("harness", os.path.join(REPO_ROOT, "scripts", "terminal_structural_harness.py"))
@@ -88,7 +88,7 @@ def attach_session(env, workspace):
 
 
 def main():
-    root = tempfile.mkdtemp(prefix="joule-two-clients-")
+    root = scratch.scratch_dir("joule-two-clients-")
     workspace = os.path.join(root, "workspace")
     home = os.path.join(root, "home")
     os.makedirs(workspace)

@@ -21,9 +21,9 @@ import signal
 import socket
 import struct
 import sys
-import tempfile
 import termios
 import time
+import scratch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOULE_BIN = os.path.join(REPO_ROOT, "bin", "joule")
@@ -529,7 +529,7 @@ def read_config(home_dir):
 
 
 def run_ctrl_c_exit_scenario():
-    work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-ctrlc-")
+    work_dir = scratch.scratch_dir("joule-terminal-harness-ctrlc-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
@@ -598,7 +598,7 @@ def start_stub_session(prefix, rows=24, cols=80):
     that needs its own approval prompt needs its own stub alongside it.
     """
     import subprocess
-    work_dir = tempfile.mkdtemp(prefix=prefix)
+    work_dir = scratch.scratch_dir(prefix)
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
@@ -760,7 +760,7 @@ NO_PREVIOUS_SESSION = "no previous session found for this workspace"
 
 def run_resume_scenario():
     """#85: --continue replays a prior turn's history into the transcript at startup."""
-    work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-resume-")
+    work_dir = scratch.scratch_dir("joule-terminal-harness-resume-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
@@ -805,7 +805,7 @@ def run_resume_scenario():
         ok("Done." in resumed_text, "--continue replays the prior turn's assistant reply into the transcript")
         check_clean_exit_invariants(second, "resume: second session after --continue")
 
-        empty_work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-resume-empty-")
+        empty_work_dir = scratch.scratch_dir("joule-terminal-harness-resume-empty-")
         empty_repo_dir = os.path.join(empty_work_dir, "repo")
         seed_workspace(empty_repo_dir)
         empty_env = dict(joule_env)
@@ -1025,7 +1025,7 @@ def run_collapse_scenario():
 def run_scenario():
     self_test_color_bleed_detector()
 
-    work_dir = tempfile.mkdtemp(prefix="joule-terminal-harness-")
+    work_dir = scratch.scratch_dir("joule-terminal-harness-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)

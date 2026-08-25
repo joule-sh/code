@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const setup = (await import(pathToFileURL(path.join(ROOT, "editor", "src", "setup.js")).href)).default;
@@ -22,7 +22,7 @@ function ok(condition, label) {
 }
 
 function makeHome() {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-setup-"));
+  const home = scratchDir("joule-editor-setup-");
   fs.mkdirSync(path.join(home, ".config", "joule-code"), { recursive: true });
   homes.push(home);
   return { HOME: home };

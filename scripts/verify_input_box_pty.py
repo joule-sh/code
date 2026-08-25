@@ -12,7 +12,7 @@ import re
 import sys
 import shutil
 import subprocess
-import tempfile
+import scratch
 import importlib.util
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,7 +42,7 @@ def last_cursor_show(full_text):
     return (int(m.group(1)), int(m.group(2)))
 
 def start(rows, cols):
-    work_dir = tempfile.mkdtemp(prefix="joule-inputbox-pty-")
+    work_dir = scratch.scratch_dir("joule-inputbox-pty-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)

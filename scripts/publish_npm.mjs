@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RELEASE = /^\d+\.\d+\.\d+$/;
@@ -116,7 +116,7 @@ function main() {
   if (listing.version !== version) {
     fail(`${dir} holds ${listing.version} but the tag is ${tag}. The tarballs and the tag have to be the same version.`);
   }
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), "joule-npmrc-"));
+  const work = scratchDir("joule-npmrc-");
   const userconfig = path.join(work, "npmrc");
   fs.writeFileSync(userconfig, AUTH_LINE + "\n", { mode: 0o600 });
   const results = [];

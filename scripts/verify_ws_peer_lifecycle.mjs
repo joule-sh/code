@@ -2,10 +2,10 @@ import { connect } from "./miniws.mjs";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -280,7 +280,7 @@ async function main() {
     console.log("SKIP: this check reads thread counts out of /proc, which this platform does not have");
     return;
   }
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-ws-lifecycle-"));
+  const workspace = scratchDir("joule-ws-lifecycle-");
   try {
     const relay = await measureRelay(workspace);
     const daemon = await measureDaemon(workspace);

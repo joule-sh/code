@@ -1,11 +1,11 @@
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { connect } from "./miniws.mjs";
+import { scratchDir } from "./scratch.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const JOULE = path.join(REPO_ROOT, "bin", "joule");
@@ -62,8 +62,8 @@ function portOpen(port) {
 }
 
 async function makeWorkspace(name) {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-" + name + "-"));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-home-" + name + "-"));
+  const workspace = scratchDir("joule-editor-" + name + "-");
+  const home = scratchDir("joule-editor-home-" + name + "-");
   fs.writeFileSync(path.join(workspace, "README.md"), "# demo\n");
   const stubPort = await freePort();
   const stub = spawn(STUB, [], {
@@ -293,8 +293,8 @@ async function oneDaemonPerFolderBody(name, ws) {
 }
 
 function makeBareWorkspace(name) {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-" + name + "-"));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-home-" + name + "-"));
+  const workspace = scratchDir("joule-editor-" + name + "-");
+  const home = scratchDir("joule-editor-home-" + name + "-");
   const env = { ...process.env, HOME: home };
   const dispose = () => {
     fs.rmSync(workspace, { recursive: true, force: true });

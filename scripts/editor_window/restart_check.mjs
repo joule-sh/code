@@ -1,8 +1,8 @@
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "../scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -20,7 +20,7 @@ function codeBin(cache, version) {
 }
 
 function makeProfile(joule, openInEditorTab) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "joule-tab-restart-"));
+  const root = scratchDir("joule-tab-restart-");
   const dirs = {
     root,
     workspace: path.join(root, "workspace"),

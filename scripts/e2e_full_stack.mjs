@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -218,7 +219,7 @@ async function runScenario(name, approve) {
     stub: await freePort(),
   };
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "joule-e2e-"));
+  const workDir = scratchDir("joule-e2e-");
   const repoDir = path.join(workDir, "repo");
   seedRepo(repoDir);
   const readmePath = path.join(repoDir, "README.md");

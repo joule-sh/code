@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 import { assertTabSurvivesRestart } from "./restart_check.mjs";
+import { scratchDir } from "../scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -15,6 +16,7 @@ const STUB = path.join(REPO_ROOT, "bin", "stub_model" + EXE);
 const EXTENSION = path.join(REPO_ROOT, "editor");
 const SUITE = path.join(HERE, "suite.js");
 const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache", "joule-editor-window");
+const SDK_CACHE = process.env.JOULE_EDITOR_SDK_CACHE || path.join(CACHE, "agent-host-sdk-cache");
 const VSCODE_VERSION = "1.134.0";
 const OLDER_VSCODE_VERSION = "1.105.1";
 const DOWNLOAD_IDLE_MS = 120000;
@@ -99,8 +101,20 @@ async function startDisplay() {
   return null;
 }
 
+function shareSdkCache(userData) {
+  if (process.platform === "win32") { return; }
+  const host = path.join(userData, "agent-host");
+  fs.mkdirSync(SDK_CACHE, { recursive: true });
+  fs.mkdirSync(host, { recursive: true });
+  try {
+    fs.symlinkSync(SDK_CACHE, path.join(host, "sdk-cache"), "dir");
+  } catch (e) {
+    void e;
+  }
+}
+
 function makeRoot(scenario) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-" + scenario + "-"));
+  const root = scratchDir("joule-editor-" + scenario + "-");
   const dirs = {
     root,
     workspace: path.join(root, "workspace"),
@@ -112,6 +126,7 @@ function makeRoot(scenario) {
   for (const dir of [dirs.workspace, dirs.home, dirs.tmp, dirs.userData, dirs.extensions]) {
     fs.mkdirSync(dir, { recursive: true });
   }
+  shareSdkCache(dirs.userData);
   fs.mkdirSync(path.join(dirs.workspace, ".vscode"), { recursive: true });
   fs.writeFileSync(path.join(dirs.workspace, "README.md"), "# demo\n");
   fs.writeFileSync(

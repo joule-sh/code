@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readZip } from "./lib/zip.mjs";
+import { scratchDir } from "./scratch.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = path.join(ROOT, "npm", "code");
@@ -129,7 +129,7 @@ function buildPlatform(entry, version, artifacts, out) {
   if (!fs.existsSync(archive)) {
     fail(`${archive} does not exist. Packaging takes the archives the release already built, and never builds its own.`);
   }
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), "joule-npm-pack-"));
+  const work = scratchDir("joule-npm-pack-");
   const dir = path.join(out, "code-" + entry.id);
   try {
     if (ext === "zip") { unzip(archive, work); } else { untar(archive, work); }
