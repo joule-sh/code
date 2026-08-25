@@ -1,8 +1,8 @@
 import { MouseReporting, mouseReportingOn, mouseSettingWord, mouseStateText, runMouseCommand, MOUSE_ON, MOUSE_OFF } from "./mouse_reporting.ts";
 import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING } from "../vendor/tty/tty.ts";
 
-test("mouse reporting is off unless something turns it on, so a drag selects text", () => {
-  expect(!mouseReportingOn("", ""));
+test("mouse reporting is on out of the box, so the wheel scrolls and a drag selects", () => {
+  expect(mouseReportingOn("", ""));
 });
 
 test("the config file value turns mouse reporting on", () => {
@@ -59,14 +59,24 @@ test("the setting word round-trips through the reporting state", () => {
 
 test("the state text says what each state costs and what it buys", () => {
   expect(mouseStateText(true).indexOf("wheel") >= 0);
-  expect(mouseStateText(true).indexOf("Shift") >= 0);
+  expect(mouseStateText(true).indexOf("drag selects") >= 0);
   expect(mouseStateText(false).indexOf("select") >= 0);
   expect(mouseStateText(false).indexOf("PageUp/PageDown") >= 0);
 });
 
-test("each state text fits an 80 column terminal, so neither is clipped where it matters", () => {
-  expect(mouseStateText(true).trim().length <= 80);
-  expect(mouseStateText(false).trim().length <= 80);
+test("the on state is honest that a terminal may refuse the copy, and names the way out", () => {
+  expect(mouseStateText(true).indexOf("OSC 52") >= 0);
+  expect(mouseStateText(true).indexOf("refused") >= 0);
+  expect(mouseStateText(true).indexOf("/mouse off") >= 0);
+});
+
+test("every line of each state text fits an 80 column terminal, so none is clipped", () => {
+  for (const line of mouseStateText(true).split("\n")) {
+    expect(line.length <= 80);
+  }
+  for (const line of mouseStateText(false).split("\n")) {
+    expect(line.length <= 80);
+  }
 });
 
 test("/mouse with an argument that is neither on nor off changes nothing and says so", () => {

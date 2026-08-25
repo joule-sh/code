@@ -29,6 +29,7 @@ import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 import { enterScreen, leaveScreen, runMouseCommand } from "./mouse_reporting.ts";
+import { applyMouseState } from "./mouse_select.ts";
 
 const STDIN: int = 0;
 const POLL_MS: int = 100;
@@ -203,6 +204,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   };
 
   let mouse = enterScreen();
+  applyMouseState(sb, mouse.on);
   rawEnable(STDIN);
 
   sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase.base) + skillsStartupNote(workspaceRoot));
@@ -318,7 +320,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (isNavigationKey(k.kind)) {
-      if (handleNavigationKey(k.kind, input, history, sb, approvalLog.mode, setMode)) {
+      if (handleNavigationKey(k, input, history, sb, approvalLog.mode, setMode)) {
         drawScreen(sb, input, approvalLog.mode, rk);
       }
       continue;
@@ -411,7 +413,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
 
     if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
-    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
+    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); applyMouseState(sb, mouse.on); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
     if (cmd.kind == CMD_TASKS) {
       client.publish(encodeTasksRequest({ v: PROTOCOL_VERSION, seq: 0, type: TASKS_REQUEST, arg: cmd.arg }));

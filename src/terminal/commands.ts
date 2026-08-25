@@ -71,7 +71,7 @@ export function commandList(): CommandInfo[] {
     { name: "/memory", args: "[add <text>|forget <n>|clear]", description: "show, add to, or edit what joule remembers about you" },
     { name: "/skills", args: "[name]", description: "list skills and where each came from, or use one by name" },
     { name: "/update", args: "", description: "download and install the latest release" },
-    { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (default off, so drags select text)" },
+    { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (wheel scrolls, drag copies)" },
     { name: "/clear", args: "", description: "clear the scrollback" },
     { name: "/exit", args: "", description: "quit" },
   ];

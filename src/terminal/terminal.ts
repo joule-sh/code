@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -36,7 +36,7 @@ import { enterPlanMode, offerPlanDecision, tryHandlePlanDecisionArrow, tryHandle
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
 import { enterScreen, leaveScreen, runMouseCommand } from "./mouse_reporting.ts";
-import { isScrollKey, applyScrollKey, WHEEL_SCROLL_LINES } from "./scroll_keys.ts";
+import { isPointerKey, handlePointerKey, applyMouseState } from "./mouse_select.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
@@ -102,14 +102,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       tasksBox.slot[0].poll(relayBox.sessionSlot[0]);
     }
     let k = readKeyTimeout(STDIN, 0);
-    if (k.kind == KEY_SCROLL_UP || k.kind == KEY_SCROLL_DOWN) {
-      let r = screenRows();
-      if (k.kind == KEY_SCROLL_UP) {
-        sb.scrollUp(r - 1, WHEEL_SCROLL_LINES);
-      } else {
-        sb.scrollDown(r - 1, WHEEL_SCROLL_LINES);
-      }
-      if (gateBox.slot.length > 0) {
+    if (isPointerKey(k.kind)) {
+      if (handlePointerKey(k, sb, input, screenRows()) && gateBox.slot.length > 0) {
         drawScreen(sb, input, gateBox.slot[0].mode, rk);
       }
     } else if ((k.kind == KEY_ARROW_UP || k.kind == KEY_ARROW_DOWN) && gateBox.slot.length > 0) {
@@ -218,6 +212,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   });
 
   let mouse = enterScreen();
+  applyMouseState(sb, mouse.on);
   rawEnable(STDIN);
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
@@ -333,7 +328,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       continue;
     }
 
-    if (isScrollKey(k.kind)) { applyScrollKey(k.kind, sb, screenRows()); drawScreen(sb, input, gate.mode, rk); continue; }
+    if (isPointerKey(k.kind)) { handlePointerKey(k, sb, input, screenRows()); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (k.kind != KEY_ENTER) {
       continue;
@@ -417,7 +412,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
 
-    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
+    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); applyMouseState(sb, mouse.on); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (cmd.kind == CMD_TASKS) {
       if (cmd.arg == "") {
