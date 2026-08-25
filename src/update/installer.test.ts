@@ -1,6 +1,6 @@
 import { runInstallOnceWith, verifyDownloadedJoule, ensureCodeSignature, refusalReason, putInPlaceError, versionDirPath, tmpRootPath, binLinkPath, parseLatestTag, CODESIGN, RESULT_INSTALLED, RESULT_UP_TO_DATE, RESULT_ERROR, ShellResult, FetchTagResult } from "./installer.ts";
 import { MIN_BINARY_BYTES } from "./archive.ts";
-import { PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64 } from "./platform.ts";
+import { PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64, PLATFORM_MACOS_X64 } from "./platform.ts";
 
 const TARGET: string = PLATFORM_LINUX_X64;
 const ELF_MAGIC: string = String.fromCharCode(0x7f) + String.fromCharCode(0x45) + String.fromCharCode(0x4c) + String.fromCharCode(0x46);
@@ -288,6 +288,14 @@ function signingRun(trace: Signing, verifyStatus: int, signStatus: int): (cmd: s
 test("a Linux install never reaches for codesign", () => {
   let trace = new Signing();
   let v = ensureCodeSignature("/tmp/anywhere/joule-daemon", "joule-daemon", PLATFORM_LINUX_X64, signingRun(trace, 1, 0));
+  expect(v.ok);
+  expect(trace.verifies == 0);
+  expect(trace.signs == 0);
+});
+
+test("an Intel macOS install never reaches for codesign, because signing there writes over __text", () => {
+  let trace = new Signing();
+  let v = ensureCodeSignature("/tmp/anywhere/relay", "relay", PLATFORM_MACOS_X64, signingRun(trace, 1, 0));
   expect(v.ok);
   expect(trace.verifies == 0);
   expect(trace.signs == 0);

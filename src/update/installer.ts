@@ -1,6 +1,6 @@
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { DEV_VERSION, isNewerVersion, stripLeadingV } from "./version_compare.ts";
-import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, isMacosPlatform, RELEASE_REPO } from "./platform.ts";
+import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, signsAdHoc, RELEASE_REPO } from "./platform.ts";
 import { isRunnableBinaryForPlatform, readMagic4, fileSize } from "./archive.ts";
 import { isUpdateTmpName, UPDATE_TMP_PREFIX } from "./install_detect.ts";
 import { chmodPath } from "../vendor/platform/platform.ts";
@@ -112,7 +112,7 @@ export function signingFailedError(name: string, binPath: string, r: ShellResult
 }
 
 export function ensureCodeSignature(binPath: string, name: string, releaseTarget: string, runCmd: (cmd: string, args: string[]) => ShellResult): VerifyResult {
-  if (!isMacosPlatform(releaseTarget)) {
+  if (!signsAdHoc(releaseTarget)) {
     let elsewhere: VerifyResult = { ok: true, error: "" };
     return elsewhere;
   }

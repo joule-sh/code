@@ -15,6 +15,10 @@ export function isMacosPlatform(releaseTarget: string): bool {
   return releaseTarget == PLATFORM_MACOS_ARM64 || releaseTarget == PLATFORM_MACOS_X64;
 }
 
+export function signsAdHoc(releaseTarget: string): bool {
+  return releaseTarget == PLATFORM_MACOS_ARM64;
+}
+
 export function releaseAssetName(releaseTarget: string): string {
   return "code-" + releaseTarget + ".tar.gz";
 }

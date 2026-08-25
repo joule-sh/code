@@ -124,7 +124,13 @@ async function main(id) {
   if (changed.length > 0) {
     say("joule: restored the execute bit on " + changed.join(", ") + ", which an npm tarball does not carry reliably.");
   }
-  if (id.startsWith("darwin-")) {
+  // Apple Silicon only. The kernel demands a signature there and demands none
+  // on Intel, where signing actively breaks the binary: an x86_64 Mach-O from
+  // the backend has no padding between its load commands and __text, so
+  // codesign adds LC_CODE_SIGNATURE over the first function in the code
+  // section and returns a file that verifies and then faults (#255,
+  // lumen-lang-org/lumen#43).
+  if (id === "darwin-arm64") {
     const unsigned = adHocSign(found.dir);
     for (const failure of unsigned) { warn("joule: " + failure); }
   }

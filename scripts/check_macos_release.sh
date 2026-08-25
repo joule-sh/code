@@ -21,6 +21,19 @@
 # release is codesign's. Running the binaries stays, because it catches
 # everything else an archive can get wrong, but it is not what guards this.
 #
+# What a signature is worth differs by architecture, and this asks for it only
+# where it is load-bearing. The kernel demands one on arm64 and demands nothing
+# on x86_64, where an unsigned binary has always run; an ad-hoc signature is
+# not notarisation and buys an Intel download nothing. It costs something,
+# though: the backend leaves x86_64 unsigned and packs __text flush against the
+# load commands, so `codesign` there has to grow the header to add
+# LC_CODE_SIGNATURE and writes those 16 bytes straight over the first function
+# in __text (#255, lumen-lang-org/lumen#43). So an x86_64 binary is allowed to
+# arrive unsigned, a signature that is present has to verify on either
+# architecture, and the header check below is what actually holds the line:
+# load commands that reach into __text mean the file has been trampled,
+# whatever codesign says about the bytes afterwards.
+#
 # Usage: scripts/check_macos_release.sh code-aarch64-macos.tar.gz
 set -eu
 
@@ -111,18 +124,49 @@ for bin in joule relay joule-daemon; do
     status=1
   fi
 
+  # A Mach-O header that runs past the start of __text has been written over
+  # its own code. That is what adding LC_CODE_SIGNATURE to a binary the backend
+  # left no padding in does, and the damage is silent: the signature is made
+  # over the trampled bytes, so codesign then verifies it happily and the
+  # binary dies in whatever function happened to be first in the section. The
+  # 32 is the 64-bit Mach-O header, which sizeofcmds is measured from.
+  cmds_size="$(otool -h "$path" | awk '$1 ~ /^0x[0-9a-f]+$/ { print $7; exit }')"
+  text_offset="$(otool -l "$path" | awk '/sectname __text/ { seen = 1 } seen && $1 == "offset" { print $2; exit }')"
+  if [ -n "$cmds_size" ] && [ -n "$text_offset" ]; then
+    cmds_end=$((32 + cmds_size))
+    if [ "$cmds_end" -gt "$text_offset" ]; then
+      echo "  $bin has load commands ending at $cmds_end, past __text at $text_offset" >&2
+      echo "    the header has been grown over the start of the code section, so" >&2
+      echo "    the first function in __text is now $((cmds_end - text_offset)) bytes of load command" >&2
+      status=1
+    else
+      echo "  header: load commands end at $cmds_end, __text starts at $text_offset"
+    fi
+  else
+    echo "  $bin did not report a Mach-O header and a __text offset to compare" >&2
+    status=1
+  fi
+
   set +e
   signing="$(codesign --verify --strict --verbose=2 "$path" 2>&1)"
   signing_status=$?
   set -e
   if [ "$signing_status" -eq 0 ]; then
     echo "  signature: valid"
-  else
-    echo "  $bin has no code signature this machine will accept:" >&2
+  elif otool -l "$path" | grep -q LC_CODE_SIGNATURE; then
+    echo "  $bin carries a code signature that does not verify:" >&2
     printf '%s\n' "$signing" | sed 's/^/    /' >&2
-    echo "    an unsigned or stale signature is fatal on Apple Silicon, where" >&2
-    echo "    the kernel kills the process on exec instead of reporting it." >&2
+    echo "    a stale signature is fatal on Apple Silicon, where the kernel" >&2
+    echo "    kills the process on exec instead of reporting it." >&2
     status=1
+  elif [ "$want_arch" = "arm64" ]; then
+    echo "  $bin carries no code signature at all:" >&2
+    printf '%s\n' "$signing" | sed 's/^/    /' >&2
+    echo "    an unsigned binary is fatal on Apple Silicon, where the kernel" >&2
+    echo "    kills the process on exec instead of reporting it." >&2
+    status=1
+  else
+    echo "  signature: none, which is what x86_64 ships (see the header above)"
   fi
 
   set +e

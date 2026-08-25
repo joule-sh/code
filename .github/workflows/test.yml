@@ -365,8 +365,25 @@ jobs:
   # own rather than more steps on `macos` because `brew unlink bdw-gc` would
   # pull the collector out from under the dynamically linked binaries the
   # harnesses there are still using.
+  #
+  # Both architectures, because until #255 neither this job nor `macos` ran on
+  # Intel at all: x86_64 was built for the first time when a tag was pushed,
+  # which is where a release-blocking fault got to hide. The two differ in what
+  # they are allowed to carry - only arm64 is ad-hoc signed, for the reason
+  # spelled out in scripts/check_macos_release.sh - so the guard reads the
+  # target rather than assuming one rule for both.
   macos-release:
-    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-macos
+            runs_on: macos-14
+            lumen_dist: lumen-aarch64-macos
+          - target: x86_64-macos
+            runs_on: macos-15-intel
+            lumen_dist: lumen-x86_64-macos
+    runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 20
     env:
       LUMEN_VERSION: v0.7.1
@@ -374,27 +391,28 @@ jobs:
       - uses: actions/checkout@v4
       - run: brew install bdw-gc
       - run: |
-          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-aarch64-macos.tar.gz"
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/${{ matrix.lumen_dist }}.tar.gz"
           tar -xzf lumen.tar.gz
-          echo "$PWD/lumen-aarch64-macos" >> "$GITHUB_PATH"
-          echo "$PWD/lumen-aarch64-macos/zig" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}" >> "$GITHUB_PATH"
+          echo "$PWD/${{ matrix.lumen_dist }}/zig" >> "$GITHUB_PATH"
       - run: |
           mkdir -p "$PWD/gcstatic"
           cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
           brew unlink bdw-gc
           echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
       - run: make release
-      - run: |
+      - if: matrix.target == 'aarch64-macos'
+        run: |
           for bin in bin/joule bin/relay bin/joule-daemon; do
             codesign --sign - --force "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
       - run: |
-          dir="code-aarch64-macos"
+          dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
           cp bin/joule bin/relay bin/joule-daemon README.md "$dir/"
           tar -czf "$dir.tar.gz" "$dir"
-      - run: scripts/check_macos_release.sh "code-aarch64-macos.tar.gz"
+      - run: scripts/check_macos_release.sh "code-${{ matrix.target }}.tar.gz"
 
   # Installing over an existing install is the step #235 broke on, and it is
   # arm64 macOS behaviour, so it is checked on the same runner the release is
