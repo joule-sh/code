@@ -23,15 +23,11 @@ as an optional dependency and skips everywhere it does not apply:
 | `linux-x64` | `@joule-sh/code-linux-x64` |
 | `darwin-x64` | `@joule-sh/code-darwin-x64` |
 | `darwin-arm64` | `@joule-sh/code-darwin-arm64` |
+| `win32-x64` | `@joule-sh/code-win32-x64` |
 
 Every one of them carries the garbage collector it needs, so there is nothing
 to install alongside. The Linux binary is linked statically against musl and
 needs nothing at all from the machine it lands on.
-
-**There is no Windows build yet.** Installing here prints a message saying so
-and pointing at
-[#173](https://github.com/joule-sh/code/issues/173). Until that lands, joule
-runs on Windows inside WSL.
 
 ## If npm skipped the binary
 

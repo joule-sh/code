@@ -9,7 +9,7 @@ const PUBLISH = path.join(ROOT, "scripts", "publish_npm.mjs");
 const TOKEN = "npm-token-do-not-leak-this-one";
 const VERSION = "9.9.9";
 const WRAPPER = "@joule-sh/code";
-const PLATFORMS = ["@joule-sh/code-linux-x64", "@joule-sh/code-darwin-x64", "@joule-sh/code-darwin-arm64"];
+const PLATFORMS = ["@joule-sh/code-linux-x64", "@joule-sh/code-darwin-x64", "@joule-sh/code-darwin-arm64", "@joule-sh/code-win32-x64"];
 
 if (process.platform === "win32") {
   console.log("skipped: the publish checks drive a stub npm through PATH, which needs a POSIX shell");
@@ -121,15 +121,15 @@ ok(prerelease.status === 0 && prerelease.calls.length === 0, "a pre-release tag 
 const full = publish({ NPM_TOKEN: TOKEN }, release);
 const published = full.calls.filter((c) => c.startsWith("cmd=publish"));
 ok(full.status === 0, "with the token present every package publishes and the job passes");
-ok(published.length === 4, "all three platform packages and the wrapper are published, once each");
-ok(published.slice(0, 3).every((c) => PLATFORMS.some((p) => c.includes(p.replace("@", "").replace("/", "-")))),
-  "the three platform packages go first");
-ok(published[3].includes("joule-sh-code-" + VERSION + ".tgz"),
+ok(published.length === PLATFORMS.length + 1, "all four platform packages and the wrapper are published, once each");
+ok(published.slice(0, PLATFORMS.length).every((c) => PLATFORMS.some((p) => c.includes(p.replace("@", "").replace("/", "-")))),
+  "the platform packages go first");
+ok(published[PLATFORMS.length].includes("joule-sh-code-" + VERSION + ".tgz"),
   "the wrapper goes last, so its optional dependencies already exist by the time anyone can install it");
 ok(published.every((c) => c.includes("--access public")),
   "every publish passes --access public, without which a scoped package is private and the install line does not work");
 ok(published.every((c) => c.includes("npm_token=set")), "npm is handed the token through the environment");
-ok(full.calls.filter((c) => c.startsWith("cmd=view")).length === 4,
+ok(full.calls.filter((c) => c.startsWith("cmd=view")).length === PLATFORMS.length + 1,
   "each package is looked up before it is published, so a re-run does not fail on a version that is already there");
 ok(full.calls.every((c) => c.includes("userconfig=//registry.npmjs.org/:_authToken=${NPM_TOKEN}")),
   "the npmrc npm reads holds the literal ${NPM_TOKEN}, so the token itself is never written to disk");
@@ -143,7 +143,7 @@ ok(rerun.output.includes("changed nothing"), "a run that published nothing new s
 
 const halfDone = publish({ NPM_TOKEN: TOKEN, STUB_PRESENT: PLATFORMS[0] + "@" + VERSION }, release);
 ok(halfDone.status === 0, "a run that finds one platform already there publishes the rest and passes");
-ok(halfDone.calls.filter((c) => c.startsWith("cmd=publish")).length === 3, "only the packages that were missing are published");
+ok(halfDone.calls.filter((c) => c.startsWith("cmd=publish")).length === PLATFORMS.length, "only the packages that were missing are published");
 
 const platformDown = publish({ NPM_TOKEN: TOKEN, STUB_FAIL: "code-darwin-arm64" }, release);
 const attempted = platformDown.calls.filter((c) => c.startsWith("cmd=publish"));

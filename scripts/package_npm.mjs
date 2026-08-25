@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readZip } from "./lib/zip.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = path.join(ROOT, "npm", "code");
@@ -16,6 +17,7 @@ const TARGETS = [
   { target: "x86_64-linux", id: "linux-x64", os: "linux", cpu: "x64" },
   { target: "x86_64-macos", id: "darwin-x64", os: "darwin", cpu: "x64" },
   { target: "aarch64-macos", id: "darwin-arm64", os: "darwin", cpu: "arm64" },
+  { target: "x86_64-windows", id: "win32-x64", os: "win32", cpu: "x64", archiveExt: "zip", exe: ".exe" },
 ];
 
 function fail(message) {
@@ -99,29 +101,48 @@ function write(dir, manifest) {
 
 function untar(archive, into) {
   fs.mkdirSync(into, { recursive: true });
-  const result = spawnSync("tar", ["-xzf", archive, "-C", into], { encoding: "utf8" });
+  const result = spawnSync("tar", ["--force-local", "-xzf", archive, "-C", into], { encoding: "utf8" });
   if (result.error) { fail("could not run tar: " + result.error.message); }
   if (result.status !== 0) { fail(`tar exited ${result.status} on ${archive}: ${(result.stderr || "").trim()}`); }
 }
 
+function unzip(archive, into) {
+  fs.mkdirSync(into, { recursive: true });
+  let entries;
+  try {
+    entries = readZip(fs.readFileSync(archive));
+  } catch (e) {
+    fail(`could not read ${archive} as a zip: ${e.message}`);
+  }
+  for (const entry of entries) {
+    if (entry.name.endsWith("/")) { continue; }
+    const dest = path.join(into, entry.name);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, entry.data);
+  }
+}
+
 function buildPlatform(entry, version, artifacts, out) {
-  const archive = path.join(artifacts, `code-${entry.target}.tar.gz`);
+  const ext = entry.archiveExt || "tar.gz";
+  const exe = entry.exe || "";
+  const archive = path.join(artifacts, `code-${entry.target}.${ext}`);
   if (!fs.existsSync(archive)) {
     fail(`${archive} does not exist. Packaging takes the archives the release already built, and never builds its own.`);
   }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "joule-npm-pack-"));
   const dir = path.join(out, "code-" + entry.id);
   try {
-    untar(archive, work);
+    if (ext === "zip") { unzip(archive, work); } else { untar(archive, work); }
     const unpacked = path.join(work, `code-${entry.target}`);
     const bin = path.join(dir, "bin");
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(bin, { recursive: true });
     for (const name of BINARIES) {
-      const from = path.join(unpacked, name);
-      if (!fs.existsSync(from)) { fail(`${archive} carries no ${name}`); }
-      fs.copyFileSync(from, path.join(bin, name));
-      fs.chmodSync(path.join(bin, name), 0o755);
+      const file = name + exe;
+      const from = path.join(unpacked, file);
+      if (!fs.existsSync(from)) { fail(`${archive} carries no ${file}`); }
+      fs.copyFileSync(from, path.join(bin, file));
+      fs.chmodSync(path.join(bin, file), 0o755);
     }
     const readme = path.join(unpacked, "README.md");
     if (fs.existsSync(readme)) { fs.copyFileSync(readme, path.join(dir, "README.md")); }
