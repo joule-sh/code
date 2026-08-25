@@ -141,20 +141,31 @@ directory. Model, mode and workspace are not part of what gets saved - they
 are re-resolved fresh from the normal config chain on every launch. There is
 no picker for older sessions yet, only the most recent one.
 
-The terminal leaves mouse reporting off, so selecting text with the mouse
-works the way it does everywhere else: drag to select, copy with whatever your
-terminal binds. PageUp/PageDown scroll the transcript.
+The terminal does its own mouse selection, so the wheel and drag-to-select
+both work at once rather than trading against each other. The wheel scrolls
+the transcript, PageUp/PageDown scroll it too, and dragging over the
+transcript selects the rows the drag covers - drawn in reverse video, with the
+status line saying how many lines are held. The wheel keeps scrolling while a
+drag is in progress: the selection stays on the text it was drawn over rather
+than on the screen rows.
 
-Turning mouse reporting on hands the wheel to the transcript instead, and that
-is the whole of what it buys - clicks and drags go to joule, which uses none of
-them, so the cost is the selection. `/mouse on` switches it for the running
-session and writes `"mouse": "on"` into `~/.config/joule-code/config.json`;
-`/mouse off` puts it back, and `JOULE_CODE_MOUSE` overrides the file for a
-single run. While it is on, hold Shift while dragging to select natively; this
-bypasses mouse reporting in GNOME Terminal and Windows Terminal. iTerm2 uses
-Option instead of Shift for this. Terminal.app has no modifier-key bypass at
-all - turn off View > Allow Mouse Reporting (Cmd-R), select and copy, then turn
-it back on.
+Releasing copies, over OSC 52 (`ESC ] 52 ; c ; <base64> BEL`), which is the
+mechanism that survives ssh. Not every terminal accepts it, and one that
+refuses sends no reply, so there is nothing to detect and nothing to retry.
+Joule says what it wrote and names the way out rather than reporting a copy it
+cannot confirm: `copied 3 lines - Esc clears - /mouse off if nothing pasted`.
+Escape clears the selection, typing puts the status line back, and the next
+click starts a new one.
+
+A click that does not move copies nothing, the way it behaves in an editor.
+Sign-in codes are never selectable: the row map covers transcript rows only,
+and no selection can start, extend or copy while the input line is capturing.
+
+`/mouse off` hands selection back to your terminal's own, for anyone who
+prefers it or whose terminal blocks OSC 52; the button events are then ignored
+outright. It writes `"mouse": "off"` into `~/.config/joule-code/config.json`,
+`/mouse on` puts it back, and `JOULE_CODE_MOUSE` overrides the file for a
+single run.
 
 Copying from a collapsed tool-output group only copies what is visible; the
 rows hidden by the collapse are not part of the selection.
