@@ -1,12 +1,23 @@
-import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, TASKS_RESPONSE, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, SHARE_STARTED, SHARE_FAILED, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, ModeSetFrame, ModeChangedFrame, ModelSetFrame, ModelChangedFrame, TasksRequestFrame, TasksResponseFrame, DaemonStopFrame, DaemonStoppingFrame, ShareRequestFrame, ShareStartedFrame, ShareFailedFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, encodeModeSet, decodeModeSet, encodeModeChanged, decodeModeChanged, encodeModelSet, decodeModelSet, encodeModelChanged, decodeModelChanged, encodeTasksRequest, decodeTasksRequest, encodeTasksResponse, decodeTasksResponse, encodeDaemonStop, decodeDaemonStop, encodeDaemonStopping, decodeDaemonStopping, encodeShareRequest, decodeShareRequest, encodeShareStarted, decodeShareStarted, encodeShareFailed, decodeShareFailed, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
+import { PROTOCOL_VERSION, SESSION_HELLO, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, INPUT, CANCEL, APPROVAL_REPLY, RESUME, REASON_DONE, DECISION_ALLOW, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, TASKS_RESPONSE, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, SHARE_STARTED, SHARE_FAILED, SessionHelloFrame, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, InputFrame, CancelFrame, ApprovalReplyFrame, ResumeFrame, ModeSetFrame, ModeChangedFrame, ModelSetFrame, ModelChangedFrame, TasksRequestFrame, TasksResponseFrame, DaemonStopFrame, DaemonStoppingFrame, ShareRequestFrame, ShareStartedFrame, ShareFailedFrame, encodeSessionHello, decodeSessionHello, encodeTurnStart, decodeTurnStart, encodeTextDelta, decodeTextDelta, encodeToolCall, decodeToolCall, encodeToolResult, decodeToolResult, encodeApprovalRequest, decodeApprovalRequest, encodeTurnEnd, decodeTurnEnd, encodeError, decodeError, encodeInput, decodeInput, encodeCancel, decodeCancel, encodeApprovalReply, decodeApprovalReply, encodeResume, decodeResume, encodeModeSet, decodeModeSet, encodeModeChanged, decodeModeChanged, encodeModelSet, decodeModelSet, encodeModelChanged, decodeModelChanged, encodeTasksRequest, decodeTasksRequest, encodeTasksResponse, decodeTasksResponse, encodeDaemonStop, decodeDaemonStop, encodeDaemonStopping, decodeDaemonStopping, encodeShareRequest, decodeShareRequest, encodeShareStarted, decodeShareStarted, encodeShareFailed, decodeShareFailed, helloFrameWorkspace, helloFrameBuild, frameType, frameVersion, frameSeq, frameTurnId, isSupportedVersion, isKnownType, hasSeqGap } from "./frames.ts";
 
 test("SESSION_HELLO round-trips", () => {
-  let f: SessionHelloFrame = { v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO, sessionId: "s1", workspace: "/repo", model: "gpt", mode: "agent", protocol: 1 };
+  let f: SessionHelloFrame = { v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO, sessionId: "s1", workspace: "/repo", model: "gpt", mode: "agent", protocol: 1, build: "0.22.0" };
   let text = encodeSessionHello(f);
   let back = decodeSessionHello(text);
   expect(back != null);
   expect(back!.sessionId == "s1");
   expect(back!.type == SESSION_HELLO);
+  expect(back!.build == "0.22.0");
+});
+
+test("the build and the workspace are read straight off the wire, so a hello from another build is still legible", () => {
+  let older = "{\"v\":1,\"seq\":1,\"type\":\"session.hello\",\"sessionId\":\"s1\",\"workspace\":\"/repo\",\"model\":\"gpt\",\"mode\":\"agent\",\"protocol\":1}";
+  expect(decodeSessionHello(older) == null);
+  expect(helloFrameWorkspace(older) == "/repo");
+  expect(helloFrameBuild(older) == "");
+  let newer = "{\"v\":1,\"seq\":1,\"type\":\"session.hello\",\"workspace\":\"C:\\\\ws\",\"build\":\"0.22.0\"}";
+  expect(helloFrameWorkspace(newer) == "C:\\ws");
+  expect(helloFrameBuild(newer) == "0.22.0");
 });
 
 test("TURN_START round-trips", () => {

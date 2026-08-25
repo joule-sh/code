@@ -986,3 +986,93 @@ none of the previous session's transcript replayed into it.
 one: a client joining a restarted daemon gets that session's hello first
 and nothing from the session before it, and a `mode.set` it sends is
 broadcast back rather than being shadowed by the old numbering.
+
+## A client refuses a daemon of another build (#195)
+
+A daemon outlives the client that started it, by design, so updating
+`joule` leaves the old daemon running and the new binary talking to it.
+Nothing on the wire said so: `PROTOCOL_VERSION` is `1` and has been since
+the first frame was written, so two builds that share a frame set and
+agree on nothing else considered each other compatible. What a person saw
+was a fresh session that echoed the prompt, reported itself connected and
+never replied, with a status line reading 206h 29m - the turn was marked
+live without ever starting, and the elapsed reading collapsed to raw
+monotonic time.
+
+`session.hello` now carries `build`, which is the emitting binary's
+`VERSION`, and `ensureAttached` compares it against the client's own once
+a daemon has answered for this workspace. A daemon of a different build,
+or one too old to say which build it is, is refused with three lines: the
+two builds and the port, then why, then `joule --stop` as the remedy. The
+short lines are deliberate. A banner in the scrollback is clipped to the
+terminal's width rather than wrapped, and the first draft said the useful
+half of it past column 80, where an 80-column terminal cut it off - the
+refusal was driven through a real pty before it was believed. The same
+check runs on a daemon this client just spawned, where a mismatch means
+something else: the client and the daemon binary beside it came from
+different installs, so that refusal names the path it started.
+
+### Read off the wire, not decoded
+
+`JSON.parse<T>` in Lumen is exact. A payload missing a field the type
+declares does not parse, and neither does one carrying a field the type
+does not have. So adding `build` to `SessionHelloFrame` makes an older
+daemon's hello undecodable in a newer client, and the frame this check
+needs is the one frame it can no longer read.
+
+`helloWorkspace` and `helloBuild` therefore read `workspace` and `build`
+straight out of the frame text, with the same raw field reader
+`frameType` has always used, and only `attachedMode` and `attachedModel`
+still decode - they run after a build has matched. Without that, an older
+daemon read as "no hello at all", which the attach path already tolerates
+for a workspace whose daemon is recorded, and the client would have
+attached to precisely the daemon it is meant to refuse.
+
+### Refusing rather than reaping
+
+The client does not stop the stale daemon itself, though it knows how -
+`runAttachStop` already sends `daemon.stop` and waits for the
+acknowledgement. A mismatch does not say which of the two is stale. The
+same check fires when an older client meets a newer daemon, which is what
+a rollback or a second binary still on `PATH` produces, and there the
+daemon is the current one; stopping it would end a session nobody asked
+to end, along with whatever turn it is running for whichever client is
+attached to it. Refusing costs the person one command. Reaping the wrong
+daemon costs them a session, and it would do it automatically.
+
+### A turn marked live with no start time
+
+Independently of any of this, `TurnStatusTracker.elapsedMs` returned
+`time.monotonic() - startedAt` whenever `inTurn` was set, and `startedAt`
+is `0` until a `turn.start` arrives. The state that should be impossible
+printed the machine's uptime into the status line rather than reading as
+wrong. A live turn with no start time now reports `NO_TURN`, which the
+status line already draws as no elapsed reading at all.
+
+### Verification
+
+`make test` covers the wire and the decision: an older hello that no
+longer decodes still yields its workspace and an empty build, a hello
+from another build reads back as that build, and the refusal names both
+builds and `joule --stop` inside the width a terminal will show.
+
+That is not what proves it. Four binaries were built from this tree with
+different versions stamped into `src/version.ts`, one of them from the
+commit before this change so that its hello has no `build` at all, and
+run against each other in throwaway workspaces:
+
+- a `0.22.0` client meeting the pre-change daemon refuses it, naming a
+  build too old to say which one, and exits non-zero;
+- a `0.22.0` client meeting a `0.21.0` daemon refuses it by name;
+- a `0.21.0` client meeting a `0.22.0` daemon refuses it too - the check
+  is a mismatch, not a floor;
+- a `0.22.0` client meeting a `0.22.0` daemon attaches, as before.
+
+In every refusal the daemon was left running and listening, and
+`joule --stop` from the mismatched client still stopped it - the remedy
+the message names has to work across builds, and `daemon.stop` carries no
+field either side reads differently. Running the client again then
+started a daemon of its own and attached to it. The same run under a real
+pty shows the three lines under the welcome box, which is where a person
+actually meets them. The pre-change client, pointed at the `0.22.0`
+daemon, attached to it and said nothing at all.

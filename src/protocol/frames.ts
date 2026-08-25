@@ -37,7 +37,7 @@ export const DECISION_ALLOW: string = "allow";
 export const DECISION_DENY: string = "deny";
 export const DECISION_ALWAYS: string = "always";
 
-export type SessionHelloFrame = { v: int, seq: int, type: string, sessionId: string, workspace: string, model: string, mode: string, protocol: int };
+export type SessionHelloFrame = { v: int, seq: int, type: string, sessionId: string, workspace: string, model: string, mode: string, protocol: int, build: string };
 export type TurnStartFrame = { v: int, seq: int, type: string, turnId: string, prompt: string };
 export type TextDeltaFrame = { v: int, seq: int, type: string, turnId: string, text: string };
 export type ToolCallFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, args: string };
@@ -226,6 +226,14 @@ export function frameSeq(text: string): int {
 
 export function frameTurnId(text: string): string {
   return rawFieldValue(text, "turnId");
+}
+
+export function helloFrameWorkspace(text: string): string {
+  return rawFieldValue(text, "workspace");
+}
+
+export function helloFrameBuild(text: string): string {
+  return rawFieldValue(text, "build");
 }
 
 export function modeSetFrameMode(text: string): string {

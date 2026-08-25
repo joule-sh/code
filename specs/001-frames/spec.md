@@ -42,7 +42,7 @@ Terminal to everyone:
 
 | frame | payload |
 | --- | --- |
-| `session.hello` | `sessionId`, `workspace`, `model`, `mode`, `protocol` |
+| `session.hello` | `sessionId`, `workspace`, `model`, `mode`, `protocol`, `build` |
 | `turn.start` | `turnId`, `prompt` |
 | `text.delta` | `turnId`, `text` |
 | `tool.call` | `turnId`, `callId`, `tool`, `args` |
@@ -51,6 +51,13 @@ Terminal to everyone:
 | `turn.end` | `turnId`, `reason`: `done` \| `cancelled` \| `error` |
 | `error` | `code`, `message` |
 | `notice` | `code`, `level`: `info` \| `warn`, `message` |
+
+`session.hello` carries `build` beside `protocol` because the two answer
+different questions. `protocol` names the vocabulary and changes when a frame
+changes; `build` names the binary that is speaking, and two builds sharing one
+vocabulary can still disagree about what a session is. A client that finds a
+daemon of another build refuses it rather than attaching, which is the whole
+reason the field exists - see `docs/03-daemon.md`.
 
 `error` means a turn could not do what was asked. `notice` is the other thing a
 transport has to say - the connection came back, a buffer overflowed, a frame

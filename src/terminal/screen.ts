@@ -71,6 +71,7 @@ export class TurnStatusTracker {
   }
 
   elapsedMs(): i64 {
+    if (this.inTurn && this.startedAt == 0) { return NO_TURN; }
     if (this.inTurn) { return time.monotonic() - this.startedAt; }
     return this.finishedElapsedMs;
   }

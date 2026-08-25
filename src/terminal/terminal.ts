@@ -182,7 +182,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     let hello: SessionHelloFrame = {
       v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
       sessionId: relay.sessionId, workspace: workspaceRoot, model: live.cfg.model,
-      mode: session.mode, protocol: PROTOCOL_VERSION,
+      mode: session.mode, protocol: PROTOCOL_VERSION, build: VERSION,
     };
     relay.publish(encodeSessionHello(hello));
     sb.append("\nattached - code " + result.code + " - " + result.url);

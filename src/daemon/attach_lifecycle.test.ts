@@ -1,22 +1,32 @@
-import { helloWorkspace, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
+import { helloWorkspace, helloBuild, describeBuild, buildMismatchNotes, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
+import { VERSION } from "../version.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello } from "../protocol/frames.ts";
 
-function hello(workspace: string): string {
+function helloFrom(workspace: string, build: string): string {
   let f: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: 0, type: SESSION_HELLO,
     sessionId: "daemon-8300", workspace: workspace, model: "stub",
-    mode: "ask", protocol: PROTOCOL_VERSION,
+    mode: "ask", protocol: PROTOCOL_VERSION, build: build,
   };
   return encodeSessionHello(f);
+}
+
+function hello(workspace: string): string {
+  return helloFrom(workspace, VERSION);
 }
 
 function helloSaying(mode: string, model: string): string {
   let f: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO,
     sessionId: "daemon-8300", workspace: "/tmp/mine", model: model,
-    mode: mode, protocol: PROTOCOL_VERSION,
+    mode: mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   return encodeSessionHello(f);
+}
+
+function helloBeforeTheBuildField(workspace: string): string {
+  return "{\"v\":1,\"seq\":0,\"type\":\"session.hello\",\"sessionId\":\"daemon-8300\",\"workspace\":\""
+    + workspace + "\",\"model\":\"stub\",\"mode\":\"ask\",\"protocol\":1}";
 }
 
 test("helloWorkspace is empty until a session.hello arrives", () => {
@@ -38,6 +48,41 @@ test("helloWorkspace answers with the first hello it saw", () => {
 
 test("a daemon for another workspace does not read as this one", () => {
   expect(helloWorkspace([hello("/tmp/theirs/repo")]) != "/tmp/mine/repo");
+});
+
+test("a daemon that predates the build field still names its workspace", () => {
+  expect(helloWorkspace([helloBeforeTheBuildField("/tmp/mine")]) == "/tmp/mine");
+});
+
+test("helloBuild reads the build out of a session.hello", () => {
+  expect(helloBuild([helloFrom("/tmp/mine", "0.21.0")]) == "0.21.0");
+  expect(helloBuild([helloFrom("/tmp/mine", VERSION)]) == VERSION);
+});
+
+test("a daemon that never said hello, and one that predates the field, both read as an unknown build", () => {
+  expect(helloBuild([]) == "");
+  expect(helloBuild([helloBeforeTheBuildField("/tmp/mine")]) == "");
+});
+
+test("an unknown build is described rather than left blank in the refusal", () => {
+  expect(describeBuild("") == "a build too old to say which one");
+  expect(describeBuild("0.21.0") == "joule 0.21.0");
+});
+
+test("the refusal names both builds and the port before anything a narrow terminal would clip", () => {
+  let notes = buildMismatchNotes(8342, "0.21.0");
+  expect(notes.length == 3);
+  expect(notes[0].length < 80);
+  expect(notes[0].indexOf("8342") > 0);
+  expect(notes[0].indexOf("joule 0.21.0") > 0);
+  expect(notes[0].indexOf(VERSION) > 0);
+});
+
+test("the refusal says what to do about it, in a line short enough to survive being clipped", () => {
+  let notes = buildMismatchNotes(8342, "");
+  expect(notes[0].indexOf("a build too old to say which one") > 0);
+  expect(notes[2].indexOf("joule --stop") > 0);
+  expect(notes[2].length < 80);
 });
 
 test("a client with nothing replayed to it yet falls back to what it guessed", () => {
