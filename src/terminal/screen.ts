@@ -15,6 +15,7 @@ import { planToolOutputCollapse } from "./collapse.ts";
 import { completionRows, panelBudget } from "./completion.ts";
 import { promptRowCount, usesBox, buildPromptMarked } from "./input_box.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
+import { rangeForLine, highlightRange, selectionIndicator } from "./selection.ts";
 
 const STDIN: int = 0;
 const STATUS_ROWS: int = 1;
@@ -128,6 +129,8 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
 
   let quantaText = rk.quantaText();
   let atBottom = sb.isAtBottom();
+  if (sb.selection.copied && input.buf != "") { sb.selection.copied = false; }
+  let selectionText = selectionIndicator(sb.selection);
   let indicatorRows = 0;
   if (!atBottom) { indicatorRows = indicatorRows + 1; }
   if (quantaText != "") { indicatorRows = indicatorRows + 1; }
@@ -136,22 +139,31 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
 
   let visible = r - STATUS_ROWS - promptRows - indicatorRows - panel.length;
   if (visible < 0) { visible = 0; }
-  let tail = sb.tailFrom(visible, sb.offset);
-  let blanks = visible - tail.length;
+  let indices = sb.tailIndicesFrom(visible, sb.offset);
+  let blanks = visible - indices.length;
   if (blanks < 0) { blanks = 0; }
+
+  let rowLine: int[] = [-1];
 
   let out = HIDE_CURSOR;
   let row = 1;
   while (row <= blanks) {
     out = out + cursorTo(row, 1) + CLEAR_LINE;
+    rowLine.push(-1);
     row = row + 1;
   }
   let i = 0;
-  while (i < tail.length) {
-    out = out + cursorTo(row, 1) + CLEAR_LINE + clip(tail[i], c);
+  while (i < indices.length) {
+    let lineIndex = indices[i];
+    rowLine.push(lineIndex);
+    let drawn = clip(sb.lines[lineIndex], c);
+    let span = rangeForLine(sb.selection, lineIndex);
+    if (span.to >= span.from) { drawn = highlightRange(drawn, span.from, span.to); }
+    out = out + cursorTo(row, 1) + CLEAR_LINE + drawn;
     row = row + 1;
     i = i + 1;
   }
+  sb.selection.setRowMap(rowLine);
   if (!atBottom) {
     out = out + cursorTo(row, 1) + CLEAR_LINE + styleScrollIndicator(clip("-- scrolled up, PageDown to return to the live view --", c));
     row = row + 1;
@@ -166,7 +178,9 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
     row = row + 1;
     pr = pr + 1;
   }
-  out = out + cursorTo(r - promptRows, 1) + CLEAR_LINE + clip(buildStatusLine(rk.statusInfo(mode), c), c);
+  let statusText = buildStatusLine(rk.statusInfo(mode), c);
+  if (selectionText != "") { statusText = styleScrollIndicator(selectionText); }
+  out = out + cursorTo(r - promptRows, 1) + CLEAR_LINE + clip(statusText, c);
 
   let prompt = buildPromptMarked(input.buf, input.marker, c, r);
   let promptTop = r - promptRows + 1;

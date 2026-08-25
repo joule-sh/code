@@ -1,4 +1,5 @@
 import { collapsedMarker, expandedMarker } from "./collapse.ts";
+import { Selection } from "./selection.ts";
 
 export class CollapseGroup {
   markerRow: int;
@@ -28,11 +29,13 @@ export class Scrollback {
   lines: string[];
   offset: int;
   groups: CollapseGroup[];
+  selection: Selection;
 
   constructor() {
     this.lines = [""];
     this.offset = 0;
     this.groups = [];
+    this.selection = new Selection();
   }
 
   append(text: string): void {
@@ -84,6 +87,7 @@ export class Scrollback {
     this.lines = [""];
     this.offset = 0;
     this.groups = [];
+    this.selection.clear();
   }
 
   setLine(index: int, text: string): void {
@@ -145,7 +149,7 @@ export class Scrollback {
     return this.tailFrom(n, 0);
   }
 
-  tailFrom(visible: int, offset: int): string[] {
+  tailIndicesFrom(visible: int, offset: int): int[] {
     let off = offset;
     if (off < 0) {
       off = 0;
@@ -154,7 +158,7 @@ export class Scrollback {
     if (off > m) {
       off = m;
     }
-    let picked: string[] = [];
+    let picked: int[] = [];
     let skipped = 0;
     let i = this.lines.length - 1;
     while (i >= 0 && picked.length < visible) {
@@ -162,16 +166,24 @@ export class Scrollback {
         if (skipped < off) {
           skipped = skipped + 1;
         } else {
-          picked.push(this.lines[i]);
+          picked.push(i);
         }
       }
       i = i - 1;
     }
-    let out: string[] = [];
+    let out: int[] = [];
     let j = picked.length - 1;
     while (j >= 0) {
       out.push(picked[j]);
       j = j - 1;
+    }
+    return out;
+  }
+
+  tailFrom(visible: int, offset: int): string[] {
+    let out: string[] = [];
+    for (const i of this.tailIndicesFrom(visible, offset)) {
+      out.push(this.lines[i]);
     }
     return out;
   }

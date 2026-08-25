@@ -68,7 +68,7 @@ export function commandList(): CommandInfo[] {
     { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
     { name: "/memory", args: "[add <text>|forget <n>|clear]", description: "show, add to, or edit what joule remembers about you" },
     { name: "/update", args: "", description: "download and install the latest release" },
-    { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (default off, so drags select text)" },
+    { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (on: wheel scrolls, drag selects)" },
     { name: "/clear", args: "", description: "clear the scrollback" },
     { name: "/exit", args: "", description: "quit" },
   ];

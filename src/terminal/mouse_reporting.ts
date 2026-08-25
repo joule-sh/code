@@ -14,7 +14,7 @@ function isOnWord(word: string): bool {
 export function mouseReportingOn(envValue: string, fileValue: string): bool {
   if (envValue.trim() != "") { return isOnWord(envValue); }
   if (fileValue.trim() != "") { return isOnWord(fileValue); }
-  return false;
+  return true;
 }
 
 export function mouseSettingWord(on: bool): string {
@@ -24,9 +24,10 @@ export function mouseSettingWord(on: bool): string {
 
 export function mouseStateText(on: bool): string {
   if (on) {
-    return "\nmouse reporting on - the wheel scrolls, Shift+drag still selects text";
+    return "\nmouse reporting on - the wheel scrolls, drag selects, release copies (OSC 52)"
+      + "\nnothing pasted? this terminal refused it - /mouse off gives selection back to it";
   }
-  return "\nmouse reporting off - drag selects text as usual, PageUp/PageDown scroll";
+  return "\nmouse reporting off - your terminal's own drag selects, PageUp/PageDown scroll";
 }
 
 export class MouseReporting {

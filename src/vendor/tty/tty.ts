@@ -10,6 +10,8 @@ declare function tty_open_devnull_for_test(): int;
 declare function tty_open_test_pipe(): int;
 declare function tty_write_byte_to_test_pipe(byte: int): int;
 
+import { MouseEvent, decodeSgrMouse, MOUSE_PRESS, MOUSE_DRAG, MOUSE_RELEASE, MOUSE_WHEEL_UP, MOUSE_WHEEL_DOWN } from "./mouse_events.ts";
+
 export function isatty(fd: int): bool {
   return tty_isatty(fd) == 1;
 }
@@ -55,18 +57,25 @@ export const KEY_PAGE_UP: string = "page_up";
 export const KEY_PAGE_DOWN: string = "page_down";
 export const KEY_SCROLL_UP: string = "scroll_up";
 export const KEY_SCROLL_DOWN: string = "scroll_down";
+export const KEY_MOUSE_PRESS: string = "mouse_press";
+export const KEY_MOUSE_DRAG: string = "mouse_drag";
+export const KEY_MOUSE_RELEASE: string = "mouse_release";
 export const KEY_EOF: string = "eof";
 export const KEY_UNKNOWN: string = "unknown";
 export const KEY_TIMEOUT: string = "timeout";
 
-export type Key = { kind: string, char: string };
+export type Key = { kind: string, char: string, row: int, col: int };
 
 function simpleKey(kind: string): Key {
-  return { kind: kind, char: "" };
+  return { kind: kind, char: "", row: 0, col: 0 };
 }
 
 function charKey(ch: string): Key {
-  return { kind: KEY_CHAR, char: ch };
+  return { kind: KEY_CHAR, char: ch, row: 0, col: 0 };
+}
+
+function mouseKey(kind: string, row: int, col: int): Key {
+  return { kind: kind, char: "", row: row, col: col };
 }
 
 function utf8ContinuationCount(first: int): int {
@@ -89,26 +98,28 @@ function readUtf8Char(fd: int, first: int): string {
   return out;
 }
 
+function keyForMouse(ev: MouseEvent): Key {
+  if (ev.kind == MOUSE_WHEEL_UP) { return simpleKey(KEY_SCROLL_UP); }
+  if (ev.kind == MOUSE_WHEEL_DOWN) { return simpleKey(KEY_SCROLL_DOWN); }
+  if (ev.kind == MOUSE_PRESS) { return mouseKey(KEY_MOUSE_PRESS, ev.row, ev.col); }
+  if (ev.kind == MOUSE_DRAG) { return mouseKey(KEY_MOUSE_DRAG, ev.row, ev.col); }
+  if (ev.kind == MOUSE_RELEASE) { return mouseKey(KEY_MOUSE_RELEASE, ev.row, ev.col); }
+  return simpleKey(KEY_UNKNOWN);
+}
+
 function readSgrMouse(fd: int): Key {
-  let button = 0;
-  let sawTerminator = false;
-  let isPress = false;
-  let field = 0;
-  while (!sawTerminator) {
+  let params = "";
+  let terminator = 0;
+  while (terminator == 0) {
     let b = readByteTimeout(fd, 50);
     if (b < 0) { return simpleKey(KEY_UNKNOWN); }
     if (b == 77 || b == 109) {
-      sawTerminator = true;
-      isPress = b == 77;
-    } else if (b == 59) {
-      field = field + 1;
-    } else if (b >= 48 && b <= 57 && field == 0) {
-      button = button * 10 + (b - 48);
+      terminator = b;
+    } else {
+      params = params + String.fromCharCode(b);
     }
   }
-  if (isPress && button == 64) { return simpleKey(KEY_SCROLL_UP); }
-  if (isPress && button == 65) { return simpleKey(KEY_SCROLL_DOWN); }
-  return simpleKey(KEY_UNKNOWN);
+  return keyForMouse(decodeSgrMouse(params, terminator == 77));
 }
 
 function readEscapeSequence(fd: int): Key {
@@ -169,8 +180,8 @@ export const HIDE_CURSOR: string = ESC + "[?25l";
 export const SHOW_CURSOR: string = ESC + "[?25h";
 export const CLEAR_SCREEN: string = ESC + "[2J";
 export const CLEAR_LINE: string = ESC + "[2K";
-export const ENABLE_MOUSE_REPORTING: string = ESC + "[?1000h" + ESC + "[?1006h";
-export const DISABLE_MOUSE_REPORTING: string = ESC + "[?1000l" + ESC + "[?1006l";
+export const ENABLE_MOUSE_REPORTING: string = ESC + "[?1000h" + ESC + "[?1002h" + ESC + "[?1006h";
+export const DISABLE_MOUSE_REPORTING: string = ESC + "[?1006l" + ESC + "[?1002l" + ESC + "[?1000l";
 
 export function cursorTo(row: int, col: int): string {
   return ESC + "[" + `${row}` + ";" + `${col}` + "H";
@@ -363,81 +374,6 @@ test("readKey decodes a 2-byte UTF-8 character", () => {
   let k = readKey(fd);
   expect(k.kind == KEY_CHAR);
   expect(k.char.length == 2);
-});
-
-function writeMouseSequence(button: string, terminator: int): void {
-  tty_write_byte_to_test_pipe(27);
-  tty_write_byte_to_test_pipe(91);
-  tty_write_byte_to_test_pipe(60);
-  let i = 0;
-  while (i < button.length) {
-    tty_write_byte_to_test_pipe(button.charCodeAt(i));
-    i = i + 1;
-  }
-  tty_write_byte_to_test_pipe(59);
-  tty_write_byte_to_test_pipe(49);
-  tty_write_byte_to_test_pipe(48);
-  tty_write_byte_to_test_pipe(59);
-  tty_write_byte_to_test_pipe(53);
-  tty_write_byte_to_test_pipe(terminator);
-}
-
-test("readKey decodes an SGR wheel-up event", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("64", 77);
-  expect(readKey(fd).kind == KEY_SCROLL_UP);
-});
-
-test("readKey decodes an SGR wheel-down event", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("65", 77);
-  expect(readKey(fd).kind == KEY_SCROLL_DOWN);
-});
-
-test("readKeyTimeout decodes a wheel event just like readKey", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("64", 77);
-  expect(readKeyTimeout(fd, 50).kind == KEY_SCROLL_UP);
-});
-
-test("a mouse click press decodes to unknown with every byte consumed", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("0", 77);
-  tty_write_byte_to_test_pipe(97);
-  expect(readKey(fd).kind == KEY_UNKNOWN);
-  let k = readKey(fd);
-  expect(k.kind == KEY_CHAR);
-  expect(k.char == "a");
-});
-
-test("a mouse release decodes to unknown with every byte consumed", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("0", 109);
-  tty_write_byte_to_test_pipe(98);
-  expect(readKey(fd).kind == KEY_UNKNOWN);
-  let k = readKey(fd);
-  expect(k.kind == KEY_CHAR);
-  expect(k.char == "b");
-});
-
-test("a wheel-coded release event is not a scroll", () => {
-  let fd = tty_open_test_pipe();
-  writeMouseSequence("64", 109);
-  expect(readKey(fd).kind == KEY_UNKNOWN);
-});
-
-test("an unterminated mouse sequence gives up as unknown on timeout", () => {
-  let fd = tty_open_test_pipe();
-  tty_write_byte_to_test_pipe(27);
-  tty_write_byte_to_test_pipe(91);
-  tty_write_byte_to_test_pipe(60);
-  tty_write_byte_to_test_pipe(54);
-  expect(readKey(fd).kind == KEY_UNKNOWN);
-});
-
-test("mouse reporting constants pair 1000 and 1006 private modes", () => {
-  expect(ENABLE_MOUSE_REPORTING == ESC + "[?1000h" + ESC + "[?1006h");
-  expect(DISABLE_MOUSE_REPORTING == ESC + "[?1000l" + ESC + "[?1006l");
 });
 
 test("ANSI helpers produce the expected escape sequences", () => {

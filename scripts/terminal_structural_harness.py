@@ -37,11 +37,27 @@ BANNER = "joule - type a request, /help for commands, ctrl-d to quit"
 ALT_ENTER = "\x1b[?1049h"
 ALT_EXIT = "\x1b[?1049l"
 HIDE_CURSOR = "\x1b[?25l"
-MOUSE_ENABLE = "\x1b[?1000h\x1b[?1006h"
-MOUSE_DISABLE = "\x1b[?1000l\x1b[?1006l"
+MOUSE_ENABLE = "\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+MOUSE_DISABLE = "\x1b[?1006l\x1b[?1002l\x1b[?1000l"
 WHEEL_UP = b"\x1b[<64;10;5M"
 WHEEL_DOWN = b"\x1b[<65;10;5M"
 MOUSE_CLICK = b"\x1b[<0;5;5M\x1b[<0;5;5m"
+OSC52_PREFIX = "\x1b]52;c;"
+BEL = "\x07"
+SELECTING_MARKER = "-- selecting "
+COPIED_MARKER = "-- copied "
+
+
+def mouse_press(row, col):
+    return ("\x1b[<0;%d;%dM" % (col, row)).encode()
+
+
+def mouse_drag(row, col):
+    return ("\x1b[<32;%d;%dM" % (col, row)).encode()
+
+
+def mouse_release(row, col):
+    return ("\x1b[<0;%d;%dm" % (col, row)).encode()
 
 TOOL_CALL_MARKER = "  -> "
 TOOL_RESULT_OK_MARKER = "     ok:"
@@ -486,7 +502,7 @@ def check_mouse_teardown(full_text, exit_text, exit_label, reporting_on):
     exit_idx = exit_text.rfind(ALT_EXIT)
     ok(exit_idx >= 0, "the alt screen exit sequence appears in the byte stream on %s exit" % exit_label)
     if reporting_on:
-        ok(disable_idx >= 0, "the mouse reporting disable sequences (1000l+1006l) appear in the byte stream on %s exit (ticket #82)" % exit_label)
+        ok(disable_idx >= 0, "the mouse reporting disable sequences (1006l+1002l+1000l) appear in the byte stream on %s exit (ticket #82)" % exit_label)
         ok(disable_idx >= 0 and exit_idx >= 0 and disable_idx < exit_idx, "mouse reporting is disabled before the alt screen exits on %s exit (ticket #82)" % exit_label)
     else:
         ok(disable_idx < 0, "with mouse reporting off there is nothing to disable on %s exit, so nothing is written and the pair stays balanced" % exit_label)
@@ -533,7 +549,7 @@ def run_ctrl_c_exit_scenario():
         exited = session.wait_exit(5.0)
         ok(exited, "joule exits cleanly on ctrl-c with an empty input line")
         session._pump(0.5)
-        check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", False)
+        check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", True)
     finally:
         if session is not None:
             session.close()
@@ -1165,8 +1181,9 @@ def run_scenario():
 
 
 def run_mouse_setting_scenario():
-    """#170: mouse reporting is off out of the box, so a drag is the terminal's
-    own selection, and /mouse trades that for the wheel when someone wants it."""
+    """#170: reporting is on out of the box now that joule does the selecting
+    itself, and /mouse off is still there for anyone who wants their emulator's
+    own selection back."""
     work_dir = None
     stub_proc = None
     session = None
@@ -1180,50 +1197,53 @@ def run_mouse_setting_scenario():
         alt_idx = startup_text.find(ALT_ENTER)
         ok(alt_idx >= 0, "joule with no config file still enters the alt screen at startup")
         ok(startup_text.find(HIDE_CURSOR) == alt_idx + len(ALT_ENTER), "the cursor hide still follows the alt screen enter with nothing between them")
-        ok(MOUSE_ENABLE not in startup_text, "no mouse reporting enable (1000h+1006h) is written at startup by default, so the emulator keeps click-drag selection (#170)")
+        expected_mouse_idx = alt_idx + len(ALT_ENTER) + len(HIDE_CURSOR)
+        ok(startup_text.find(MOUSE_ENABLE) == expected_mouse_idx, "with no config file at all, mouse reporting (1000h+1002h+1006h) is enabled right after the alt screen, because joule now does the selecting itself (#170)")
 
         session.write("/cat file_a.txt\r")
         session.wait_for("FILE_A_LINE_050", timeout=10.0)
         session.settle(0.2, 1.5)
 
         for _ in range(3):
-            session.write(b"\x1b[5~")
-            session.settle(0.15, 1.0)
-        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "PageUp scrolls the transcript with mouse reporting off, which is what the status line promises (#157)")
-
-        for _ in range(6):
-            session.write(b"\x1b[6~")
-            session.settle(0.15, 1.0)
-        ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "PageDown returns to the live view with mouse reporting off")
-
-        session.write("/mouse\r")
-        session.settle(0.3, 2.0)
-        ok("mouse reporting off" in strip_sgr(last_redraw_block(text(bytes(session.raw)))), "/mouse with no argument says which state it is in")
-
-        before_on = len(session.raw)
-        session.write("/mouse on\r")
-        session.settle(0.3, 2.0)
-        turned_on = text(bytes(session.raw[before_on:]))
-        ok(MOUSE_ENABLE in turned_on, "/mouse on writes the enable sequences (1000h+1006h) to the terminal it is already running in")
-        ok("mouse reporting on" in strip_sgr(last_redraw_block(text(bytes(session.raw)))), "/mouse on says so in the transcript")
-        ok(read_config(home_dir).get("mouse") == "on", "/mouse on writes the setting to the config file, so the next run starts with it")
-
-        for _ in range(3):
             session.write(WHEEL_UP)
             session.settle(0.15, 1.0)
-        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "with reporting turned on the wheel scrolls the transcript again (ticket #82)")
+        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "out of the box the wheel scrolls the transcript, with nothing to turn on first (#170)")
 
         for _ in range(5):
             session.write(WHEEL_DOWN)
             session.settle(0.15, 1.0)
         ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "wheel-down all the way returns to the live view")
 
+        for _ in range(3):
+            session.write(b"\x1b[5~")
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "PageUp still scrolls the transcript with reporting on, which is what the status line promises (#157)")
+
+        for _ in range(6):
+            session.write(b"\x1b[6~")
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "PageDown returns to the live view")
+
+        session.write("/mouse\r")
+        session.settle(0.3, 2.0)
+        state_screen = strip_sgr(last_redraw_block(text(bytes(session.raw))))
+        ok("mouse reporting on" in state_screen, "/mouse with no argument says which state it is in")
+        ok("OSC 52" in state_screen, "/mouse names the mechanism the copy travels over, so a refusal is diagnosable")
+
         before_off = len(session.raw)
         session.write("/mouse off\r")
         session.settle(0.3, 2.0)
         turned_off = text(bytes(session.raw[before_off:]))
-        ok(MOUSE_DISABLE in turned_off, "/mouse off writes the disable sequences (1000l+1006l) back to the live terminal")
-        ok(read_config(home_dir).get("mouse") == "off", "/mouse off writes that back to the config file too")
+        ok(MOUSE_DISABLE in turned_off, "/mouse off writes the disable sequences (1006l+1002l+1000l) back to the live terminal")
+        ok("mouse reporting off" in strip_sgr(last_redraw_block(text(bytes(session.raw)))), "/mouse off says so in the transcript")
+        ok(read_config(home_dir).get("mouse") == "off", "/mouse off writes the setting to the config file, so the next run starts with it")
+
+        before_on = len(session.raw)
+        session.write("/mouse on\r")
+        session.settle(0.3, 2.0)
+        turned_on = text(bytes(session.raw[before_on:]))
+        ok(MOUSE_ENABLE in turned_on, "/mouse on writes the enable sequences (1000h+1002h+1006h) back to the terminal it is already running in")
+        ok(read_config(home_dir).get("mouse") == "on", "/mouse on writes that back to the config file too")
 
         pre_exit_idx = len(session.raw)
         session.write("\x04")
@@ -1235,7 +1255,168 @@ def run_mouse_setting_scenario():
         check_zero_newlines(full_text)
         check_cursor_monotonic(full_text)
         check_color_bleed(full_text)
-        check_mouse_teardown(full_text, text(bytes(session.raw[pre_exit_idx:])), "ctrl-d with reporting toggled back off", False)
+        check_mouse_teardown(full_text, text(bytes(session.raw[pre_exit_idx:])), "ctrl-d with reporting toggled back on", True)
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
+def file_a_rows(full_text):
+    return [row for (row, cell) in parse_redraw_rows(last_redraw_block(full_text)) if "FILE_A_LINE_" in strip_sgr(cell)]
+
+
+def row_text(full_text, wanted):
+    for (row, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        if row == wanted:
+            return strip_sgr(cell)
+    return None
+
+
+def reversed_rows(block):
+    return [row for (row, cell) in parse_redraw_rows(block) if REVERSE_SEQ in cell]
+
+
+def osc52_payloads(segment):
+    out = []
+    idx = 0
+    while True:
+        start = segment.find(OSC52_PREFIX, idx)
+        if start < 0:
+            return out
+        end = segment.find(BEL, start)
+        if end < 0:
+            return out
+        out.append(segment[start + len(OSC52_PREFIX):end])
+        idx = end + 1
+
+
+def drag_over(session, top_row, bottom_row, cols):
+    session.write(mouse_press(top_row, 1))
+    session.settle(0.2, 1.0)
+    session.write(mouse_drag(bottom_row, cols))
+    session.settle(0.2, 1.5)
+
+
+def run_mouse_selection_scenario():
+    """#170: with reporting on, joule does the selecting itself. A drag over the
+    transcript highlights the rows it covers and says so in words, the release
+    hands exactly those rows to the clipboard over OSC 52, the wheel keeps
+    scrolling throughout, and /mouse off takes the whole thing away again."""
+    import base64
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-select-")
+        session.wait_for(BANNER, timeout=10.0)
+        session.write("/cat file_a.txt\r")
+        session.wait_for("FILE_A_LINE_050", timeout=10.0)
+        session.settle(0.3, 2.0)
+
+        rows = file_a_rows(text(bytes(session.raw)))
+        ok(len(rows) >= 4, "the transcript is showing enough /cat output to drag across, got %d rows" % len(rows))
+        if len(rows) < 4:
+            raise Failure("not enough transcript rows to run the selection scenario")
+        top_row, bottom_row = rows[-4], rows[-2]
+
+        drag_over(session, top_row, bottom_row, session.cols)
+        drag_block = last_redraw_block(text(bytes(session.raw)))
+        highlighted = reversed_rows(drag_block)
+        ok(highlighted == list(range(top_row, bottom_row + 1)), "a press and drag puts every row it covers into reverse video and no others, wanted rows %d..%d, got %r" % (top_row, bottom_row, highlighted))
+        ok(SELECTING_MARKER in strip_sgr(drag_block), "while the drag is live the screen says how much is selected in words, so the highlight is not the only signal (colour degrades)")
+
+        session.write(WHEEL_UP)
+        session.settle(0.2, 1.5)
+        during = last_redraw_block(text(bytes(session.raw)))
+        ok(SCROLL_INDICATOR in during, "the wheel still scrolls the transcript while a drag is in progress (#170 keeps #82 working)")
+        ok(SELECTING_MARKER in strip_sgr(during), "the selection survives the view scrolling underneath it, because it is anchored to transcript lines and not to screen rows")
+        for _ in range(4):
+            session.write(WHEEL_DOWN)
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "wheel-down returns to the live view with the drag still held")
+
+        session.write(mouse_drag(bottom_row, session.cols))
+        session.settle(0.2, 1.5)
+        pre_release = text(bytes(session.raw))
+        covered = [row_text(pre_release, r) for r in range(top_row, bottom_row + 1)]
+        ok(all(r is not None for r in covered), "every row the selection covers is on the screen the release will copy from")
+        expected = "\n".join(covered)
+
+        release_idx = len(session.raw)
+        session.write(mouse_release(bottom_row, session.cols))
+        session.settle(0.3, 2.0)
+        released = text(bytes(session.raw[release_idx:]))
+
+        payloads = osc52_payloads(released)
+        ok(len(payloads) == 1, "the release writes exactly one OSC 52 clipboard sequence, got %d" % len(payloads))
+        want = base64.b64encode(expected.encode("latin1")).decode("ascii")
+        ok(payloads and payloads[0] == want, "the OSC 52 payload is the base64 of exactly the rows the drag covered")
+        ok((OSC52_PREFIX + want + BEL) in released, "the clipboard write is a well-formed OSC 52: ESC ] 52 ; c ; <base64> BEL")
+        if payloads:
+            ok(base64.b64decode(payloads[0]).decode("latin1") == expected, "and it decodes back to the selected text, line breaks and all")
+
+        copied_screen = strip_sgr(last_redraw_block(text(bytes(session.raw))))
+        ok(COPIED_MARKER in copied_screen, "after the release the screen says what was copied, in words")
+        ok("/mouse off" in copied_screen, "and names the way out, because OSC 52 has no reply to wait on when a terminal refuses it")
+        ok(reversed_rows(last_redraw_block(text(bytes(session.raw)))) == list(range(top_row, bottom_row + 1)), "the copied range stays highlighted until it is cleared")
+
+        session.write(b"\x1b")
+        session.settle(0.4, 2.0)
+        cleared = last_redraw_block(text(bytes(session.raw)))
+        ok(not reversed_rows(cleared), "Escape clears the highlight")
+        ok(COPIED_MARKER not in strip_sgr(cleared), "and takes the copied note away with it")
+
+        for _ in range(3):
+            session.write(WHEEL_UP)
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "the wheel still scrolls after a selection has been made and cleared")
+        for _ in range(5):
+            session.write(WHEEL_DOWN)
+            session.settle(0.15, 1.0)
+
+        session.write("/mouse off\r")
+        session.settle(0.3, 2.0)
+        off_idx = len(session.raw)
+        off_rows = file_a_rows(text(bytes(session.raw)))
+        ok(len(off_rows) >= 4, "there is still /cat output on screen to try dragging over with reporting off")
+        if len(off_rows) >= 4:
+            drag_over(session, off_rows[-4], off_rows[-2], session.cols)
+            session.write(mouse_release(off_rows[-2], session.cols))
+            session.settle(0.3, 2.0)
+            off_segment = text(bytes(session.raw[off_idx:]))
+            ok(not osc52_payloads(off_segment), "with /mouse off a press, drag and release copy nothing at all")
+            off_block = last_redraw_block(text(bytes(session.raw)))
+            ok(not reversed_rows(off_block), "and no row on screen is highlighted")
+            off_screen = strip_sgr(off_block)
+            ok(SELECTING_MARKER not in off_screen and COPIED_MARKER not in off_screen, "and the selection indicator is absent entirely, so the whole feature is gone")
+
+        session.resize(15, 45)
+        session.write("z")
+        session.write("\x7f")
+        session.settle(0.2, 1.5)
+        session.write("/mouse on\r")
+        session.settle(0.3, 2.0)
+        narrow_rows = file_a_rows(text(bytes(session.raw)))
+        if len(narrow_rows) >= 3:
+            drag_over(session, narrow_rows[-3], narrow_rows[-1], session.cols)
+            narrow_block = last_redraw_block(text(bytes(session.raw)))
+            ok(SELECTING_MARKER in strip_sgr(narrow_block), "a 45 column terminal still says a selection is live rather than dropping the row")
+            max_row = max((r for (r, _) in parse_redraw_rows(narrow_block)), default=0)
+            ok(max_row <= 15, "the selection indicator never pushes a redraw past the terminal height, got max row %d" % max_row)
+            session.write(mouse_release(narrow_rows[-1], session.cols))
+            session.settle(0.3, 2.0)
+
+        pre_exit_idx = len(session.raw)
+        session.write("\x04")
+        exited = session.wait_exit(5.0)
+        ok(exited, "joule exits cleanly on ctrl-d after a drag, a copy and a toggle")
+        session._pump(0.5)
+
+        full_text = text(bytes(session.raw))
+        check_zero_newlines(full_text)
+        check_cursor_monotonic(full_text)
+        check_color_bleed(full_text, " (selection highlight)")
+        check_mouse_teardown(full_text, text(bytes(session.raw[pre_exit_idx:])), "ctrl-d after a selection", True)
     finally:
         if work_dir is not None:
             stop_stub_session(work_dir, stub_proc, session)
@@ -1287,6 +1468,11 @@ def main():
         failures.append(str(e))
     try:
         run_mouse_setting_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_mouse_selection_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))
