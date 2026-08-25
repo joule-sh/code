@@ -1,4 +1,4 @@
-import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, isMacosPlatform, PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64, PLATFORM_MACOS_X64 } from "./platform.ts";
+import { releasePlatform, releaseAssetName, releaseDirName, releaseDownloadUrl, unsupportedPlatformError, isMacosPlatform, signsAdHoc, PLATFORM_LINUX_X64, PLATFORM_MACOS_ARM64, PLATFORM_MACOS_X64 } from "./platform.ts";
 
 test("releasePlatform maps the three shipped os/arch pairs", () => {
   expect(releasePlatform("linux", "x64") == PLATFORM_LINUX_X64);
@@ -16,6 +16,12 @@ test("isMacosPlatform is true for both macOS targets and false for linux", () =>
   expect(isMacosPlatform(PLATFORM_MACOS_ARM64));
   expect(isMacosPlatform(PLATFORM_MACOS_X64));
   expect(!isMacosPlatform(PLATFORM_LINUX_X64));
+});
+
+test("signsAdHoc names Apple Silicon alone, because signing x86_64 writes over its code", () => {
+  expect(signsAdHoc(PLATFORM_MACOS_ARM64));
+  expect(!signsAdHoc(PLATFORM_MACOS_X64));
+  expect(!signsAdHoc(PLATFORM_LINUX_X64));
 });
 
 test("releaseAssetName and releaseDirName follow the release workflow's naming", () => {

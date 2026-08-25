@@ -112,14 +112,30 @@ jobs:
         run: echo "LUMEN_TARGET=x86_64-windows-gnu" >> "$GITHUB_ENV"
       - run: make release
       # The backend ad-hoc signs what it links for Apple Silicon and leaves
-      # x86_64 unsigned, so half of every macOS release went out carrying no
-      # signature at all (#196). Signing both here gives the two one rule, and
-      # costs nothing to do: an ad-hoc signature needs no Apple account and no
-      # certificate. It is not notarisation - a downloaded archive is still
-      # unknown to Gatekeeper - but it settles the part that was fatal, which
-      # is the kernel on Apple Silicon killing on exec anything it cannot check
-      # a signature for.
-      - if: runner.os == 'macOS'
+      # x86_64 unsigned, which is why #196 shipped Apple Silicon binaries the
+      # kernel killed on exec. Re-signing here settles that, and it is done on
+      # arm64 only.
+      #
+      # Signing x86_64 as well - which is what #196 did, to give the two one
+      # rule - is what blocked v0.20.0 (#255). The backend leaves an x86_64
+      # Mach-O with no room between its load commands and __text: the header is
+      # 32 bytes, sizeofcmds is 2064, and __text begins at file offset 2096.
+      # `codesign` has to add a 16-byte LC_CODE_SIGNATURE, so it grows the
+      # header to 2112 and writes those bytes over the first function in
+      # __text. The linker puts the C shim's code there, so plat_env is what
+      # gets destroyed, and relay reads the environment before it looks at
+      # argv - so `relay --version` faulted, and Zig's segfault handler then
+      # span forever in its own DWARF unwinder rather than dying. Nothing on
+      # arm64 is affected: the backend already emitted LC_CODE_SIGNATURE there,
+      # so re-signing replaces a blob in place and grows no header.
+      #
+      # The kernel asks for a signature on arm64 and asks for nothing on
+      # x86_64, where unsigned binaries have always run, so shipping Intel
+      # unsigned gives up nothing an ad-hoc signature was providing. It comes
+      # back when lumen can either sign x86_64 itself or pass the linker
+      # -headerpad_max_install_names; today `--link` only takes a library name,
+      # so there is no way to ask for the padding from here.
+      - if: runner.os == 'macOS' && matrix.target == 'aarch64-macos'
         run: |
           for bin in bin/joule bin/relay bin/joule-daemon; do
             codesign --sign - --force "$bin"

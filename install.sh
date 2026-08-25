@@ -61,7 +61,15 @@ unpacked="$staging/code-$platform"
 # landed, so it holds regardless of what the archive, the download or the
 # unpacking above did to them. A signature that already verifies is left alone,
 # so a sound release is not re-signed on every install.
-if [ "$os" = "Darwin" ]; then
+#
+# Apple Silicon only, and that is not a shortcut. An Intel Mac asks for no
+# signature at all, and signing there does real harm: the x86_64 binaries the
+# backend produces have no room between their load commands and __text, so
+# codesign adds LC_CODE_SIGNATURE by writing over the first function in the
+# code section and hands back a binary that verifies and then faults (#255,
+# lumen-lang-org/lumen#43). Signing an Intel install would break the very
+# binaries it was meant to protect, so this leaves them as they came.
+if [ "$os" = "Darwin" ] && [ "$arch" = "arm64" ]; then
   for bin in $binaries; do
     if codesign --verify --strict "$unpacked/$bin" >/dev/null 2>&1; then
       continue
