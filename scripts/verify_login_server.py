@@ -15,8 +15,8 @@ import sys
 import json
 import stat
 import shutil
-import tempfile
 import threading
+import scratch
 import importlib.util
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -109,7 +109,7 @@ def config_of(home_dir):
 
 def main():
     httpd, fake = start_fake_joule()
-    work_dir = tempfile.mkdtemp(prefix="login-server-")
+    work_dir = scratch.scratch_dir("login-server-")
     home_dir = os.path.join(work_dir, "home")
     repo_dir = os.path.join(work_dir, "repo")
     os.makedirs(home_dir, exist_ok=True)

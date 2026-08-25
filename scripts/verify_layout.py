@@ -8,10 +8,10 @@
 
 import os
 import sys
-import tempfile
 import shutil
 import subprocess
 import importlib.util
+import scratch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 spec = importlib.util.spec_from_file_location("harness", os.path.join(REPO_ROOT, "scripts", "terminal_structural_harness.py"))
@@ -63,7 +63,7 @@ COLLAPSE_MARKER_RE = harness.COLLAPSE_MARKER_RE
 LAST_README_LINE = "README_LINE_%03d" % harness.LONG_README_LINES
 
 def run_case(rows, cols, label_suffix, wait_full_banner):
-    work_dir = tempfile.mkdtemp(prefix="joule-layout-verify-")
+    work_dir = scratch.scratch_dir("joule-layout-verify-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)

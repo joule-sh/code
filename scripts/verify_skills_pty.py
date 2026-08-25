@@ -25,8 +25,8 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
+import scratch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOULE_BIN = os.path.join(REPO_ROOT, "bin", "joule")
@@ -76,7 +76,7 @@ def seed(repo_dir):
 
 
 def start(prefix, script=""):
-    work_dir = tempfile.mkdtemp(prefix=prefix)
+    work_dir = scratch.scratch_dir(prefix)
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)

@@ -35,10 +35,10 @@ import re
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scratch
 from win_conpty import ConPty
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -100,7 +100,7 @@ def wait_for_port(port, timeout, want=True):
 
 
 def workspace():
-    work = tempfile.mkdtemp(prefix="joule-win-daemon-")
+    work = scratch.scratch_dir("joule-win-daemon-")
     home = os.path.join(work, "home")
     ws = os.path.join(work, "ws")
     os.makedirs(home)

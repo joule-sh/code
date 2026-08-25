@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scratchDir } from "./scratch.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLISH = path.join(ROOT, "scripts", "publish_editor.mjs");
@@ -27,7 +27,7 @@ function ok(condition, label) {
   failures += 1;
 }
 
-const work = fs.mkdtempSync(path.join(os.tmpdir(), "joule-editor-publish-"));
+const work = scratchDir("joule-editor-publish-");
 const stubDir = path.join(work, "bin");
 fs.mkdirSync(stubDir);
 fs.writeFileSync(path.join(stubDir, "npx"), [

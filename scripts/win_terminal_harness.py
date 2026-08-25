@@ -35,10 +35,10 @@ import re
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scratch
 from win_conpty import ConPty
 
 # What this prints on a failure is a dump of a terminal, box drawing and all,
@@ -86,7 +86,7 @@ def free_port():
 
 
 def workspace():
-    work = tempfile.mkdtemp(prefix="joule-win-harness-")
+    work = scratch.scratch_dir("joule-win-harness-")
     home = os.path.join(work, "home")
     ws = os.path.join(work, "ws")
     os.makedirs(home)
