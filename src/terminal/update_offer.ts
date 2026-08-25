@@ -52,7 +52,7 @@ export function installedMessage(payload: string): string {
 
 function disableUpdateChecks(): void {
   let file = loadConfigFile(configFilePath());
-  let updated: ConfigFile = { baseUrl: file.baseUrl, model: file.model, apiKey: file.apiKey, server: file.server, updateCheck: "off" };
+  let updated: ConfigFile = { baseUrl: file.baseUrl, model: file.model, apiKey: file.apiKey, server: file.server, updateCheck: "off", mouse: file.mouse };
   saveConfigFile(configFilePath(), updated);
 }
 

@@ -8,6 +8,7 @@ export const CMD_CAT: string = "cat";
 export const CMD_TASKS: string = "tasks";
 export const CMD_MEMORY: string = "memory";
 export const CMD_UPDATE: string = "update";
+export const CMD_MOUSE: string = "mouse";
 export const CMD_CLEAR: string = "clear";
 export const CMD_EXIT: string = "exit";
 export const CMD_UNKNOWN: string = "unknown";
@@ -49,6 +50,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "tasks") { return withKind(CMD_TASKS, arg); }
   if (name == "memory") { return withKind(CMD_MEMORY, arg); }
   if (name == "update") { return withKind(CMD_UPDATE, arg); }
+  if (name == "mouse") { return withKind(CMD_MOUSE, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
   if (name == "exit") { return withKind(CMD_EXIT, arg); }
   return withKind(CMD_UNKNOWN, name);
@@ -66,6 +68,7 @@ export function commandList(): CommandInfo[] {
     { name: "/tasks", args: "[cancel <id>]", description: "list background tasks and subagents, or cancel one" },
     { name: "/memory", args: "[add <text>|forget <n>|clear]", description: "show, add to, or edit what joule remembers about you" },
     { name: "/update", args: "", description: "download and install the latest release" },
+    { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (default off, so drags select text)" },
     { name: "/clear", args: "", description: "clear the scrollback" },
     { name: "/exit", args: "", description: "quit" },
   ];
@@ -96,6 +99,7 @@ export function helpText(): string {
   }
   out = out + "\n" + padColumn("PageUp/PageDown", HELP_COLUMN) + "scroll the transcript";
   out = out + "\n" + padColumn("ctrl-o", HELP_COLUMN) + "expand or collapse the last long tool output";
-  out = out + "\n" + padColumn("Shift+drag", HELP_COLUMN) + "select text natively (GNOME Terminal, Windows Terminal); iTerm2 uses Option instead; Terminal.app needs View > Allow Mouse Reporting off";
+  out = out + "\n" + padColumn("drag", HELP_COLUMN) + "select and copy text with your terminal's own selection, which /mouse on trades away for the wheel";
+  out = out + "\n" + padColumn("Shift+drag", HELP_COLUMN) + "the same selection while /mouse is on (GNOME Terminal, Windows Terminal); iTerm2 uses Option instead; Terminal.app needs View > Allow Mouse Reporting off";
   return out;
 }
