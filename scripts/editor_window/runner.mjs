@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 import { assertTabSurvivesRestart } from "./restart_check.mjs";
-import { scratchDir } from "../scratch.mjs";
+import { scratchDir, sweepStale } from "../scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -288,6 +288,8 @@ async function main() {
   }
 
   fs.mkdirSync(CACHE, { recursive: true });
+
+  sweepStale("joule-editor-");
 
   display = await startDisplay();
   if (failed) { return; }
