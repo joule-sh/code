@@ -20,8 +20,10 @@ const SHOTS = process.env.JOULE_EDITOR_SHOT || "";
 const LOG = path.join(ROOT, "suite.log");
 
 const PROMPT = "fix the health route";
-const FIX_COMMAND = "echo 'Added a health check note.' >> README.md";
 const NOTE = "Added a health check note.";
+const FIX_COMMAND = process.platform === "win32"
+  ? "Add-Content -Path README.md -Value '" + NOTE + "'"
+  : "echo '" + NOTE + "' >> README.md";
 
 let failures = 0;
 let probeSeq = 0;
@@ -203,7 +205,9 @@ function stopStub() {
 }
 
 function real(p) {
-  try { return fs.realpathSync(p); } catch (e) { void e; return p; }
+  let out = p;
+  try { out = fs.realpathSync.native(p); } catch (e) { void e; }
+  return process.platform === "win32" ? out.toLowerCase() : out;
 }
 
 async function openPanel() {

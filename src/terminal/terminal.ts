@@ -13,6 +13,7 @@ import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadProjectInstructions } from "../session/project_instructions.ts";
+import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
@@ -51,7 +52,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
   }
   let server = loadServerOrigin(argv);
-  let workspaceRoot = process.cwd();
+  let workspaceRoot = currentWorkspaceRoot();
   let resume = resolveResume(argv, workspaceRoot);
   let updateNotifier = startUpdateNotifier(); let updateOffer = new PendingUpdateOffer(); let updateInstall = new PendingUpdateInstall();
 

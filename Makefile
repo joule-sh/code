@@ -199,8 +199,10 @@ editor-harness: build bin/stub_model editor-check
 
 # Downloads a real VS Code, opens a window on a throwaway workspace and drives
 # the panel through it. Needs a display: on Linux the runner starts its own
-# Xvfb when DISPLAY is unset, and kills it again on the way out.
-editor-window-harness: build bin/stub_model editor-check
+# Xvfb when DISPLAY is unset, and kills it again on the way out. A Windows
+# runner already has one, which is why this target names $(STUB_MODEL) rather
+# than the POSIX spelling of it - the same recipe runs there (#250).
+editor-window-harness: build $(STUB_MODEL) editor-check
 	npm --prefix scripts/editor_window ci --no-audit --no-fund
 	node scripts/editor_window/runner.mjs
 

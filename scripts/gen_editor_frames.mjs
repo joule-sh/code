@@ -96,12 +96,16 @@ function render() {
   return head + body.replace(/^\n+/, "\n") + foot;
 }
 
+function sameLines(a, b) {
+  return a.split("\r\n").join("\n") === b.split("\r\n").join("\n");
+}
+
 function main() {
   const wanted = render();
   const check = process.argv.includes("--check");
   const current = fs.existsSync(TARGET) ? fs.readFileSync(TARGET, "utf8") : "";
   if (check) {
-    if (current !== wanted) {
+    if (!sameLines(current, wanted)) {
       console.error(`FAIL: ${TARGET_REL} is out of sync with ${SOURCE_REL}. Run "make editor-frames" and commit the result.`);
       process.exitCode = 1;
       return;

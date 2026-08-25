@@ -9,8 +9,9 @@ import { assertTabSurvivesRestart } from "./restart_check.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
-const JOULE = path.join(REPO_ROOT, "bin", "joule");
-const STUB = path.join(REPO_ROOT, "bin", "stub_model");
+const EXE = process.platform === "win32" ? ".exe" : "";
+const JOULE = path.join(REPO_ROOT, "bin", "joule" + EXE);
+const STUB = path.join(REPO_ROOT, "bin", "stub_model" + EXE);
 const EXTENSION = path.join(REPO_ROOT, "editor");
 const SUITE = path.join(HERE, "suite.js");
 const CACHE = process.env.JOULE_VSCODE_CACHE || path.join(os.homedir(), ".cache", "joule-editor-window");
@@ -250,8 +251,12 @@ async function runScenario({ name: scenario, version }) {
     note(scenario + ": no daemon record survived the run");
   }
 
-  if (!failed && scenario === "editor-tab") {
+  if (!failed && scenario === "editor-tab" && process.platform !== "win32") {
     await assertTabSurvivesRestart({ version, cache: CACHE, joule: JOULE, note, die, display });
+  } else if (!failed && scenario === "editor-tab") {
+    note("editor-tab: the restart check reads /proc and quits the editor with a signal, neither of which"
+      + " Windows has - what a restored tab is made of is the editor's business rather than the platform's,"
+      + " so it stays on the runner that can drive it (joule-sh/code#250)");
   }
 
   if (await portOpen(stubPort)) {
@@ -262,10 +267,12 @@ async function runScenario({ name: scenario, version }) {
 async function main() {
   for (const bin of [JOULE, STUB]) {
     if (!fs.existsSync(bin)) {
-      die("missing " + bin + " - run `make build bin/stub_model` first");
+      die("missing " + bin + " - run `make build bin/stub_model" + EXE + "` first");
       return;
     }
   }
+
+  fs.mkdirSync(CACHE, { recursive: true });
 
   display = await startDisplay();
   if (failed) { return; }
@@ -273,6 +280,12 @@ async function main() {
   for (const scenario of SCENARIOS) {
     await runScenario(scenario);
     await sleep(3000);
+  }
+
+  if (!failed && ASKED_FOR.length > 0) {
+    note("PASS: " + SCENARIOS.map((s) => s.name + " on " + s.version).join(", ")
+      + " - a subset was asked for, so this says only what it ran");
+    return;
   }
 
   if (!failed) {

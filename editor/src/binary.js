@@ -1,8 +1,7 @@
-const { execFile } = require("node:child_process");
+const { execJoule } = require("./joule_bin.js");
 
 const MINIMUM_BINARY_VERSION = "0.13.0";
 const INSTALL_URL = "https://github.com/joule-sh/code#install";
-const WINDOWS_ISSUE_URL = "https://github.com/joule-sh/code/issues/173";
 const VERSION_TIMEOUT_MS = 10000;
 
 function parseVersionOutput(text) {
@@ -35,11 +34,6 @@ function missingMessage(bin) {
     + ", or point the joule.path setting at the binary you already have.";
 }
 
-function windowsMessage() {
-  return "There is no Windows joule binary yet (joule-sh/code#173), so this extension has nothing to drive here."
-    + " Open the folder through WSL or Remote-SSH: the extension runs on the remote side and drives the joule there.";
-}
-
 function outdatedMessage(version) {
   return "joule " + version + " is older than the " + MINIMUM_BINARY_VERSION
     + " this extension needs, so the daemon it starts does not speak the frames this panel reads."
@@ -50,32 +44,19 @@ function unusableMessage(bin, detail) {
   return "\"" + bin + "\" did not answer --version, so it is not a joule this extension can drive: " + detail;
 }
 
-function unsupportedPlatform(platform) {
-  const on = platform || process.platform;
-  if (on === "win32") { return windowsMessage(); }
-  return "";
-}
-
 function runVersion(bin, options) {
-  return new Promise((resolve) => {
-    execFile(bin, ["--version"], {
-      cwd: options.cwd,
-      env: options.env || process.env,
-      timeout: options.timeoutMs || VERSION_TIMEOUT_MS,
-      maxBuffer: 256 * 1024,
-    }, (err, stdout, stderr) => {
-      resolve({ err, stdout: String(stdout || ""), stderr: String(stderr || "") });
-    });
+  return execJoule(bin, ["--version"], {
+    cwd: options.cwd,
+    env: options.env,
+    platform: options.platform,
+    timeoutMs: options.timeoutMs || VERSION_TIMEOUT_MS,
+    maxBuffer: 256 * 1024,
   });
 }
 
 async function checkBinary(options) {
   const opts = options || {};
   const bin = opts.jouleBin || "joule";
-  const blocked = unsupportedPlatform(opts.platform);
-  if (blocked !== "") {
-    return { ok: false, problem: "platform", version: "", message: blocked, helpUrl: WINDOWS_ISSUE_URL, helpLabel: "Read #173" };
-  }
   const run = await runVersion(bin, opts);
   const version = parseVersionOutput(run.stdout);
   if (run.err && (run.err.code === "ENOENT" || run.err.code === "EACCES")) {
@@ -93,12 +74,10 @@ async function checkBinary(options) {
 
 module.exports = {
   checkBinary,
-  unsupportedPlatform,
   parseVersionOutput,
   releaseParts,
   compareReleases,
   isBelowMinimum,
   MINIMUM_BINARY_VERSION,
   INSTALL_URL,
-  WINDOWS_ISSUE_URL,
 };

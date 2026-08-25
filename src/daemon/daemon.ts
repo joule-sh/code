@@ -23,7 +23,7 @@ import { sweepInbox } from "./inbox.ts";
 import { inboxDir, daemonRuntimeDir } from "./paths.ts";
 import { writeDaemonInfo, removeDaemonInfo } from "./lifecycle.ts";
 import { VERSION } from "../version.ts";
-import { envOr } from "../vendor/platform/platform.ts";
+import { envOr, workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
 
 const STDIN_FD: int = 0;
 const APPROVAL_TIMEOUT_MS: int = 120000;
@@ -158,7 +158,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 
 export function runDaemonMain(): void {
   let argv = currentArgvForDaemon();
-  let workspaceRoot = process.cwd();
+  let workspaceRoot = currentWorkspaceRoot();
   let port = envPort("JOULE_DAEMON_PORT", 8199);
   runDaemon(argv, workspaceRoot, port);
 }

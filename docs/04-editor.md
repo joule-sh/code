@@ -79,6 +79,49 @@ is not about ports: a person driving a session from a terminal must not find
 the editor silently in it, so the editor says which of the two it is about to
 do before it does it.
 
+## Finding the joule to drive, on Windows (#250)
+
+`joule.path` names the binary, and its default is the bare name `joule`, left
+to the runtime to resolve against `PATH`. On Windows the runtime resolves less
+than a shell does, and the gap is exactly where an npm install lands.
+
+**npm writes no `joule.exe`.** The wrapper package has a `bin`, and npm turns
+a `bin` into a generated `joule.cmd` that runs `bin/joule` through node - a
+`.cmd`, because a filesystem symlink to the real binary needs a privilege an
+ordinary `npm install -g` cannot assume it has, which is why every other
+platform gets one and this one does not (docs/05-publishing.md). So on the
+install route most Windows users take, the only `joule` on `PATH` is a batch
+script.
+
+**Node will not start one.** Its spawn resolves an extensionless name against
+`.com` and `.exe` and stops there, so `joule` is `ENOENT` even with the shim
+sitting on `PATH`; naming `joule.cmd` outright fails differently, with
+`EINVAL`, because Node stopped building command lines for `cmd.exe` on its
+caller's behalf. Either way the panel reported joule as not installed on a
+machine where typing `joule` in a terminal works.
+
+`src/joule_bin.js` closes both. It resolves the name the way Windows does -
+each `PATH` directory in turn, `.exe` before `.cmd` inside each one, so a real
+binary beside a shim wins and no node process ends up in front of the daemon -
+and when what it finds is a script rather than an image, it starts it through
+`ComSpec` with the command line handed over whole, which is what keeps a shim
+path with a space in it intact. On every other platform it hands the name
+straight back: extensions are not what makes a file runnable there, and the
+runtime already does the search.
+
+**The workspace root is spelled one way.** Windows keeps whichever drive
+letter it was given, and the editor and the daemon are given different ones:
+VS Code's `fsPath` is `c:\...`, while the PowerShell `Start-Process` that
+launches the daemon normalises `-WorkingDirectory` to `C:\...`. The root is
+hashed into the session key and compared against the root a daemon reports, so
+before #250 the panel started a daemon, asked the port who it was serving, was
+told a different folder, and reported two daemons sharing a port.
+`normalizeWorkspacePath` in `src/vendor/platform/platform.ts` folds the drive
+letter at the one place the root enters - `process.cwd()`, in each entry point
+- and the panel's own `samePath` compares records case-insensitively there,
+because a record written by a terminal is not obliged to spell it the way this
+window does.
+
 ## Where the view opens (#199)
 
 **The session view is declared into the activity bar, and the right-hand
@@ -489,11 +532,26 @@ webview only when `context.extensionMode` is `Test`, and which `.vscodeignore`
 keeps out of the packaged `.vsix`. It reads text and dispatches real clicks on
 the real buttons; it does not stand in for the panel's own rendering.
 
+`make editor-window-harness` runs on Windows too, and the `editor-window-windows`
+job runs it there on every push (#250). It needs no provisioning step: the
+display the Linux job installs an Xvfb for is one a Windows runner already
+has. The runner creates the download cache itself rather than leaving that to
+`@vscode/test-electron`, which makes the last directory and not the ones above
+it - `~/.cache` is a POSIX convention a Windows profile has no reason to have,
+and a runner there starts without one. It runs three of the scenarios rather than all of them - `conversation`,
+`second-client` and `close-mid-turn`, the three whose subject is the daemon
+rather than the workbench - because a second VS Code launch costs minutes
+there and the placement scenarios are about the editor rather than the
+platform. Two things sit out on purpose: the `editor-tab` restart check reads
+`/proc` and quits the editor with a signal, neither of which Windows has, and
+the `transcript` scenario has the model run `sh noisy.sh`, which the shell on
+that side is not.
+
 What this still does not cover: a human's mouse and keyboard (clicks are
 dispatched on the rendered nodes, not synthesised at the window), the panel's
 modal dialogs - the Stop confirmation and the multi-folder quick pick, which
-have no headless answer - Windows and macOS, and a real model, which stays out
-of CI on purpose.
+have no headless answer - macOS, and a real model, which stays out of CI on
+purpose.
 
 ## One thing worth knowing before building this
 
@@ -513,6 +571,7 @@ is why the layout below moved here when publishing was wired up (#175).
 | `src/chat_panel.js` | the webview host, folder picking |
 | `src/session.js` | one folder's daemon session |
 | `src/binary.js` | the preflight: is there a joule here, and can this build drive it |
+| `src/joule_bin.js` | which file `joule` names on this platform, and what it takes to start it |
 | `src/daemon_link.js` | attach, resume, reconnect |
 | `src/conversation.js` | frames to a chat view model, approval state |
 | `src/setup.js` | what this machine is configured with, without reading a key |

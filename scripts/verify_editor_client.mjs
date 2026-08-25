@@ -15,6 +15,7 @@ const editorSrc = (name) => pathToFileURL(path.join(REPO_ROOT, "editor", "src", 
 const { EditorSession } = (await import(editorSrc("session.js"))).default;
 const frames = (await import(editorSrc("frames.js"))).default;
 const binary = (await import(editorSrc("binary.js"))).default;
+const jouleBin = (await import(editorSrc("joule_bin.js"))).default;
 
 let failures = 0;
 const cleanups = [];
@@ -363,11 +364,39 @@ async function binaryPreflightBody(name, ws) {
   const newer = await binary.checkBinary({ jouleBin: writeFakeJoule(ws.workspace, "joule 99.0.0"), env: ws.env, cwd: ws.workspace });
   ok(newer.ok === true, name + ": a binary newer than the minimum is accepted");
 
-  const onWindows = await binary.checkBinary({ jouleBin: JOULE, env: ws.env, cwd: ws.workspace, platform: "win32" });
-  ok(onWindows.ok === false && onWindows.problem === "platform", name + ": the extension refuses to drive a joule on Windows, where none is built");
-  ok(onWindows.message.includes("173"), name + ": the Windows message names the ticket the gate waits on");
-  ok(binary.unsupportedPlatform("win32") !== "", name + ": the panel is gated shut on Windows before anything is clicked");
-  ok(binary.unsupportedPlatform("linux") === "", name + ": nothing is gated on a platform a joule is built for");
+  windowsResolution(name, ws);
+}
+
+function windowsResolution(name, ws) {
+  const dir = path.join(ws.workspace, "winbin");
+  fs.mkdirSync(dir, { recursive: true });
+  const shim = path.join(dir, "joule.cmd");
+  fs.writeFileSync(shim, "@echo off\r\n");
+  const env = { PATH: dir, ComSpec: "C:\\Windows\\System32\\cmd.exe" };
+
+  const viaShim = jouleBin.commandFor("joule", ["daemon-ensure"], { platform: "win32", env });
+  ok(viaShim !== null, name + ": an npm install that leaves only a joule.cmd on PATH is a joule the panel can find");
+  ok(viaShim.resolved === shim, name + ": the name on PATH resolves to the shim npm actually wrote");
+  ok(viaShim.file.toLowerCase().endsWith("cmd.exe"), name + ": a .cmd is started through the interpreter that reads it, which is the only way to run one");
+  ok(viaShim.spawnOptions.windowsVerbatimArguments === true, name + ": the command line is handed over whole, so the shim path survives a space in it");
+  ok(viaShim.argv.join(" ").includes("daemon-ensure"), name + ": the subcommand reaches the shim rather than being swallowed by the interpreter");
+  ok(viaShim.argv.join(" ").includes(shim), name + ": the resolved shim is the file the interpreter is pointed at");
+
+  const exe = path.join(dir, "joule.exe");
+  fs.writeFileSync(exe, "");
+  const viaExe = jouleBin.commandFor("joule", ["--version"], { platform: "win32", env });
+  ok(viaExe.resolved === exe, name + ": a real joule.exe beside the shim is preferred, so no node process sits in front of the daemon");
+  ok(viaExe.file === exe && viaExe.spawnOptions.windowsVerbatimArguments === undefined,
+    name + ": an executable is started directly, with no interpreter in the way");
+
+  const empty = path.join(ws.workspace, "nothing-here");
+  fs.mkdirSync(empty, { recursive: true });
+  ok(jouleBin.commandFor("joule", ["--version"], { platform: "win32", env: { PATH: empty } }) === null,
+    name + ": a PATH with no joule on it resolves to nothing, which is what the missing-binary message is for");
+
+  const posix = jouleBin.commandFor("joule", ["--version"], { platform: "linux", env });
+  ok(posix.file === "joule" && posix.argv.length === 1 && posix.resolved === "joule",
+    name + ": nothing is resolved by hand where the runtime already resolves names and extensions are not what makes a file runnable");
 }
 
 async function main() {
