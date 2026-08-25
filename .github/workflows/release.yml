@@ -30,6 +30,11 @@ jobs:
             lumen_dist: lumen-aarch64-macos
             lumen_version: v0.7.1
             exe: ""
+          - target: x86_64-macos
+            runs_on: macos-15-intel
+            lumen_dist: lumen-x86_64-macos
+            lumen_version: v0.7.1
+            exe: ""
           - target: x86_64-windows
             runs_on: windows-latest
             lumen_dist: lumen-x86_64-windows
