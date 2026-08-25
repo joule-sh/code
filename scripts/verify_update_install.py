@@ -11,7 +11,7 @@ import sys
 import termios
 import time
 
-REPO_ROOT = os.path.expanduser("~/projects/code-126-selfupdate")
+REPO_ROOT = os.environ.get("JOULE_REPO_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOULE_BIN = os.path.join(REPO_ROOT, "bin", "joule")
 
 failures = []
@@ -218,11 +218,25 @@ def real_version(exe):
     return r.stdout.strip()
 
 
-def phase_real_update():
-    print("=== phase 1: a real /update on Linux, from an older release to the latest ===")
-    install_root, bin_dir, old_joule = install_layout("real", JOULE_BIN, os.path.join(REPO_ROOT, "bin", "relay"), "0.5.0")
-    scratch_home = fresh_dir("/tmp/update-install-verify-home-real")
-    workspace = make_workspace("real")
+def accept_offer(sess, label, timeout=20.0):
+    """Wait for the startup offer and take its default (accept) option.
+
+    The offer is the only way to ask for an update now that the manual
+    command is gone, so every install phase below comes through here.
+    """
+    found = sess.wait_for("1. Yes, update now", timeout=timeout)
+    ok(found >= 0, "the automatic offer appeared before " + label)
+    if found < 0:
+        return False
+    sess.write(b"\r")
+    return True
+
+
+def phase_offer_installs():
+    print("=== phase 1: the automatic offer appears for real, and accepting it installs the latest release ===")
+    install_root, bin_dir, old_joule = install_layout("offer", JOULE_BIN, os.path.join(REPO_ROOT, "bin", "relay"), "0.5.0")
+    scratch_home = fresh_dir("/tmp/update-install-verify-home-offer")
+    workspace = make_workspace("offer")
 
     old_version_before = real_version(old_joule)
     print("old binary reports: %r" % old_version_before)
@@ -234,11 +248,19 @@ def phase_real_update():
 
     sess = PtySession([old_joule], env, workspace, rows=24, cols=80)
     idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared before issuing /update")
-    sess.write(b"/update\r")
+    ok(idx >= 0, "the banner appeared at startup")
+    found_offer = sess.wait_for("a newer release is available", timeout=15.0)
+    ok(found_offer >= 0, "the startup check found a newer release and printed the offer banner")
+    found_options = sess.wait_for("1. Yes, update now", timeout=5.0)
+    ok(found_options >= 0, "the offer renders the reused approval-style numbered option list")
+    output_before_answer = text(bytes(sess.raw))
+    ok("2. Yes, and don't ask again" in output_before_answer, "option 2 offers to stop checking as well as update")
+    ok("3. Not now" in output_before_answer, "option 3 lets the user decline for now")
+
+    sess.write(b"\r")
     found = sess.wait_for("updated from", timeout=90.0)
     output = text(bytes(sess.raw))
-    ok(found >= 0, "the /update command reported an installed update within the timeout")
+    ok(found >= 0, "accepting the offer reported an installed update within the timeout")
     if found < 0:
         print("output so far:\n" + output[-3000:])
     sess.settle(quiet=0.3, cap=1.0)
@@ -267,50 +289,8 @@ def phase_real_update():
     ok(still_runs == old_version_before, "the untouched old binary at its original path still runs and still reports its original version")
 
 
-def phase_startup_offer():
-    print("=== phase 1b: the startup offer appears for real and accepting it runs the same update path ===")
-    install_root, bin_dir, old_joule = install_layout("offer", JOULE_BIN, os.path.join(REPO_ROOT, "bin", "relay"), "0.5.0")
-    scratch_home = fresh_dir("/tmp/update-install-verify-home-offer")
-    workspace = make_workspace("offer")
-
-    old_version_before = real_version(old_joule)
-
-    env = base_env(scratch_home, install_root, bin_dir)
-    env["JOULE_CODE_API_KEY"] = "stub-key"
-    env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:1"
-    env["JOULE_CODE_MODEL"] = "stub-model"
-
-    sess = PtySession([old_joule], env, workspace, rows=24, cols=80)
-    idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared at startup")
-    found_offer = sess.wait_for("a newer release is available", timeout=15.0)
-    ok(found_offer >= 0, "the startup check found a newer release and printed the offer banner")
-    found_options = sess.wait_for("1. Yes, update now", timeout=5.0)
-    ok(found_options >= 0, "the offer renders the reused approval-style numbered option list")
-    output_before_answer = text(bytes(sess.raw))
-    ok("2. Yes, and don't ask again" in output_before_answer, "option 2 offers to stop checking as well as update")
-    ok("3. Not now" in output_before_answer, "option 3 lets the user decline for now")
-
-    sess.write(b"\r")
-    found_installed = sess.wait_for("updated from", timeout=90.0)
-    ok(found_installed >= 0, "pressing Enter on the default (accept) option runs the same install path as /update")
-
-    sess.settle(quiet=0.3, cap=1.0)
-    sess.write(b"\x04")
-    sess.wait_exit(5.0)
-    sess.close()
-
-    latest_dirs = [n for n in os.listdir(install_root) if n not in ("0.5.0",) and not n.startswith(".update-tmp-")]
-    ok(len(latest_dirs) == 1, "accepting the offer installed exactly one new version directory, got %r" % latest_dirs)
-    new_link = os.path.join(bin_dir, "joule")
-    new_target = os.path.realpath(new_link) if os.path.islink(new_link) else ""
-    new_version = real_version(new_target) if new_target else ""
-    ok(new_version != "" and new_version != old_version_before, "the binary installed by accepting the startup offer actually runs and reports a newer version")
-    ok(len(list_tmp_dirs(install_root)) == 0, "no scratch directories are left behind after accepting the offer")
-
-
 def phase_offer_decline_and_dont_ask_again():
-    print("=== phase 1c: declining the offer changes nothing, and don't ask again turns checks off ===")
+    print("=== phase 1b: declining the offer changes nothing, and don't ask again turns checks off ===")
     install_root, bin_dir, old_joule = install_layout("offerdecline", JOULE_BIN, os.path.join(REPO_ROOT, "bin", "relay"), "0.5.0")
     scratch_home = fresh_dir("/tmp/update-install-verify-home-offerdecline")
     workspace = make_workspace("offerdecline")
@@ -382,8 +362,8 @@ def phase_interrupted_download():
 
     sess = PtySession([old_joule], env, workspace, rows=24, cols=80)
     idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared before issuing /update")
-    sess.write(b"/update\r")
+    ok(idx >= 0, "the banner appeared before the offer was answered")
+    accept_offer(sess, "the download could be interrupted")
     found_checking = sess.wait_for("checking for updates", timeout=15.0)
     ok(found_checking >= 0, "the update visibly started (checking for updates...) before being interrupted")
     time.sleep(1.5)
@@ -423,8 +403,8 @@ def phase_corrupt_archive():
 
     sess = PtySession([old_joule], env, workspace, rows=24, cols=80)
     idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared before issuing /update")
-    sess.write(b"/update\r")
+    ok(idx >= 0, "the banner appeared before the offer was answered")
+    accept_offer(sess, "the corrupt archive was fetched")
     found = sess.wait_for("update failed", timeout=30.0)
     output = text(bytes(sess.raw))
     ok(found >= 0, "the corrupt archive was refused with an update failed message")
@@ -442,7 +422,7 @@ def phase_corrupt_archive():
 
 
 def phase_non_managed_install():
-    print("=== phase 4: a non-install.sh install declines /update cleanly rather than doing anything ===")
+    print("=== phase 4: a binary neither installer owns is never offered an update, and nothing is written ===")
     workspace = make_workspace("nonmanaged")
     scratch_home = fresh_dir("/tmp/update-install-verify-home-nonmanaged")
     standalone_dir = fresh_dir("/tmp/update-install-verify-standalone")
@@ -461,20 +441,21 @@ def phase_non_managed_install():
 
     sess = PtySession([exe], env, workspace, rows=24, cols=80)
     idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared before issuing /update")
-    sess.write(b"/update\r")
-    found = sess.wait_for("wasn't installed by install.sh", timeout=10.0)
-    ok(found >= 0, "a non-install.sh install declines /update with a clear message")
-    sess.settle(quiet=0.3, cap=1.0)
+    ok(idx >= 0, "the banner appeared for the non-managed binary")
+    sess.wait_for("1. Yes, update now", timeout=8.0)
+    sess.settle(quiet=0.3, cap=2.0)
+    output = text(bytes(sess.raw))
     sess.write(b"\x04")
     sess.wait_exit(5.0)
     sess.close()
 
+    ok("newer release is available" not in output, "a binary neither installer owns is never offered an update it could not carry out")
+    ok("1. Yes, update now" not in output, "no offer option rows were drawn for the non-managed binary")
     ok(not os.path.isdir(install_root) or len(os.listdir(install_root)) == 0, "nothing was written under the install root for a non-managed binary")
 
 
 def phase_source_build_declines(dev_exe):
-    print("=== phase 5: a source (dev) build declines /update cleanly ===")
+    print("=== phase 5: a source (dev) build is never offered an update and leaves no scratch behind ===")
     workspace = make_workspace("devbuild")
     scratch_home = fresh_dir("/tmp/update-install-verify-home-devbuild")
     install_root, bin_dir, exe = install_layout("devbuild", dev_exe, None, "dev-test")
@@ -486,25 +467,23 @@ def phase_source_build_declines(dev_exe):
 
     sess = PtySession([exe], env, workspace, rows=24, cols=80)
     idx = sess.wait_for("joule - type a request", timeout=8.0)
-    ok(idx >= 0, "the banner appeared before issuing /update")
-    sess.write(b"/update\r")
-    found = sess.wait_for("source build", timeout=10.0)
-    ok(found >= 0, "a dev/source build declines /update with a clear message rather than attempting anything")
-    sess.settle(quiet=0.3, cap=1.0)
+    ok(idx >= 0, "the banner appeared for the dev-build run")
+    sess.wait_for("1. Yes, update now", timeout=8.0)
+    sess.settle(quiet=0.3, cap=2.0)
+    output = text(bytes(sess.raw))
     sess.write(b"\x04")
     sess.wait_exit(5.0)
     sess.close()
-    ok(len(list_tmp_dirs(install_root)) == 0, "no scratch directories were created for a declined dev-build /update")
+    ok("newer release is available" not in output, "a dev/source build is never offered an update rather than attempting anything")
+    ok(len(list_tmp_dirs(install_root)) == 0, "no scratch directories were created for a dev build")
 
 
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     dev_exe = sys.argv[2] if len(sys.argv) > 2 else JOULE_BIN
 
-    if which in ("all", "real"):
-        phase_real_update()
     if which in ("all", "offer"):
-        phase_startup_offer()
+        phase_offer_installs()
     if which in ("all", "offerdecline"):
         phase_offer_decline_and_dont_ask_again()
     if which in ("all", "interrupt"):
