@@ -199,13 +199,13 @@ export function rangeForLine(sel: Selection, lineIndex: int): ColRange {
   return { from: from, to: to };
 }
 
-export function selectedText(sel: Selection, lines: string[]): string {
+export function selectedText(sel: Selection, lines: string[], isHidden: (i: int) => bool): string {
   if (!sel.hasRange()) { return ""; }
   let out = "";
   let i = sel.startLine();
   let wrote = 0;
   while (i <= sel.endLine()) {
-    if (i >= 0 && i < lines.length) {
+    if (i >= 0 && i < lines.length && !isHidden(i)) {
       let r = rangeForLine(sel, i);
       if (wrote > 0) { out = out + String.fromCharCode(10); }
       out = out + plainSlice(lines[i], r.from, r.to);
@@ -214,6 +214,11 @@ export function selectedText(sel: Selection, lines: string[]): string {
     i = i + 1;
   }
   return out;
+}
+
+export function countLines(text: string): int {
+  if (text == "") { return 0; }
+  return text.split(String.fromCharCode(10)).length;
 }
 
 export function lineCountWord(n: int): string {

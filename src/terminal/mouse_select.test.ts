@@ -2,6 +2,7 @@ import { isPointerKey, isMouseSelectKey, handlePointerKey, copyOnRelease, applyM
 import { Scrollback } from "./scrollback.ts";
 import { InputLine } from "./input_state.ts";
 import { CODE_MARKER } from "./prompt_rows.ts";
+import { COL_END, countLines } from "./selection.ts";
 import { Key, KEY_MOUSE_PRESS, KEY_MOUSE_DRAG, KEY_MOUSE_RELEASE, KEY_SCROLL_UP, KEY_SCROLL_DOWN, KEY_PAGE_UP, KEY_ESCAPE, KEY_CHAR, KEY_ENTER } from "../vendor/tty/tty.ts";
 
 const ROWS: int = 24;
@@ -109,7 +110,7 @@ test("releasing after a real drag yields the selected text and marks it copied",
   let sel = sb.selection;
   sel.begin(0, 3);
   sel.extend(1, 2);
-  let copied = copyOnRelease(sel, sb.lines);
+  let copied = copyOnRelease(sb);
   expect(copied == "pha" + String.fromCharCode(10) + "be");
   expect(sel.copied);
   expect(sel.copiedLines == 2);
@@ -121,7 +122,7 @@ test("a click that never moved copies nothing and leaves no selection behind", (
   sb.append("alpha\nbeta");
   let sel = sb.selection;
   sel.begin(1, 2);
-  expect(copyOnRelease(sel, sb.lines) == "");
+  expect(copyOnRelease(sb) == "");
   expect(!sel.copied);
   expect(!sel.isLive());
 });
@@ -132,7 +133,7 @@ test("a drag over blank space copies nothing rather than an empty clipboard writ
   let sel = sb.selection;
   sel.begin(0, 1);
   sel.extend(1, 3);
-  expect(copyOnRelease(sel, sb.lines) == "");
+  expect(copyOnRelease(sb) == "");
   expect(!sel.copied);
 });
 
@@ -152,7 +153,7 @@ test("while the input line is capturing a code, no selection starts and any live
   expect(!sb.selection.dragging);
   handlePointerKey(pointer(KEY_MOUSE_DRAG, 6, 4), sb, input, ROWS);
   expect(!sb.selection.hasRange());
-  expect(copyOnRelease(sb.selection, sb.lines) == "");
+  expect(copyOnRelease(sb) == "");
 });
 
 test("the wheel keeps working while the input line is capturing a code", () => {
@@ -216,4 +217,50 @@ test("paging keys keep working with reporting off, so scrolling never depends on
   applyMouseState(sb, false);
   expect(handlePointerKey(pointer(KEY_PAGE_UP, 0, 0), sb, input, ROWS));
   expect(!sb.isAtBottom());
+});
+
+test("a selection spanning a collapsed group copies only what is on screen", () => {
+  let sb = new Scrollback();
+  sb.append("before");
+  sb.appendCollapsible("head", "hidden one
+hidden two", 2);
+  sb.append("
+after");
+  let sel = sb.selection;
+  sel.begin(0, 1);
+  sel.extend(sb.lineCount() - 1, COL_END);
+  let copied = copyOnRelease(sb);
+  expect(copied.indexOf("hidden one") < 0);
+  expect(copied.indexOf("hidden two") < 0);
+  expect(copied.indexOf("before") >= 0);
+  expect(copied.indexOf("after") >= 0);
+});
+
+test("expanding the group brings its rows back into what a selection copies", () => {
+  let sb = new Scrollback();
+  sb.append("before");
+  sb.appendCollapsible("head", "hidden one
+hidden two", 2);
+  sb.append("
+after");
+  sb.toggleLastGroup();
+  let sel = sb.selection;
+  sel.begin(0, 1);
+  sel.extend(sb.lineCount() - 1, COL_END);
+  expect(copyOnRelease(sb).indexOf("hidden one") >= 0);
+});
+
+test("the copied line count is what was actually copied, not the span it was dragged over", () => {
+  let sb = new Scrollback();
+  sb.append("before");
+  sb.appendCollapsible("head", "hidden one
+hidden two", 2);
+  sb.append("
+after");
+  let sel = sb.selection;
+  sel.begin(0, 1);
+  sel.extend(sb.lineCount() - 1, COL_END);
+  let copied = copyOnRelease(sb);
+  expect(sel.copiedLines == countLines(copied));
+  expect(sel.copiedLines < sel.lineSpan());
 });

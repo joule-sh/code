@@ -1,4 +1,4 @@
-import { Selection, plainSlice, highlightRange, rangeForLine, selectedText, selectionIndicator, lineCountWord, COL_END } from "./selection.ts";
+import { Selection, countLines, plainSlice, highlightRange, rangeForLine, selectedText, selectionIndicator, lineCountWord, COL_END } from "./selection.ts";
 import { REVERSE, RESET, VIOLET, DIM } from "./style.ts";
 
 const ESC_CODE: int = 27;
@@ -45,6 +45,10 @@ function sgrBalanced(line: string): bool {
     i = i + 1;
   }
   return !open;
+}
+
+function nothingHidden(i: int): bool {
+  return false;
 }
 
 function dragged(anchorLine: int, anchorCol: int, headLine: int, headCol: int): Selection {
@@ -148,19 +152,19 @@ test("rangeForLine opens the middle lines fully and clips the first and last", (
 test("selectedText stitches the partial first and last lines around the whole middle", () => {
   let lines: string[] = ["zero", "alpha", "beta", "gamma", "delta"];
   let sel = dragged(1, 3, 3, 2);
-  expect(selectedText(sel, lines) == "pha" + String.fromCharCode(10) + "beta" + String.fromCharCode(10) + "ga");
+  expect(selectedText(sel, lines, nothingHidden) == "pha" + String.fromCharCode(10) + "beta" + String.fromCharCode(10) + "ga");
 });
 
 test("selectedText takes the text under the styling, not the escape bytes", () => {
   let lines: string[] = [VIOLET + "coloured" + RESET];
   let sel = dragged(0, 1, 0, COL_END);
-  expect(selectedText(sel, lines) == "coloured");
+  expect(selectedText(sel, lines, nothingHidden) == "coloured");
 });
 
 test("a selection with no range yields no text at all", () => {
   let sel = new Selection();
   sel.begin(0, 1);
-  expect(selectedText(sel, ["anything"]) == "");
+  expect(selectedText(sel, ["anything"], nothingHidden) == "");
 });
 
 test("the row map turns a screen row back into the scrollback line under it", () => {
@@ -207,4 +211,15 @@ test("a cleared selection shows nothing and highlights nothing", () => {
 test("lineCountWord keeps the singular readable", () => {
   expect(lineCountWord(1) == "1 line");
   expect(lineCountWord(4) == "4 lines");
+});
+
+test("selectedText skips the lines a caller reports as hidden, and countLines agrees", () => {
+  let lines: string[] = ["alpha", "beta", "gamma"];
+  let sel = dragged(0, 1, 2, COL_END);
+  let hideMiddle = (i: int) => i == 1;
+  let out = selectedText(sel, lines, hideMiddle);
+  expect(out == "alpha" + String.fromCharCode(10) + "gamma");
+  expect(countLines(out) == 2);
+  expect(countLines(selectedText(sel, lines, nothingHidden)) == 3);
+  expect(countLines("") == 0);
 });

@@ -2,7 +2,7 @@ import { Key, KEY_MOUSE_PRESS, KEY_MOUSE_DRAG, KEY_MOUSE_RELEASE, KEY_ESCAPE } f
 import { Scrollback } from "./scrollback.ts";
 import { InputLine } from "./input_state.ts";
 import { isScrollKey, applyScrollKey } from "./scroll_keys.ts";
-import { Selection, selectedText } from "./selection.ts";
+import { Selection, selectedText, countLines } from "./selection.ts";
 import { writeClipboard } from "./osc52.ts";
 
 export function isMouseSelectKey(kind: string): bool {
@@ -13,24 +13,25 @@ export function isPointerKey(kind: string): bool {
   return isScrollKey(kind) || isMouseSelectKey(kind) || kind == KEY_ESCAPE;
 }
 
-export function copyOnRelease(sel: Selection, lines: string[]): string {
+export function copyOnRelease(sb: Scrollback): string {
+  let sel = sb.selection;
   sel.dragging = false;
   if (!sel.hasRange()) {
     sel.clear();
     return "";
   }
-  let text = selectedText(sel, lines);
+  let text = selectedText(sel, sb.lines, (i: int) => sb.isHidden(i));
   if (text.trim() == "") {
     sel.clear();
     return "";
   }
   sel.copied = true;
-  sel.copiedLines = sel.lineSpan();
+  sel.copiedLines = countLines(text);
   return text;
 }
 
-export function finishSelection(sel: Selection, lines: string[]): bool {
-  writeClipboard(copyOnRelease(sel, lines));
+export function finishSelection(sb: Scrollback): bool {
+  writeClipboard(copyOnRelease(sb));
   return true;
 }
 
@@ -67,5 +68,5 @@ export function handlePointerKey(k: Key, sb: Scrollback, input: InputLine, rows:
   let onLine = sel.lineAtRow(k.row);
   if (onLine >= 0) { sel.extend(onLine, k.col); }
   if (k.kind == KEY_MOUSE_DRAG) { return true; }
-  return finishSelection(sel, sb.lines);
+  return finishSelection(sb);
 }
