@@ -310,6 +310,100 @@ Spawn-if-absent works, through the same `/bin/sh -c 'nohup ... & disown'`
 indirection the spike identified as necessary (Lumen's `child_process` still
 cannot detach a spawned process from its parent - spec 450, lumen#6).
 
+### Spawning on Windows
+
+`nohup ... &` has no Windows spelling, and the substitution is not one
+command for another - it is two nested `Start-Process` calls, and the nesting
+is the whole point. `windowsDaemonSpawnCommand` in `lifecycle.ts` builds it,
+PowerShell runs it (never `cmd.exe`, for the argument-passing reason #247
+established), and `daemonSpawnArgs` picks the spelling by platform so
+`ensureAttached` reads the same on both.
+
+**Why two levels.** PowerShell's `Start-Process` takes
+`-RedirectStandardOutput`, which is what replaces `>log 2>&1`. Naming a
+redirect makes it start the child with handle inheritance on, and the child
+then holds a copy of *every* inheritable handle the PowerShell process had -
+including the pipes `joule`'s own `spawnSync` handed PowerShell for its
+stdout and stderr. Those pipes never reach end-of-file while the daemon
+lives, so `spawnSync` waits on a daemon that is supposed to outlive it and
+`joule` never returns. This is the opposite of `nohup`, where redirection
+replaces the descriptors and leaves no other copy behind.
+
+So the outer `Start-Process` names no redirect at all. Without one PowerShell
+starts the child through `ShellExecuteEx`, which inherits no handles, and the
+outer PowerShell exits immediately - `spawnSync` returns in about half a
+second. What it starts is a second, hidden PowerShell, and *that* one runs the
+`Start-Process` carrying the redirects. Its own handles are its own, so the
+daemon inheriting them costs nothing, and it exits as soon as it has started
+the daemon: nothing lingers between `joule` and `joule-daemon.exe`.
+
+The rest follows from that shape:
+
+- **The environment** is set on the outer PowerShell (`$env:JOULE_DAEMON_PORT`,
+  `$env:JOULE_DAEMON_RESUME`) and inherited down both levels, so the daemon
+  reads the same two variables it reads on POSIX.
+- **`-WindowStyle Hidden`** on both levels is what keeps a console window from
+  appearing, and - because the daemon ends up with a console of its own rather
+  than the client's - what keeps a ctrl-c or a closed window in the client's
+  console from reaching it.
+- **Two log files, not one.** `Start-Process` refuses to point both redirects
+  at the same path, so stderr goes to `<key>.log.err` beside `<key>.log`.
+- **Quoting** is `powershellQuoteSingle` at each level, applied twice for the
+  inner command, which is what carries a workspace path containing a space or
+  an apostrophe through both parsers intact.
+- **Failure** reaches the caller as an exit status, which is all `spawnSync`
+  reports: the script raises `$ErrorActionPreference` first so a
+  `Start-Process` that cannot run is terminating rather than a warning
+  PowerShell exits 0 after. A missing or unrunnable daemon binary is caught
+  before any of this, by the `--version` probe in `daemonBinFailure`.
+
+### Asking before connecting
+
+`ensureAttached` finds out whether a daemon is there by polling its port, and
+on Windows the runtime's own `net.connect` answers "nothing is listening" by
+printing a diagnostic and a stack trace to stderr before recovering - the
+NTSTATUS reaches Zig's `windows.unexpectedStatus` rather than being mapped to
+`error.ConnectionRefused`. It is not a fault and the call returns what the
+caller wanted, but the trace lands on the user's console, in a release build
+as much as a debug one.
+
+So the port is asked about first. `plat_port_open` in the platform shim asks
+Winsock directly - 1 open, 0 closed, -1 the platform has no answer - and
+`worthConnectingTo` is what `ensureAttached`, `runAttachStop` and
+`DaemonClient.maybeReconnect` consult before connecting at all. POSIX answers
+-1 to everything, so all three behave there exactly as they did: this is a
+question POSIX declines rather than a POSIX branch. `ws2_32` is on the Windows
+link line for it, because the backend links it for its own socket layer but
+not where a shim object can resolve against it.
+
+Filed upstream as lumen-lang-org/lumen#44. `win_daemon_harness.py` asserts
+that a cold start writes no `NTSTATUS` line to stderr, so taking the shim out
+again when a Lumen release carries the mapping is something CI notices.
+
+### The runtime directory on Windows
+
+It does not move. `~/.config/joule-code/daemon/<key>.json` and
+`~/.config/joule-code/daemon/<key>/` are what the daemon writes on Windows
+too, with `homeDir()` resolving `USERPROFILE` there (#247). `%LOCALAPPDATA%`
+would be the idiomatic Windows home for it, but the daemon is not the only
+thing under that root - credentials, config, memory and sessions are there
+too - and moving only the daemon's half would put a daemon's record somewhere
+its own credentials are not. Forward slashes in those paths are fine: Win32
+accepts them, and `path.dirname` reads a backslash path correctly, which is
+what lets `joule` find `joule-daemon.exe` beside itself (#187).
+
+The attach mailboxes stay in `tempDir()`, which already resolves `TEMP` on
+Windows.
+
+**Nothing the daemon writes is protected by a mode word, on either platform.**
+The record, the broadcast log, the inbox files and the attach mailboxes are
+all written with whatever the platform's default is; `chmodPath` is called
+only for the credentials file, which `joule` writes and the daemon only
+reads. So there is no POSIX protection here for Windows to fail to match. It
+is worth saying which way the difference actually runs: a POSIX `~/.config`
+and `/tmp` leave those files world-readable, while the Windows profile and
+per-user `%TEMP%` they land in do not.
+
 **Update, follow-up pass: shutdown is decided.** A daemon started by `joule
 attach` still outlives that attach session by default - persistence writes
 to disk on every turn regardless of process, so there was never a reason to

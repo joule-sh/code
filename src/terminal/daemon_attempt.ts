@@ -1,5 +1,3 @@
-import { WINDOWS_DAEMON_NOTE } from "../daemon/attach_lifecycle.ts";
-
 export type DaemonAttempt = { attached: bool, notes: string[] };
 
 export function attached(): DaemonAttempt {
@@ -14,14 +12,8 @@ export function declined(notes: string[]): DaemonAttempt {
 
 export function declineNotes(reasons: string[], workspaceRoot: string): string[] {
   let out: string[] = [];
-  let sawPlatformDecline = false;
-  for (const n of reasons) {
-    if (n == WINDOWS_DAEMON_NOTE) { sawPlatformDecline = true; }
-    out.push(n);
-  }
-  if (!sawPlatformDecline) {
-    out.push("joule: could not reach or start a daemon for " + workspaceRoot + " - running in-process instead");
-  }
+  for (const n of reasons) { out.push(n); }
+  out.push("joule: could not reach or start a daemon for " + workspaceRoot + " - running in-process instead");
   return out;
 }
 
@@ -33,10 +25,10 @@ test("a declined attempt hands its notes back, because a callee cannot fill an a
   expect(a.notes[1].indexOf("/tmp/ws") > 0);
 });
 
-test("the Windows decline is not followed by a second line saying the same thing", () => {
-  let notes = declineNotes([WINDOWS_DAEMON_NOTE], "C:\\ws");
+test("a Windows workspace path survives into the note the terminal prints", () => {
+  let notes = declineNotes([], "C:\\ws");
   expect(notes.length == 1);
-  expect(notes[0] == WINDOWS_DAEMON_NOTE);
+  expect(notes[0].indexOf("C:\\ws") > 0);
 });
 
 test("an attached attempt carries no notes for the terminal to print", () => {

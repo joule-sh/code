@@ -23,6 +23,8 @@
 #include <string.h>
 
 #ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #else
 #include <fcntl.h>
@@ -149,6 +151,59 @@ int plat_gc_interior_pointers(void) {
 }
 #else
 int plat_gc_interior_pointers(void) {
+    return -1;
+}
+#endif
+
+// Whether anything is accepting on host:port, answered without going through
+// the runtime's own socket layer. 1 yes, 0 no, -1 the platform has no answer
+// here and the caller should just try.
+//
+// This exists because on Windows the runtime's connect reaches
+// windows.unexpectedStatus for STATUS_CONNECTION_REFUSED rather than
+// error.ConnectionRefused, and prints a diagnostic and a stack trace to
+// stderr for what is the ordinary answer to "is the daemon up yet". It
+// recovers, but the trace lands on the user's console. Asking here first
+// means the connect is only ever made to a port that will take it.
+//
+// Filed upstream as lumen-lang-org/lumen#44; this comes out when a Lumen
+// release carries the mapping. Loopback only, deliberately: a blocking
+// connect is immediate against 127.0.0.1 and this is never asked about a
+// host that could make it wait.
+#ifdef _WIN32
+static int plat_winsock_ready(void) {
+    static int started = 0;
+    WSADATA wsa;
+    if (started) { return 1; }
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) { return 0; }
+    started = 1;
+    return 1;
+}
+
+int plat_port_open(const char *host, int port) {
+    struct sockaddr_in addr;
+    SOCKET sock;
+    int connected;
+
+    if (host == NULL || port <= 0 || port > 65535) { return -1; }
+    if (!plat_winsock_ready()) { return -1; }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((unsigned short)port);
+    addr.sin_addr.s_addr = inet_addr(host);
+    if (addr.sin_addr.s_addr == INADDR_NONE) { return -1; }
+
+    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) { return -1; }
+    connected = connect(sock, (struct sockaddr *)&addr, (int)sizeof(addr));
+    closesocket(sock);
+    return connected == 0 ? 1 : 0;
+}
+#else
+int plat_port_open(const char *host, int port) {
+    (void)host;
+    (void)port;
     return -1;
 }
 #endif

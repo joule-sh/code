@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -27,9 +27,16 @@ endif
 # SHIM_FLAGS turns off the UBSan instrumentation zig cc adds by default: on a
 # Windows target the calls it emits have nothing to resolve against, and the
 # link fails on __ubsan_handle_type_mismatch_v1 rather than on anything here.
+#
+# ws2_32 is on the link line because the platform shim asks Winsock directly
+# whether a port is accepting, rather than finding out by connecting - see the
+# lumen#44 note where plat_port_open is defined. The backend links it for its
+# own socket layer but does not put it where a shim object can resolve
+# against it, so naming it here is what makes socket/connect/htons resolve.
 ifeq ($(findstring windows,$(LUMEN_TARGET)),windows)
 TTY_SHIM_SRC := src/vendor/tty/tty_shim_win32.c
 SHIM_FLAGS := -fno-sanitize=undefined
+TARGET_FLAGS += --link ws2_32
 EXE := .exe
 else
 TTY_SHIM_SRC := src/vendor/tty/tty_shim.c
@@ -163,6 +170,12 @@ console-association-harness: build bin/stub_model
 # than asserting anything about a build that only exited 0.
 windows-harness: build $(STUB_MODEL)
 	python scripts/win_terminal_harness.py
+
+# The Windows sibling of the daemon harnesses, and the only place the Windows
+# spawn is driven: the client starts a daemon, leaves, a second client joins
+# the session it left behind, and `joule --stop` ends it.
+windows-daemon-harness: build $(STUB_MODEL)
+	python scripts/win_daemon_harness.py
 
 editor-frames:
 	node scripts/gen_editor_frames.mjs

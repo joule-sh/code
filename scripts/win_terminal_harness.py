@@ -19,9 +19,14 @@
 # harness that reads only the first of the two would have stayed green through
 # a build nobody could use.
 #
+# The turn it drives runs through a daemon, because that is what joule does on
+# Windows now (#173). What the daemon itself has to do - spawn detached,
+# outlive its client, take a second client, stop on request - is asserted by
+# win_daemon_harness.py rather than here.
+#
 # What it deliberately does not assert, because it does not work yet and is
 # tracked on #173 rather than hidden here:
-#   the daemon, background tasks and --share, none of which start on Windows
+#   background tasks and --share, neither of which start on Windows
 
 import glob
 import json
@@ -53,9 +58,6 @@ README = "# demo workspace\n\nA line the model will read.\n"
 ASSISTANT_LINES = ["Let me check the README first.",
                    "No health route yet. I will fix it.",
                    "Done."]
-
-WINDOWS_DAEMON_NOTE = ("joule: the daemon does not run on Windows yet (#173)"
-                       " - running in-process instead")
 
 # The shapes #248 drew into the pane: a window into the request body, and a
 # line carrying a C0 byte after the pane has already had its escapes stripped.
@@ -124,6 +126,23 @@ def session_history(home, timeout):
     return None
 
 
+def on_screen(pty, text, timeout=60):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if text in pty.plain():
+            return True
+        time.sleep(0.1)
+    return text in pty.plain()
+
+
+def stop_daemon(ws, env):
+    try:
+        subprocess.run([JOULE, "--stop"], cwd=ws, env=env, timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 class Checks(object):
     def __init__(self):
         self.failed = 0
@@ -169,8 +188,6 @@ def main():
         pty.wait_for(r"type a request", 60, "the banner")
         checks.that(True, "the banner renders in a pseudoconsole")
         checks.that("\x1b[?1049h" in pty.text(), "the alternate screen is entered")
-        checks.that(WINDOWS_DAEMON_NOTE in pty.plain(),
-                    "the daemon's Windows decline reaches the startup screen")
 
         pty.write(PROMPT + "\r")
         pty.wait_for(re.escape(PROMPT), 30, "the typed line echoed back")
@@ -201,10 +218,15 @@ def main():
         checks.that(os.path.exists(stub_log) and os.path.getsize(stub_log) > 0,
                     "the model server saw a real request")
 
-        pane = pty.plain()
+        # Waited for rather than read once. The session above is written by the
+        # daemon when the turn ends; the last line of it reaches this client
+        # afterwards, over a socket, so the two are not the same moment any
+        # more and a fast enough runner is the only reason they ever looked
+        # like it.
         for line in ASSISTANT_LINES:
-            checks.that(line in pane,
+            checks.that(on_screen(pty, line),
                         "the transcript holds the assistant line %r" % line)
+        pane = pty.plain()
         leaked = leaked_lines(pane)
         if leaked:
             print("     leaked rows: %r" % leaked[:4])
@@ -223,6 +245,7 @@ def main():
         checks.failed += 1
     finally:
         pty.close()
+        stop_daemon(ws, joule_env(home, port))
         stub.kill()
 
     if checks.failed:
