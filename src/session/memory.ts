@@ -1,54 +1,26 @@
 import { homeDir } from "../vendor/platform/platform.ts";
+import { parseFrontmatter, fieldValue } from "./frontmatter.ts";
 
-export type MemoryEntry = { text: string, savedAt: string };
-export type MemoryFile = { entries: MemoryEntry[] };
+export type MemoryEntry = { text: string, savedAt: string, path: string, refused: bool };
 export type MemoryWriteResult = { ok: bool, message: string };
 
 export const MAX_MEMORY_ENTRIES: int = 50;
 export const MAX_ENTRY_BYTES: int = 300;
 export const MAX_MEMORY_CONTEXT_BYTES: int = 4000;
 export const MEMORY_SECRET_REFUSAL: string = "that looks like it contains a credential or token, refusing to save it.";
+export const MEMORY_SECRET_SKIPPED: string = "not loaded: this file looks like it holds a credential or token";
 
 const MEMORY_LABEL: string = "What you remember about this user from earlier sessions (private to them, not shared with anyone else, may be incomplete or stale):\n\n";
 const SECRET_MARKERS: string[] = ["sk-", "ghp_", "gho_", "github_pat_", "xox", "bearer ", "api_key", "apikey", "api key", "secret_key", "access_key", "private_key", "-----begin "];
 const MIN_TOKEN_RUN: int = 20;
-
-function emptyMemoryFile(): MemoryFile {
-  let f: MemoryFile = { entries: [] };
-  return f;
-}
+const SAVED_AT_KEY: string = "savedat";
 
 export function memoryDirPath(): string {
-  let home = homeDir();
-  return home + "/.config/joule-code";
+  return homeDir() + "/.config/joule-code";
 }
 
-export function memoryFilePath(): string {
-  return memoryDirPath() + "/memory.json";
-}
-
-export function parseMemoryFile(text: string): MemoryFile | null {
-  if (text.trim() == "") { return null; }
-  try {
-    return JSON.parse<MemoryFile>(text);
-  } catch {
-    return null;
-  }
-}
-
-export function loadMemoryFile(filePath: string): MemoryFile {
-  if (!fs.existsSync(filePath)) { return emptyMemoryFile(); }
-  return parseMemoryFile(fs.readFileSync(filePath)) ?? emptyMemoryFile();
-}
-
-export function saveMemoryFile(filePath: string, file: MemoryFile): void {
-  let dir = path.dirname(filePath);
-  if (dir != "" && !fs.existsSync(dir)) {
-    fs.mkdirSync(dir, true);
-  }
-  let tmpPath = filePath + "." + `${Date.now()}` + ".tmp";
-  fs.writeFileSync(tmpPath, JSON.stringify(file));
-  fs.renameSync(tmpPath, filePath);
+export function memoryStorePath(): string {
+  return memoryDirPath() + "/memory";
 }
 
 function hasLongToken(text: string): bool {
@@ -85,33 +57,114 @@ export function looksLikeSecret(text: string): bool {
   return hasLongToken(text);
 }
 
-function capEntries(entries: MemoryEntry[]): MemoryEntry[] {
-  if (entries.length <= MAX_MEMORY_ENTRIES) { return entries; }
-  return entries.slice(entries.length - MAX_MEMORY_ENTRIES, entries.length);
-}
-
-function appendEntry(entries: MemoryEntry[], e: MemoryEntry): MemoryEntry[] {
-  let out: MemoryEntry[] = [];
+function slugFor(text: string): string {
+  let out = "";
   let i = 0;
-  while (i < entries.length) {
-    out.push(entries[i]);
+  while (i < text.length && out.length < 40) {
+    let ch = text.slice(i, i + 1);
+    let c = text.charCodeAt(i);
+    let isDigit = c >= 48 && c <= 57;
+    let isLower = c >= 97 && c <= 122;
+    let isUpper = c >= 65 && c <= 90;
+    if (isDigit || isLower) {
+      out = out + ch;
+    } else if (isUpper) {
+      out = out + ch.toLowerCase();
+    } else if (out.length > 0 && !out.endsWith("-")) {
+      out = out + "-";
+    }
     i = i + 1;
   }
+  while (out.endsWith("-")) { out = out.slice(0, out.length - 1); }
+  if (out == "") { return "memory"; }
+  return out;
+}
+
+function entryFilePath(dir: string, savedAt: string, text: string): string {
+  let base = dir + "/" + savedAt + "-" + slugFor(text);
+  let candidate = base + ".md";
+  let n = 2;
+  while (fs.existsSync(candidate) && n < 1000) {
+    candidate = base + "-" + `${n}` + ".md";
+    n = n + 1;
+  }
+  return candidate;
+}
+
+export function saveMemoryEntry(dir: string, text: string, savedAt: string): string {
+  if (!fs.existsSync(dir)) { fs.mkdirSync(dir, true); }
+  let target = entryFilePath(dir, savedAt, text);
+  let tmpPath = target + "." + savedAt + ".tmp";
+  fs.writeFileSync(tmpPath, "---\nsavedAt: " + savedAt + "\n---\n" + text + "\n");
+  fs.renameSync(tmpPath, target);
+  return target;
+}
+
+function savedAtOf(e: MemoryEntry): i64 {
+  return Number.parseInt(e.savedAt, 10) ?? 0;
+}
+
+function pathLess(a: string, b: string): bool {
+  let i = 0;
+  while (i < a.length && i < b.length) {
+    let ca = a.charCodeAt(i);
+    let cb = b.charCodeAt(i);
+    if (ca != cb) { return ca < cb; }
+    i = i + 1;
+  }
+  return a.length < b.length;
+}
+
+function entryBefore(a: MemoryEntry, b: MemoryEntry): bool {
+  let sa = savedAtOf(a);
+  let sb = savedAtOf(b);
+  if (sa != sb) { return sa < sb; }
+  return pathLess(a.path, b.path);
+}
+
+function insertSorted(list: MemoryEntry[], e: MemoryEntry): MemoryEntry[] {
+  let out: MemoryEntry[] = [];
+  let placed = false;
+  for (const cur of list) {
+    if (!placed && entryBefore(e, cur)) {
+      out.push(e);
+      placed = true;
+    }
+    out.push(cur);
+  }
+  if (!placed) { out.push(e); }
+  return out;
+}
+
+export function parseMemoryEntry(raw: string, filePath: string): MemoryEntry[] {
+  let out: MemoryEntry[] = [];
+  let fm = parseFrontmatter(raw);
+  let text = raw.trim();
+  let savedAt = "";
+  if (fm.ok) {
+    text = fm.body;
+    savedAt = fieldValue(fm.fields, SAVED_AT_KEY).trim();
+  }
+  if (text == "") { return out; }
+  let e: MemoryEntry = { text: text, savedAt: savedAt, path: filePath, refused: looksLikeSecret(text) };
   out.push(e);
   return out;
 }
 
-function withoutIndex(entries: MemoryEntry[], idx: int): MemoryEntry[] {
-  let out: MemoryEntry[] = [];
-  let i = 0;
-  while (i < entries.length) {
-    if (i != idx) { out.push(entries[i]); }
-    i = i + 1;
+export function loadMemoryDir(dir: string): MemoryEntry[] {
+  let sorted: MemoryEntry[] = [];
+  if (!fs.existsSync(dir)) { return sorted; }
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".md")) { continue; }
+    let full = dir + "/" + name;
+    for (const e of parseMemoryEntry(fs.readFileSync(full), full)) {
+      sorted = insertSorted(sorted, e);
+    }
   }
-  return out;
+  return sorted;
 }
 
-export function addMemoryEntryText(filePath: string, rawText: string): MemoryWriteResult {
+export function addMemoryEntryText(dir: string, rawText: string): MemoryWriteResult {
   let text = rawText.trim();
   if (text == "") {
     let r: MemoryWriteResult = { ok: false, message: "usage: /memory add <text>" };
@@ -125,35 +178,41 @@ export function addMemoryEntryText(filePath: string, rawText: string): MemoryWri
     let r: MemoryWriteResult = { ok: false, message: "that's " + `${text.length}` + " bytes, over the " + `${MAX_ENTRY_BYTES}` + "-byte limit for one memory entry; shorten it." };
     return r;
   }
-  let file = loadMemoryFile(filePath);
-  let entry: MemoryEntry = { text: text, savedAt: `${Date.now()}` };
-  let entries = capEntries(appendEntry(file.entries, entry));
-  saveMemoryFile(filePath, { entries: entries });
+  saveMemoryEntry(dir, text, `${Date.now()}`);
   let r: MemoryWriteResult = { ok: true, message: "remembered." };
   return r;
 }
 
-export function removeMemoryEntryAt(filePath: string, oneBasedIndex: int): bool {
-  let file = loadMemoryFile(filePath);
+export function removeMemoryEntryAt(dir: string, oneBasedIndex: int): bool {
+  let entries = loadMemoryDir(dir);
   let idx = oneBasedIndex - 1;
-  if (idx < 0 || idx >= file.entries.length) { return false; }
-  saveMemoryFile(filePath, { entries: withoutIndex(file.entries, idx) });
+  if (idx < 0 || idx >= entries.length) { return false; }
+  fs.unlinkSync(entries[idx].path);
   return true;
 }
 
-export function clearMemoryFile(filePath: string): void {
-  saveMemoryFile(filePath, emptyMemoryFile());
+export function clearMemoryDir(dir: string): void {
+  if (!fs.existsSync(dir)) { return; }
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".md")) { continue; }
+    fs.unlinkSync(dir + "/" + name);
+  }
 }
 
-export function listMemoryText(filePath: string): string {
-  let file = loadMemoryFile(filePath);
-  if (file.entries.length == 0) {
-    return "\nnothing remembered yet. /memory add <text> to add something, or edit " + filePath + " by hand.";
+export function listMemoryText(dir: string): string {
+  let entries = loadMemoryDir(dir);
+  if (entries.length == 0) {
+    return "\nnothing remembered yet. /memory add <text> to add something, or write a markdown file into " + dir + " by hand.";
   }
-  let out = "\nwhat joule remembers about you (" + filePath + "):";
+  let out = "\nwhat joule remembers about you (" + dir + "):";
   let i = 0;
-  while (i < file.entries.length) {
-    out = out + "\n  " + `${i + 1}` + ". " + file.entries[i].text;
+  while (i < entries.length) {
+    out = out + "\n  " + `${i + 1}` + ". ";
+    if (entries[i].refused) {
+      out = out + "[" + MEMORY_SECRET_SKIPPED + "] " + entries[i].path;
+    } else {
+      out = out + entries[i].text;
+    }
     i = i + 1;
   }
   return out;
@@ -163,20 +222,22 @@ export function buildMemoryContext(entries: MemoryEntry[]): string {
   let safe: MemoryEntry[] = [];
   let i = 0;
   while (i < entries.length) {
-    if (!looksLikeSecret(entries[i].text)) { safe.push(entries[i]); }
+    if (!entries[i].refused && !looksLikeSecret(entries[i].text)) { safe.push(entries[i]); }
     i = i + 1;
   }
   if (safe.length == 0) { return ""; }
 
   let kept: string[] = [];
   let total = 0;
+  let taken = 0;
   let j = safe.length - 1;
-  while (j >= 0) {
+  while (j >= 0 && taken < MAX_MEMORY_ENTRIES) {
     let line = "- " + safe[j].text;
     let added = line.length + 1;
     if (total + added > MAX_MEMORY_CONTEXT_BYTES) { break; }
     kept.push(line);
     total = total + added;
+    taken = taken + 1;
     j = j - 1;
   }
 
@@ -189,6 +250,6 @@ export function buildMemoryContext(entries: MemoryEntry[]): string {
   return MEMORY_LABEL + ordered.join("\n");
 }
 
-export function loadUserMemoryText(filePath: string): string {
-  return buildMemoryContext(loadMemoryFile(filePath).entries);
+export function loadUserMemoryText(dir: string): string {
+  return buildMemoryContext(loadMemoryDir(dir));
 }
