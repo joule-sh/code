@@ -126,6 +126,15 @@ def session_history(home, timeout):
     return None
 
 
+def on_screen(pty, text, timeout=60):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if text in pty.plain():
+            return True
+        time.sleep(0.1)
+    return text in pty.plain()
+
+
 def stop_daemon(ws, env):
     try:
         subprocess.run([JOULE, "--stop"], cwd=ws, env=env, timeout=60,
@@ -209,10 +218,15 @@ def main():
         checks.that(os.path.exists(stub_log) and os.path.getsize(stub_log) > 0,
                     "the model server saw a real request")
 
-        pane = pty.plain()
+        # Waited for rather than read once. The session above is written by the
+        # daemon when the turn ends; the last line of it reaches this client
+        # afterwards, over a socket, so the two are not the same moment any
+        # more and a fast enough runner is the only reason they ever looked
+        # like it.
         for line in ASSISTANT_LINES:
-            checks.that(line in pane,
+            checks.that(on_screen(pty, line),
                         "the transcript holds the assistant line %r" % line)
+        pane = pty.plain()
         leaked = leaked_lines(pane)
         if leaked:
             print("     leaked rows: %r" % leaked[:4])
