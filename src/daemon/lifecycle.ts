@@ -51,6 +51,17 @@ export function writeDaemonInfo(workspaceRoot: string, port: int): void {
   writeDaemonInfoAt(daemonInfoPath(workspaceRoot), workspaceRoot, port);
 }
 
+export function daemonPortOrZero(workspaceRoot: string): int {
+  let infoPath = daemonInfoPath(workspaceRoot);
+  if (!fs.existsSync(infoPath)) { return 0; }
+  try {
+    let info = JSON.parse<DaemonInfo>(fs.readFileSync(infoPath));
+    return info.port;
+  } catch {
+    return 0;
+  }
+}
+
 export function removeDaemonInfo(workspaceRoot: string): void {
   removeDaemonInfoAt(daemonInfoPath(workspaceRoot));
 }

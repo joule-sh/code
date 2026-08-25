@@ -24,17 +24,17 @@ export type FetchTagResult = { ok: bool, tag: string, error: string };
 export type ShellResult = { status: int, stdout: string, stderr: string };
 export type VerifyResult = { ok: bool, error: string };
 
-function installedResult(from: string, to: string): InstallResult {
+export function installedResult(from: string, to: string): InstallResult {
   let r: InstallResult = { kind: RESULT_INSTALLED, fromVersion: from, toVersion: to, error: "" };
   return r;
 }
 
-function upToDateResult(current: string): InstallResult {
+export function upToDateResult(current: string): InstallResult {
   let r: InstallResult = { kind: RESULT_UP_TO_DATE, fromVersion: current, toVersion: current, error: "" };
   return r;
 }
 
-function errorResult(msg: string): InstallResult {
+export function errorResult(msg: string): InstallResult {
   let r: InstallResult = { kind: RESULT_ERROR, fromVersion: "", toVersion: "", error: msg };
   return r;
 }

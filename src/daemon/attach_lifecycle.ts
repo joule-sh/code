@@ -1,6 +1,6 @@
 import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop } from "../protocol/frames.ts";
 import { DaemonClient } from "./attach_client.ts";
-import { readDaemonInfo, readDaemonInfoAt, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
+import { readDaemonInfo, readDaemonInfoAt, removeDaemonInfo, daemonPortOrZero, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
 import { shellProgram, tempDir, worthConnectingTo } from "../vendor/platform/platform.ts";
 
 export const DAEMON_HOST: string = "127.0.0.1";
@@ -317,4 +317,57 @@ export function runAttachStop(workspaceRoot: string): void {
   } else {
     console.log("joule --stop: sent the stop request but saw no acknowledgement within " + `${STOP_ACK_TICKS * POLL_MS}` + "ms - it may still be finishing an in-flight turn before it stops");
   }
+}
+
+export const REAP_NONE: string = "no daemon was running for this workspace, so nothing is left on the old build";
+export const REAP_GONE: string = "this workspace's daemon had already gone; cleared its record";
+export const REAP_STOPPED: string = "stopped this workspace's daemon, so the next run cannot attach to the old build";
+export const REAP_OTHER: string = "left the daemon on that port alone - it is serving another workspace, so stop it there with joule --stop";
+export const REAP_NO_ACK: string = "asked this workspace's daemon to stop but saw no acknowledgement - it may be finishing a turn; stop it with joule --stop if it lingers";
+
+export function sawStopping(frames: string[]): bool {
+  for (const f of frames) {
+    if (frameType(f) == DAEMON_STOPPING) { return true; }
+  }
+  return false;
+}
+
+export function reapDaemonForUpdate(workspaceRoot: string): string {
+  let port = daemonPortOrZero(workspaceRoot);
+  if (port == 0) { return REAP_NONE; }
+
+  if (!worthConnectingTo(DAEMON_HOST, port)) {
+    removeDaemonInfo(workspaceRoot);
+    return REAP_GONE;
+  }
+
+  let client = new DaemonClient(DAEMON_HOST, port, tmpDir());
+  client.connect();
+  let ready = waitForReady(client, CONNECT_WAIT_TICKS);
+  if (!ready.ready) {
+    client.detach();
+    removeDaemonInfo(workspaceRoot);
+    return REAP_GONE;
+  }
+
+  let settled = waitForHello(client, ready.frames, HELLO_WAIT_TICKS);
+  let seen = helloWorkspace(settled);
+  if (seen != "" && seen != workspaceRoot) {
+    client.detach();
+    return REAP_OTHER;
+  }
+
+  client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
+
+  let acked = sawStopping(settled);
+  let i = 0;
+  while (i < STOP_ACK_TICKS && !acked) {
+    acked = sawStopping(client.pollInbound());
+    if (!acked) { process.sleep(POLL_MS); }
+    i = i + 1;
+  }
+  client.detach();
+
+  if (acked) { return REAP_STOPPED; }
+  return REAP_NO_ACK;
 }

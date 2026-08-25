@@ -1,4 +1,5 @@
-import { PendingUpdateInstall, installedMessage, updateInstallDecision, tryHandleUpdateOfferArrow } from "./update_offer.ts";
+import { PendingUpdateInstall, installedMessage, updateInstallDecision, unknownInstallDecline, tryHandleUpdateOfferArrow } from "./update_offer.ts";
+import { INSTALL_METHOD_SCRIPT, INSTALL_METHOD_NPM, INSTALL_METHOD_UNKNOWN } from "../update/install_detect.ts";
 import { PendingUpdateOffer } from "./input_state.ts";
 import { appendMailbox, MailboxReader } from "../tasks/mailbox.ts";
 import { TAG_INSTALLED, TAG_UP_TO_DATE, TAG_ERR } from "../update/install_worker.ts";
@@ -74,30 +75,29 @@ test("an idle PendingUpdateInstall never polls a mailbox at all", () => {
 });
 
 test("updateInstallDecision refuses a second update while one is already running", () => {
-  let msg = updateInstallDecision(true, "0.5.0", "/opt/.joule-code/0.5.0/joule", "/opt/.joule-code");
+  let msg = updateInstallDecision(true, "0.5.0", INSTALL_METHOD_SCRIPT);
   expect(msg.indexOf("already in progress") >= 0);
 });
 
 test("updateInstallDecision declines a dev (source) build", () => {
-  let msg = updateInstallDecision(false, "dev", "/opt/.joule-code/0.5.0/joule", "/opt/.joule-code");
+  let msg = updateInstallDecision(false, "dev", INSTALL_METHOD_SCRIPT);
   expect(msg.indexOf("source build") >= 0);
 });
 
-test("updateInstallDecision declines a binary that install.sh did not manage", () => {
-  let root = "/tmp/update-offer-test-unmanaged-root";
-  if (fs.existsSync(root)) { fs.rmSync(root, true); }
-  fs.mkdirSync(root + "/0.5.0", true);
-  let msg = updateInstallDecision(false, "0.5.0", "/usr/local/bin/joule", root);
+test("updateInstallDecision declines a binary neither installer owns, and says so honestly", () => {
+  let msg = updateInstallDecision(false, "0.5.0", INSTALL_METHOD_UNKNOWN);
+  expect(msg.indexOf("neither install.sh nor npm") >= 0);
+  expect(msg.indexOf("npm install -g @joule-sh/code@latest") >= 0);
   expect(msg.indexOf("install.sh") >= 0);
+  expect(unknownInstallDecline() == msg);
 });
 
-test("updateInstallDecision clears the way when nothing rules the update out", () => {
-  let root = "/tmp/update-offer-test-managed-root";
-  if (fs.existsSync(root)) { fs.rmSync(root, true); }
-  fs.mkdirSync(root + "/0.5.0", true);
-  fs.writeFileSync(root + "/0.5.0/joule", "binary");
-  let msg = updateInstallDecision(false, "0.5.0", root + "/0.5.0/joule", root);
-  expect(msg == "");
+test("updateInstallDecision clears the way for a script install", () => {
+  expect(updateInstallDecision(false, "0.5.0", INSTALL_METHOD_SCRIPT) == "");
+});
+
+test("updateInstallDecision clears the way for an npm install, which used to be declined", () => {
+  expect(updateInstallDecision(false, "0.5.0", INSTALL_METHOD_NPM) == "");
 });
 
 test("update offer arrow handling is inert when no offer is pending", () => {
@@ -115,4 +115,18 @@ test("update offer arrow navigation only moves the highlight while the input lin
   expect(offer.selected == 0);
   expect(tryHandleUpdateOfferArrow(offer, sb, true, 1));
   expect(offer.selected == 1);
+});
+
+test("poll records which outcome it saw, so the caller knows when to reap the daemon", () => {
+  let install = new PendingUpdateInstall();
+  let mailbox = freshMailbox("lastkind");
+  install.mailboxPath = mailbox;
+  install.reader = new MailboxReader(mailbox);
+  install.running = true;
+  appendMailbox(mailbox, TAG_INSTALLED, "0.6.1|0.6.2");
+  install.poll();
+  expect(install.lastKind == TAG_INSTALLED);
+
+  let idle = new PendingUpdateInstall();
+  expect(idle.lastKind == "");
 });

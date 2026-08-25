@@ -3,17 +3,24 @@ import { MailboxReader } from "../tasks/mailbox.ts";
 import { isNewerVersion, stripLeadingV, DEV_VERSION } from "./version_compare.ts";
 import { UpdateCache, isCacheFresh, markChecked, CHECK_INTERVAL_MS } from "./cache.ts";
 import { configureUpdateWorker, spawnUpdateCheck, TAG_OK, RELEASES_URL } from "./worker.ts";
+import { INSTALL_METHOD_NPM, canSelfUpdate } from "./install_detect.ts";
 
-export const INSTALL_COMMAND: string = "curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh";
+export const SCRIPT_INSTALL_COMMAND: string = "curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh";
+export const NPM_INSTALL_COMMAND: string = "npm install -g @joule-sh/code@latest";
 
-export function noticeText(current: string, latest: string): string {
-  return "joule: a newer release is available (" + stripLeadingV(latest) + ", you have " + current + ") - update with: " + INSTALL_COMMAND;
+export function updateCommandFor(method: string): string {
+  if (method == INSTALL_METHOD_NPM) { return NPM_INSTALL_COMMAND; }
+  return SCRIPT_INSTALL_COMMAND;
 }
 
-export function shouldCheck(currentVersion: string, disabled: bool, managed: bool, cache: UpdateCache, nowMs: i64): bool {
+export function noticeText(current: string, latest: string, method: string): string {
+  return "joule: a newer release is available (" + stripLeadingV(latest) + ", you have " + current + ") - update with: " + updateCommandFor(method);
+}
+
+export function shouldCheck(currentVersion: string, disabled: bool, method: string, cache: UpdateCache, nowMs: i64): bool {
   if (currentVersion.trim() == DEV_VERSION) { return false; }
   if (disabled) { return false; }
-  if (!managed) { return false; }
+  if (!canSelfUpdate(method)) { return false; }
   if (isCacheFresh(cache, nowMs, CHECK_INTERVAL_MS)) { return false; }
   return true;
 }
@@ -24,6 +31,7 @@ export class UpdateNotifier {
   active: bool;
   currentVersion: string;
   latestVersion: string;
+  method: string;
 
   constructor() {
     this.mailboxPath = "";
@@ -31,13 +39,15 @@ export class UpdateNotifier {
     this.active = false;
     this.currentVersion = "";
     this.latestVersion = "";
+    this.method = "";
   }
 
-  start(nonce: string, currentVersion: string, cachePath: string): void {
+  start(nonce: string, currentVersion: string, method: string, cachePath: string): void {
     this.mailboxPath = "/tmp/joule-update-" + nonce + ".log";
     fs.writeFileSync(this.mailboxPath, "");
     this.reader = new MailboxReader(this.mailboxPath);
     this.currentVersion = currentVersion;
+    this.method = method;
     this.active = true;
     configureUpdateWorker(RELEASES_URL, this.mailboxPath);
     spawnUpdateCheck();
@@ -62,6 +72,6 @@ export class UpdateNotifier {
     if (tag == "") { return ""; }
     if (!isNewerVersion(this.currentVersion, tag)) { return ""; }
     this.latestVersion = stripLeadingV(tag);
-    return noticeText(this.currentVersion, tag);
+    return noticeText(this.currentVersion, tag, this.method);
   }
 }

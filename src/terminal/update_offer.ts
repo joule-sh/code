@@ -3,7 +3,8 @@ import { PendingUpdateOffer, UPDATE_OFFER_OPTION_COUNT, UPDATE_OFFER_ACCEPT, UPD
 import { updateOfferOptionRow } from "./renderer.ts";
 import { MailboxReader } from "../tasks/mailbox.ts";
 import { DEV_VERSION } from "../update/version_compare.ts";
-import { resolveInstallRoot, resolveBinDir, detectRunningExePath, isManagedInstall, INSTALL_ROOT_ENV, BIN_DIR_ENV } from "../update/install_detect.ts";
+import { resolveInstallRoot, resolveBinDir, detectRunningExePath, detectInstallMethod, canSelfUpdate, INSTALL_ROOT_ENV, BIN_DIR_ENV } from "../update/install_detect.ts";
+import { SCRIPT_INSTALL_COMMAND, NPM_INSTALL_COMMAND } from "../update/notifier.ts";
 import { configureInstallWorker, spawnInstallWorker, TAG_INSTALLED, TAG_UP_TO_DATE, TAG_ERR } from "../update/install_worker.ts";
 import { loadConfigFile, saveConfigFile, configFilePath, ConfigFile } from "../providers/config.ts";
 import { envOr, homeDir } from "../vendor/platform/platform.ts";
@@ -12,19 +13,22 @@ export class PendingUpdateInstall {
   running: bool;
   mailboxPath: string;
   reader: MailboxReader;
+  lastKind: string;
 
   constructor() {
     this.running = false;
     this.mailboxPath = "";
     this.reader = new MailboxReader("");
+    this.lastKind = "";
   }
 
-  start(nonce: string, currentVersion: string, installRoot: string, binDir: string): void {
+  start(nonce: string, currentVersion: string, method: string, exePath: string, installRoot: string, binDir: string): void {
     this.mailboxPath = "/tmp/joule-update-install-" + nonce + ".log";
     fs.writeFileSync(this.mailboxPath, "");
     this.reader = new MailboxReader(this.mailboxPath);
     this.running = true;
-    configureInstallWorker(currentVersion, installRoot, binDir, this.mailboxPath);
+    this.lastKind = "";
+    configureInstallWorker(currentVersion, method, exePath, installRoot, binDir, this.mailboxPath);
     spawnInstallWorker();
   }
 
@@ -34,9 +38,9 @@ export class PendingUpdateInstall {
     if (entries.length == 0) { return ""; }
     this.running = false;
     for (const e of entries) {
-      if (e.tag == TAG_INSTALLED) { return installedMessage(e.payload); }
-      if (e.tag == TAG_UP_TO_DATE) { return "joule: already on the latest release (" + e.payload + ")"; }
-      if (e.tag == TAG_ERR) { return "joule: update failed - " + e.payload; }
+      if (e.tag == TAG_INSTALLED) { this.lastKind = TAG_INSTALLED; return installedMessage(e.payload); }
+      if (e.tag == TAG_UP_TO_DATE) { this.lastKind = TAG_UP_TO_DATE; return "joule: already on the latest release (" + e.payload + ")"; }
+      if (e.tag == TAG_ERR) { this.lastKind = TAG_ERR; return "joule: update failed - " + e.payload; }
     }
     return "";
   }
@@ -56,10 +60,14 @@ function disableUpdateChecks(): void {
   saveConfigFile(configFilePath(), updated);
 }
 
-export function updateInstallDecision(running: bool, currentVersion: string, exePath: string, installRoot: string): string {
+export function unknownInstallDecline(): string {
+  return "joule: this binary came from neither install.sh nor npm, so joule does not know how to replace it safely - reinstall with \"" + NPM_INSTALL_COMMAND + "\" or \"" + SCRIPT_INSTALL_COMMAND + "\" to enable self-update";
+}
+
+export function updateInstallDecision(running: bool, currentVersion: string, method: string): string {
   if (running) { return "joule: an update is already in progress"; }
   if (currentVersion.trim() == DEV_VERSION) { return "joule: this is a source build (version \"dev\") and cannot self-update"; }
-  if (!isManagedInstall(exePath, installRoot)) { return "joule: this binary wasn't installed by install.sh, so /update can't safely replace it - reinstall with install.sh to enable self-update"; }
+  if (!canSelfUpdate(method)) { return unknownInstallDecline(); }
   return "";
 }
 
@@ -68,13 +76,14 @@ export function beginUpdateInstall(install: PendingUpdateInstall, currentVersion
   let installRoot = resolveInstallRoot(envOr(INSTALL_ROOT_ENV, ""), home);
   let binDir = resolveBinDir(envOr(BIN_DIR_ENV, ""), home);
   let exePath = detectRunningExePath();
-  let decline = updateInstallDecision(install.running, currentVersion, exePath, installRoot);
+  let method = detectInstallMethod(exePath, installRoot);
+  let decline = updateInstallDecision(install.running, currentVersion, method);
   if (decline != "") {
     sb.append("\n" + decline);
     return;
   }
   sb.append("\njoule: checking for updates...");
-  install.start(`${Date.now()}`, currentVersion, installRoot, binDir);
+  install.start(`${Date.now()}`, currentVersion, method, exePath, installRoot, binDir);
 }
 
 export function repaintUpdateOfferOptions(sb: Scrollback, offer: PendingUpdateOffer): void {
