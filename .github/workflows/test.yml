@@ -255,7 +255,9 @@ jobs:
   # build that works from one that compiles. It builds the three binaries,
   # runs each, and then drives the real joule.exe through a pseudoconsole
   # against the stub model - because `--version` exiting 0 proves nothing about
-  # a terminal layer that had to be written from scratch.
+  # a terminal layer that had to be written from scratch. The daemon harness
+  # beside it drives the other half: a client that starts a daemon detached and
+  # leaves, a second client that joins the session, and a stop.
   #
   # `make test` is not run here and cannot be: `lumen test` builds for the host
   # and a host build stops at the missing Boehm collector, which only naming a
@@ -295,6 +297,7 @@ jobs:
           ./bin/relay.exe --version
           ./bin/joule-daemon.exe --version
       - run: make windows-harness
+      - run: make windows-daemon-harness
 
   # The Windows counterpart to linux-release and macos-release, and it exists
   # for the reason those do: the job above builds for the runner with `make
@@ -337,6 +340,7 @@ jobs:
       # `build` finds the release binaries already newer than their sources, so
       # this drives what `make release` just produced rather than rebuilding.
       - run: make windows-harness
+      - run: make windows-daemon-harness
 
   linux-release:
     runs-on: [self-hosted, diff]

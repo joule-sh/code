@@ -158,6 +158,11 @@ jobs:
       # gaps it deliberately does not assert are listed in its header.
       - if: runner.os == 'Windows'
         run: make windows-harness
+      # And the daemon, which is what the terminal above now runs its turn
+      # through and what the editor extension talks to. A release that ships a
+      # joule-daemon.exe nothing can start is the shape of #196.
+      - if: runner.os == 'Windows'
+        run: make windows-daemon-harness
       - run: |
           dir="code-${{ matrix.target }}"
           mkdir -p "$dir"
