@@ -861,15 +861,19 @@ def run_completion_panel_scenario():
         ok(len(names) >= 8, "a bare slash opens the panel listing every command, got %d rows" % len(names))
         for expected in ("/help", "/model", "/mode", "/share", "/cat", "/tasks", "/skills", "/clear"):
             ok(expected in names, "the panel lists %s when the buffer is a bare slash" % expected)
-        # The panel is capped at the rows it has room for, so the tail of the
-        # command list is reached by narrowing or scrolling rather than being
-        # on screen the moment the panel opens.
+        # How much of the list is on screen when the panel opens is whatever
+        # fits the rows it has room for, which moves every time a command is
+        # added or removed. What holds either way: narrowing filters to the
+        # commands sharing the typed prefix, and backspacing brings back
+        # exactly the panel the bare slash first showed.
         session.write("e")
         session.settle(0.2, 1.5)
-        ok(completion_names(text(bytes(session.raw))) == ["/exit"], "narrowing to /e reaches a command the opened panel had no room to show")
+        narrowed_e = completion_names(text(bytes(session.raw)))
+        ok(len(narrowed_e) > 0 and all(n.startswith("/e") for n in narrowed_e), "narrowing to /e leaves only commands starting with /e, got %r" % narrowed_e)
+        ok("/exit" in narrowed_e, "narrowing to /e reaches /exit, wherever it sat in the opened panel")
         session.write(BACKSPACE)
         session.settle(0.2, 1.5)
-        ok(len(completion_names(text(bytes(session.raw)))) == len(names), "backspacing to a bare slash reopens the full panel")
+        ok(completion_names(text(bytes(session.raw))) == names, "backspacing to a bare slash reopens the same panel the bare slash first showed")
         # #113: at this session's default 24 rows the input box is in play,
         # and its own top border sits directly under the panel, so the panel
         # leaves out the rule it would otherwise draw there itself (#101)

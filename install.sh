@@ -31,7 +31,7 @@ fi
 # All three binaries the archive carries, not just the two commands. `joule`
 # resolves `joule-daemon` beside its own real path, so an install that dropped
 # it had no daemon mode at all. It needs no link of its own; nothing runs it by
-# name, and a link here would go stale the next time /update moves the others.
+# name, and a link here would go stale the next time an update moves the others.
 binaries="joule relay joule-daemon"
 
 target="$install_root/$version"
@@ -42,8 +42,9 @@ target="$install_root/$version"
 # though the bytes that landed are validly signed - the failure #235 hits on
 # every reinstall on Apple Silicon. Writing a fresh file and renaming a whole
 # directory into place gives every binary an inode the kernel has never seen,
-# so nothing stale can be held against it. /update has worked this way since
-# #201; this is the same move, not a second answer to the same question.
+# so nothing stale can be held against it. The in-app update has worked this
+# way since #201; this is the same move, not a second answer to the same
+# question.
 mkdir -p "$install_root"
 staging="$(mktemp -d "$install_root/.update-tmp-install-XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
@@ -137,8 +138,8 @@ if ! mv "$unpacked" "$target"; then
 fi
 
 # Each link is made beside the one it replaces and renamed over it, the way
-# /update does it (#201), so the name never spends a moment pointing at nothing
-# for anything else that is looking at it.
+# the in-app update does it (#201), so the name never spends a moment pointing
+# at nothing for anything else that is looking at it.
 mkdir -p "$bin_dir"
 for bin in joule relay; do
   staged="$bin_dir/$bin.install-staging"

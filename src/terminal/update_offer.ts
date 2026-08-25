@@ -71,7 +71,7 @@ export function updateInstallDecision(running: bool, currentVersion: string, met
   return "";
 }
 
-export function beginUpdateInstall(install: PendingUpdateInstall, currentVersion: string, sb: Scrollback): void {
+function beginUpdateInstall(install: PendingUpdateInstall, currentVersion: string, sb: Scrollback): void {
   let home = homeDir();
   let installRoot = resolveInstallRoot(envOr(INSTALL_ROOT_ENV, ""), home);
   let binDir = resolveBinDir(envOr(BIN_DIR_ENV, ""), home);

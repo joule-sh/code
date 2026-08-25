@@ -18,13 +18,13 @@ import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode,
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { ServerOrigin } from "../auth/server.ts";
-import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
+import { PendingUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
@@ -408,8 +408,6 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       drawScreen(sb, input, approvalLog.mode, rk);
       continue;
     }
-
-    if (cmd.kind == CMD_UPDATE) { beginUpdateInstall(updateInstall, VERSION, sb); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
     if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
