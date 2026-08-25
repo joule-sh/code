@@ -39,6 +39,15 @@ test("while a turn is running, elapsed and tokens are live and the tracker repor
   expect(rk.statusInfo("auto-edit").turnLive == true);
 });
 
+test("a turn marked live that never started reports no elapsed time rather than the machine's uptime", () => {
+  let rk = new TurnStatusTracker();
+  let tracker = new TurnTracker();
+  rk.bind(tracker, noRunning);
+  rk.inTurn = true;
+  expect(rk.startedAt == 0);
+  expect(rk.elapsedMs() == NO_TURN);
+});
+
 test("once a turn ends, its elapsed time and token total stay on the tracker instead of clearing", () => {
   let rk = new TurnStatusTracker();
   let tracker = new TurnTracker();

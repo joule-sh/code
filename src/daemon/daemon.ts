@@ -139,7 +139,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   let hello: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
     sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: cfg.model,
-    mode: gate.mode, protocol: PROTOCOL_VERSION,
+    mode: gate.mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   let helloUndelivered = appendBroadcast(runtimeDir, encodeSessionHello(hello));
   if (helloUndelivered != "") {

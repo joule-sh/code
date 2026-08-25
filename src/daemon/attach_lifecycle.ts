@@ -1,4 +1,5 @@
-import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop, helloFrameWorkspace, helloFrameBuild } from "../protocol/frames.ts";
+import { VERSION } from "../version.ts";
 import { DaemonClient } from "./attach_client.ts";
 import { readDaemonInfo, readDaemonInfoAt, removeDaemonInfo, daemonPortOrZero, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
 import { shellProgram, tempDir, worthConnectingTo } from "../vendor/platform/platform.ts";
@@ -33,12 +34,29 @@ export function nextPortInRange(port: int): int {
 
 export function helloWorkspace(frames: string[]): string {
   for (const f of frames) {
-    if (frameType(f) == SESSION_HELLO) {
-      let hello = decodeSessionHello(f);
-      if (hello != null) { return hello.workspace; }
-    }
+    if (frameType(f) == SESSION_HELLO) { return helloFrameWorkspace(f); }
   }
   return "";
+}
+
+export function helloBuild(frames: string[]): string {
+  for (const f of frames) {
+    if (frameType(f) == SESSION_HELLO) { return helloFrameBuild(f); }
+  }
+  return "";
+}
+
+export function describeBuild(build: string): string {
+  if (build == "") { return "a build too old to say which one"; }
+  return "joule " + build;
+}
+
+export function buildMismatchNotes(port: int, build: string): string[] {
+  let out: string[] = [];
+  out.push("joule: this client is joule " + VERSION + ", the daemon on 127.0.0.1:" + `${port}` + " is " + describeBuild(build));
+  out.push("joule: a client will not attach to a daemon of another build - the two agree on the frames and not on what they mean, and the session goes quiet");
+  out.push("joule: stop that daemon with joule --stop, then start joule again");
+  return out;
 }
 
 export function attachedMode(frames: string[], fallback: string): string {
@@ -211,6 +229,13 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
       let settled = waitForHello(client, first.frames, HELLO_WAIT_TICKS);
       let seen = helloWorkspace(settled);
       if (seen == workspaceRoot || (recorded && seen == "")) {
+        let build = helloBuild(settled);
+        if (build != VERSION) {
+          for (const n of buildMismatchNotes(port, build)) { notes.push(n); }
+          client.disconnect();
+          let stale: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
+          return stale;
+        }
         let already: AttachResult = { client: client, spawned: false, pending: settled, port: port, notes: notes };
         return already;
       }
@@ -254,6 +279,14 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
       client.disconnect();
       let shared: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
       return shared;
+    }
+    let started = helloBuild(settled);
+    if (seen != "" && started != VERSION) {
+      for (const n of buildMismatchNotes(port, started)) { notes.push(n); }
+      notes.push("joule: that daemon came from " + daemonBinPath + " - this install has a client and a daemon of different builds beside each other");
+      client.disconnect();
+      let halfUpdated: AttachResult = { client: client, spawned: true, pending: [], port: port, notes: notes };
+      return halfUpdated;
     }
     let fresh: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
     return fresh;
