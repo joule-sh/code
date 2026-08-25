@@ -141,12 +141,20 @@ directory. Model, mode and workspace are not part of what gets saved - they
 are re-resolved fresh from the normal config chain on every launch. There is
 no picker for older sessions yet, only the most recent one.
 
-The terminal enables mouse reporting so the wheel can scroll the transcript.
-That hands mouse events to joule, which is why click-drag no longer selects
-text on its own - the terminal emulator is no longer the one handling the
-click. Hold Shift while dragging to select natively; this bypasses mouse
-reporting in GNOME Terminal and Windows Terminal. iTerm2 uses Option instead
-of Shift for this. Terminal.app has no modifier-key bypass at all - turn off
-View > Allow Mouse Reporting (Cmd-R), select and copy, then turn it back on.
+The terminal leaves mouse reporting off, so selecting text with the mouse
+works the way it does everywhere else: drag to select, copy with whatever your
+terminal binds. PageUp/PageDown scroll the transcript.
+
+Turning mouse reporting on hands the wheel to the transcript instead, and that
+is the whole of what it buys - clicks and drags go to joule, which uses none of
+them, so the cost is the selection. `/mouse on` switches it for the running
+session and writes `"mouse": "on"` into `~/.config/joule-code/config.json`;
+`/mouse off` puts it back, and `JOULE_CODE_MOUSE` overrides the file for a
+single run. While it is on, hold Shift while dragging to select natively; this
+bypasses mouse reporting in GNOME Terminal and Windows Terminal. iTerm2 uses
+Option instead of Shift for this. Terminal.app has no modifier-key bypass at
+all - turn off View > Allow Mouse Reporting (Cmd-R), select and copy, then turn
+it back on.
+
 Copying from a collapsed tool-output group only copies what is visible; the
 rows hidden by the collapse are not part of the selection.

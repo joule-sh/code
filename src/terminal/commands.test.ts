@@ -1,4 +1,4 @@
-import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, commandList, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 
 test("plain text is not a command", () => {
   let p = parseCommand("add a health endpoint");
@@ -82,12 +82,32 @@ test("helpText documents the PageUp/PageDown scroll keys", () => {
   expect(h.indexOf("scroll") >= 0);
 });
 
-test("helpText documents the Shift+drag selection workaround", () => {
+test("helpText says a plain drag selects text, because that is what it does by default now", () => {
+  let h = helpText();
+  expect(h.indexOf("select and copy text as your terminal does") >= 0);
+  expect(h.indexOf("/mouse on") >= 0);
+});
+
+test("helpText keeps the per-emulator bypass for the people who turn mouse reporting on", () => {
   let h = helpText();
   expect(h.indexOf("Shift+drag") >= 0);
+  expect(h.indexOf("Option+drag") >= 0);
   expect(h.indexOf("GNOME Terminal") >= 0);
   expect(h.indexOf("iTerm2") >= 0);
   expect(h.indexOf("Terminal.app") >= 0);
+});
+
+test("/mouse parses bare and with on or off", () => {
+  expect(parseCommand("/mouse").kind == CMD_MOUSE);
+  expect(parseCommand("/mouse").arg == "");
+  let on = parseCommand("/mouse on");
+  expect(on.kind == CMD_MOUSE);
+  expect(on.arg == "on");
+  expect(parseCommand("/mouse off").arg == "off");
+});
+
+test("helpText lists /mouse, so the setting is not a config-file secret", () => {
+  expect(helpText().indexOf("/mouse") >= 0);
 });
 
 test("/tasks parses with no arg", () => {

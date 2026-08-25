@@ -3,7 +3,7 @@ import { ProviderConfig } from "./openai.ts";
 import { resolveServer, serverOrigin, ServerOrigin, SERVER_ENV } from "../auth/server.ts";
 import { envOr, homeDir } from "../vendor/platform/platform.ts";
 
-export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string, updateCheck: string };
+export type ConfigFile = { baseUrl: string, model: string, apiKey: string, server: string, updateCheck: string, mouse: string };
 
 function firstNonEmpty(a: string, b: string): string {
   if (a != "") { return a; }
@@ -20,7 +20,7 @@ export function resolveConfig(flagModel: string, flagBaseUrl: string, envBaseUrl
 }
 
 function emptyConfigFile(): ConfigFile {
-  let f: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "" };
+  let f: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "", mouse: "" };
   return f;
 }
 
@@ -35,6 +35,7 @@ export function parseConfigFile(text: string): ConfigFile {
     apiKey: jsonStringMemberAt(trimmed, 0, "apiKey"),
     server: jsonStringMemberAt(trimmed, 0, "server"),
     updateCheck: jsonStringMemberAt(trimmed, 0, "updateCheck"),
+    mouse: jsonStringMemberAt(trimmed, 0, "mouse"),
   };
   return f;
 }
@@ -101,7 +102,7 @@ export function loadServerBase(argv: string[]): string {
 export function withServer(existing: ConfigFile, server: string): ConfigFile {
   let file: ConfigFile = {
     baseUrl: existing.baseUrl, model: existing.model, apiKey: existing.apiKey,
-    server: server, updateCheck: existing.updateCheck,
+    server: server, updateCheck: existing.updateCheck, mouse: existing.mouse,
   };
   return file;
 }
@@ -109,4 +110,17 @@ export function withServer(existing: ConfigFile, server: string): ConfigFile {
 export function rememberServer(server: string): void {
   let target = configFilePath();
   saveConfigFile(target, withServer(loadConfigFile(target), server));
+}
+
+export function withMouse(existing: ConfigFile, mouse: string): ConfigFile {
+  let file: ConfigFile = {
+    baseUrl: existing.baseUrl, model: existing.model, apiKey: existing.apiKey,
+    server: existing.server, updateCheck: existing.updateCheck, mouse: mouse,
+  };
+  return file;
+}
+
+export function rememberMouse(mouse: string): void {
+  let target = configFilePath();
+  saveConfigFile(target, withMouse(loadConfigFile(target), mouse));
 }

@@ -22,17 +22,19 @@ test("a bare slash matches every command", () => {
 
 test("a prefix matching several commands returns all of them in registry order", () => {
   let m = matchCommands("/mo");
-  expect(m.length == 2);
+  expect(m.length == 3);
   expect(m[0].name == "/model");
   expect(m[1].name == "/mode");
+  expect(m[2].name == "/mouse");
 });
 
 test("a shorter prefix picks up every command that starts with it, including one added later", () => {
   let m = matchCommands("/m");
-  expect(m.length == 3);
+  expect(m.length == 4);
   expect(m[0].name == "/model");
   expect(m[1].name == "/mode");
   expect(m[2].name == "/memory");
+  expect(m[3].name == "/mouse");
 });
 
 test("a longer prefix narrows the match set", () => {
@@ -93,7 +95,7 @@ test("refreshing per keystroke narrows the match set live", () => {
   c.refresh("/");
   expect(c.matches.length == commandList().length);
   c.refresh("/mo");
-  expect(c.matches.length == 2);
+  expect(c.matches.length == 3);
   expect(c.matches[0].name == "/model");
   c.refresh("/model");
   expect(c.matches.length == 1);
@@ -108,9 +110,12 @@ test("the highlight moves down and clamps at the last match", () => {
   expect(c.selected == 0);
   c.move(1);
   expect(c.selected == 1);
-  c.move(1);
-  expect(c.selected == 1);
   expect(c.selectedName() == "/mode");
+  c.move(1);
+  expect(c.selected == 2);
+  c.move(1);
+  expect(c.selected == 2);
+  expect(c.selectedName() == "/mouse");
 });
 
 test("the highlight moves up and clamps at the first match", () => {
@@ -236,13 +241,14 @@ test("the panel renders one row per match, a marker on the highlight, and a rule
   let c = new Completion();
   c.refresh("/mo");
   let rows = completionRows(c, 80, panelBudget(24, 0, 1), true);
-  expect(rows.length == 3);
+  expect(rows.length == 4);
   expect(rows[0].indexOf(COMPLETION_MARKER) == 0);
   expect(rows[0].indexOf("/model") >= 0);
   expect(rows[0].indexOf("show or set the model") >= 0);
   expect(rows[1].indexOf(COMPLETION_MARKER) != 0);
   expect(rows[1].indexOf("/mode") >= 0);
-  expect(rows[2].indexOf("─") >= 0);
+  expect(rows[2].indexOf("/mouse") >= 0);
+  expect(rows[3].indexOf("─") >= 0);
 });
 
 test("the marker follows the highlight down the list", () => {
@@ -350,9 +356,10 @@ test("with the box in play the panel leaves its own rule out, since the box's to
   let c = new Completion();
   c.refresh("/mo");
   let rows = completionRows(c, 80, panelBudget(24, 0, 3), false);
-  expect(rows.length == 2);
+  expect(rows.length == 3);
   expect(rows[0].indexOf("/model") >= 0);
   expect(rows[1].indexOf("/mode") >= 0);
+  expect(rows[2].indexOf("/mouse") >= 0);
   let i = 0;
   while (i < rows.length) {
     expect(rows[i].indexOf("─") < 0);
@@ -379,7 +386,7 @@ function anyRowHas(rowsList: string[], needle: string): bool {
 test("dropping the rule lets one more match row fit in the same budget", () => {
   let c = new Completion();
   c.refresh("/");
-  let budget = panelBudget(15, 0, 1);
+  let budget = panelBudget(16, 0, 1);
   let withRule = completionRows(c, 80, budget, true);
   let withoutRule = completionRows(c, 80, budget, false);
   expect(!anyRowHas(withRule, "/exit"));

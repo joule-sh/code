@@ -1,4 +1,4 @@
-import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
+import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB, KEY_SCROLL_UP, KEY_SCROLL_DOWN } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -8,7 +8,7 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_UPDATE, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
@@ -34,10 +34,11 @@ import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tr
 import { enterPlanMode, offerPlanDecision, tryHandlePlanDecisionArrow, tryHandlePlanDecisionEnter, tryHandlePlanDecisionChar } from "./plan_mode.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
 import { VERSION } from "../version.ts";
+import { enterScreen, leaveScreen, runMouseCommand } from "./mouse_reporting.ts";
+import { isScrollKey, applyScrollKey, WHEEL_SCROLL_LINES } from "./scroll_keys.ts";
 
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
-const WHEEL_SCROLL_LINES: int = 3;
 
 export function runTerminal(argv: string[], startupNotes: string[]): void {
   if (!isatty(STDIN)) {
@@ -214,7 +215,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
 
-  process.stdout().write(ENTER_ALT_SCREEN + HIDE_CURSOR + ENABLE_MOUSE_REPORTING);
+  let mouse = enterScreen();
   rawEnable(STDIN);
 
   sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
@@ -330,13 +331,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       continue;
     }
 
-    if (k.kind == KEY_PAGE_UP) { let r = screenRows(); sb.scrollUp(r - 1, r - 1); drawScreen(sb, input, gate.mode, rk); continue; }
-
-    if (k.kind == KEY_PAGE_DOWN) { let r = screenRows(); sb.scrollDown(r - 1, r - 1); drawScreen(sb, input, gate.mode, rk); continue; }
-
-    if (k.kind == KEY_SCROLL_UP) { let r = screenRows(); sb.scrollUp(r - 1, WHEEL_SCROLL_LINES); drawScreen(sb, input, gate.mode, rk); continue; }
-
-    if (k.kind == KEY_SCROLL_DOWN) { let r = screenRows(); sb.scrollDown(r - 1, WHEEL_SCROLL_LINES); drawScreen(sb, input, gate.mode, rk); continue; }
+    if (isScrollKey(k.kind)) { applyScrollKey(k.kind, sb, screenRows()); drawScreen(sb, input, gate.mode, rk); continue; }
 
     if (k.kind != KEY_ENTER) {
       continue;
@@ -419,6 +414,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
 
+    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); drawScreen(sb, input, gate.mode, rk); continue; }
+
     if (cmd.kind == CMD_TASKS) {
       if (cmd.arg == "") {
         sb.append("\n" + tasks.listText());
@@ -444,6 +441,6 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   relay.detach();
 
-  process.stdout().write(DISABLE_MOUSE_REPORTING + SHOW_CURSOR + EXIT_ALT_SCREEN);
+  leaveScreen(mouse);
   rawDisable(STDIN);
 }

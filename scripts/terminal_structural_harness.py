@@ -12,6 +12,7 @@
 
 import errno
 import fcntl
+import json
 import os
 import re
 import select
@@ -480,12 +481,35 @@ def self_test_color_bleed_detector():
     ok(bled_caught, "color-bleed detector self-test: an unreset color bleeding into the next row is caught")
 
 
-def check_mouse_teardown(full_text, exit_label):
-    disable_idx = full_text.rfind(MOUSE_DISABLE)
-    exit_idx = full_text.rfind(ALT_EXIT)
-    ok(disable_idx >= 0, "the mouse reporting disable sequences (1000l+1006l) appear in the byte stream on %s exit (ticket #82)" % exit_label)
+def check_mouse_teardown(full_text, exit_text, exit_label, reporting_on):
+    disable_idx = exit_text.rfind(MOUSE_DISABLE)
+    exit_idx = exit_text.rfind(ALT_EXIT)
     ok(exit_idx >= 0, "the alt screen exit sequence appears in the byte stream on %s exit" % exit_label)
-    ok(disable_idx >= 0 and exit_idx >= 0 and disable_idx < exit_idx, "mouse reporting is disabled before the alt screen exits on %s exit (ticket #82)" % exit_label)
+    if reporting_on:
+        ok(disable_idx >= 0, "the mouse reporting disable sequences (1000l+1006l) appear in the byte stream on %s exit (ticket #82)" % exit_label)
+        ok(disable_idx >= 0 and exit_idx >= 0 and disable_idx < exit_idx, "mouse reporting is disabled before the alt screen exits on %s exit (ticket #82)" % exit_label)
+    else:
+        ok(disable_idx < 0, "with mouse reporting off there is nothing to disable on %s exit, so nothing is written and the pair stays balanced" % exit_label)
+    enables = full_text.count(MOUSE_ENABLE)
+    disables = full_text.count(MOUSE_DISABLE)
+    ok(enables == disables, "every mouse reporting enable in the %s session is paired with a disable, got %d enables and %d disables" % (exit_label, enables, disables))
+
+
+def config_path(home_dir):
+    return os.path.join(home_dir, ".config", "joule-code", "config.json")
+
+
+def seed_config(home_dir, **fields):
+    os.makedirs(os.path.dirname(config_path(home_dir)), exist_ok=True)
+    with open(config_path(home_dir), "w") as f:
+        json.dump(fields, f)
+
+
+def read_config(home_dir):
+    if not os.path.exists(config_path(home_dir)):
+        return {}
+    with open(config_path(home_dir)) as f:
+        return json.load(f)
 
 
 def run_ctrl_c_exit_scenario():
@@ -504,11 +528,12 @@ def run_ctrl_c_exit_scenario():
     try:
         session = PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
         session.wait_for(BANNER, timeout=10.0)
+        pre_exit_idx = len(session.raw)
         session.write("\x03")
         exited = session.wait_exit(5.0)
         ok(exited, "joule exits cleanly on ctrl-c with an empty input line")
         session._pump(0.5)
-        check_mouse_teardown(text(bytes(session.raw)), "ctrl-c")
+        check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", False)
     finally:
         if session is not None:
             session.close()
@@ -832,7 +857,7 @@ def run_completion_panel_scenario():
         session.write("mo")
         session.settle(0.2, 1.5)
         narrowed = text(bytes(session.raw))
-        ok(completion_names(narrowed) == ["/model", "/mode"], "typing mo narrows the panel to the commands starting with /mo, got %r" % completion_names(narrowed))
+        ok(completion_names(narrowed) == ["/model", "/mode", "/mouse"], "typing mo narrows the panel to the commands starting with /mo, got %r" % completion_names(narrowed))
         ok(marked_completion(narrowed) == "/model", "the marker resets to the first match as the list narrows")
 
         session.write(ARROW_DOWN)
@@ -841,11 +866,19 @@ def run_completion_panel_scenario():
 
         session.write(ARROW_DOWN)
         session.settle(0.2, 1.5)
-        ok(marked_completion(text(bytes(session.raw))) == "/mode", "arrow down at the end of the list stays put rather than wrapping")
+        ok(marked_completion(text(bytes(session.raw))) == "/mouse", "arrow down carries on to the last match")
+
+        session.write(ARROW_DOWN)
+        session.settle(0.2, 1.5)
+        ok(marked_completion(text(bytes(session.raw))) == "/mouse", "arrow down at the end of the list stays put rather than wrapping")
 
         session.write(ARROW_UP)
         session.settle(0.2, 1.5)
-        ok(marked_completion(text(bytes(session.raw))) == "/model", "arrow up moves the panel marker back up the list")
+        ok(marked_completion(text(bytes(session.raw))) == "/mode", "arrow up moves the panel marker back up the list")
+
+        session.write(ARROW_UP)
+        session.settle(0.2, 1.5)
+        ok(marked_completion(text(bytes(session.raw))) == "/model", "arrow up keeps walking back up the list")
 
         session.write(TAB)
         session.settle(0.2, 1.5)
@@ -971,6 +1004,7 @@ def run_scenario():
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
     os.makedirs(home_dir, exist_ok=True)
+    seed_config(home_dir, mouse="on")
     seed_workspace(repo_dir)
 
     stub_port = free_port()
@@ -1003,7 +1037,7 @@ def run_scenario():
         alt_idx = startup_text.find(ALT_ENTER)
         ok(alt_idx >= 0, "the alt screen enter sequence appears at startup")
         expected_mouse_idx = alt_idx + len(ALT_ENTER) + len(HIDE_CURSOR)
-        ok(startup_text.find(MOUSE_ENABLE) == expected_mouse_idx, "mouse reporting (1000h+1006h) is enabled immediately after entering the alt screen and hiding the cursor (ticket #82)")
+        ok(startup_text.find(MOUSE_ENABLE) == expected_mouse_idx, "with mouse: on in the config file, mouse reporting (1000h+1006h) is enabled immediately after entering the alt screen and hiding the cursor (ticket #82)")
 
         session.write("abc")
         session.write("\x7f\x7f\x7f")
@@ -1103,6 +1137,7 @@ def run_scenario():
         max_row = max((r for (r, _) in rows_after_resize), default=0)
         ok(max_row <= 15, "a redraw after resizing to 15 rows never addresses a row past the new height, got max row %d" % max_row)
 
+        pre_exit_idx = len(session.raw)
         session.write("\x04")
         exited = session.wait_exit(5.0)
         ok(exited, "joule exits cleanly on ctrl-d")
@@ -1112,7 +1147,7 @@ def run_scenario():
         check_zero_newlines(full_text)
         check_cursor_monotonic(full_text)
         check_color_bleed(full_text)
-        check_mouse_teardown(full_text, "ctrl-d")
+        check_mouse_teardown(full_text, text(bytes(session.raw[pre_exit_idx:])), "ctrl-d", True)
 
     finally:
         if session is not None:
@@ -1127,6 +1162,83 @@ def run_scenario():
                 pass
         reap_daemon(work_dir)
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def run_mouse_setting_scenario():
+    """#170: mouse reporting is off out of the box, so a drag is the terminal's
+    own selection, and /mouse trades that for the wheel when someone wants it."""
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-mouse-")
+        home_dir = os.path.join(work_dir, "home")
+        session.wait_for(BANNER, timeout=10.0)
+        session.settle(0.2, 1.5)
+
+        startup_text = text(bytes(session.raw))
+        alt_idx = startup_text.find(ALT_ENTER)
+        ok(alt_idx >= 0, "joule with no config file still enters the alt screen at startup")
+        ok(startup_text.find(HIDE_CURSOR) == alt_idx + len(ALT_ENTER), "the cursor hide still follows the alt screen enter with nothing between them")
+        ok(MOUSE_ENABLE not in startup_text, "no mouse reporting enable (1000h+1006h) is written at startup by default, so the emulator keeps click-drag selection (#170)")
+
+        session.write("/cat file_a.txt\r")
+        session.wait_for("FILE_A_LINE_050", timeout=10.0)
+        session.settle(0.2, 1.5)
+
+        for _ in range(3):
+            session.write(b"\x1b[5~")
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "PageUp scrolls the transcript with mouse reporting off, which is what the status line promises (#157)")
+
+        for _ in range(6):
+            session.write(b"\x1b[6~")
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "PageDown returns to the live view with mouse reporting off")
+
+        session.write("/mouse\r")
+        session.settle(0.3, 2.0)
+        ok("mouse reporting off" in strip_sgr(last_redraw_block(text(bytes(session.raw)))), "/mouse with no argument says which state it is in")
+
+        before_on = len(session.raw)
+        session.write("/mouse on\r")
+        session.settle(0.3, 2.0)
+        turned_on = text(bytes(session.raw[before_on:]))
+        ok(MOUSE_ENABLE in turned_on, "/mouse on writes the enable sequences (1000h+1006h) to the terminal it is already running in")
+        ok("mouse reporting on" in strip_sgr(last_redraw_block(text(bytes(session.raw)))), "/mouse on says so in the transcript")
+        ok(read_config(home_dir).get("mouse") == "on", "/mouse on writes the setting to the config file, so the next run starts with it")
+
+        for _ in range(3):
+            session.write(WHEEL_UP)
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR in last_redraw_block(text(bytes(session.raw))), "with reporting turned on the wheel scrolls the transcript again (ticket #82)")
+
+        for _ in range(5):
+            session.write(WHEEL_DOWN)
+            session.settle(0.15, 1.0)
+        ok(SCROLL_INDICATOR not in last_redraw_block(text(bytes(session.raw))), "wheel-down all the way returns to the live view")
+
+        before_off = len(session.raw)
+        session.write("/mouse off\r")
+        session.settle(0.3, 2.0)
+        turned_off = text(bytes(session.raw[before_off:]))
+        ok(MOUSE_DISABLE in turned_off, "/mouse off writes the disable sequences (1000l+1006l) back to the live terminal")
+        ok(read_config(home_dir).get("mouse") == "off", "/mouse off writes that back to the config file too")
+
+        pre_exit_idx = len(session.raw)
+        session.write("\x04")
+        exited = session.wait_exit(5.0)
+        ok(exited, "joule exits cleanly on ctrl-d after the mouse setting has been toggled")
+        session._pump(0.5)
+
+        full_text = text(bytes(session.raw))
+        check_zero_newlines(full_text)
+        check_cursor_monotonic(full_text)
+        check_color_bleed(full_text)
+        check_mouse_teardown(full_text, text(bytes(session.raw[pre_exit_idx:])), "ctrl-d with reporting toggled back off", False)
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
 
 
 def main():
@@ -1170,6 +1282,11 @@ def main():
         failures.append(str(e))
     try:
         run_collapse_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_mouse_setting_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))

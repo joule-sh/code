@@ -125,7 +125,7 @@ export function runOnboarding(): ConfigFile {
   let apiKey = readRequiredField("api key", "", true);
 
   let existing = loadConfigFile(configFilePath());
-  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey, server: existing.server, updateCheck: existing.updateCheck };
+  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey, server: existing.server, updateCheck: existing.updateCheck, mouse: existing.mouse };
   saveConfigFile(configFilePath(), file);
 
   write("\r\n" + wrap(DIM, "saved to ~/.config/joule-code/config.json") + "\r\n\r\n");
