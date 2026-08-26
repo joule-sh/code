@@ -46,6 +46,14 @@ OSC52_PREFIX = "\x1b]52;c;"
 BEL = "\x07"
 SELECTING_MARKER = "-- selecting "
 COPIED_MARKER = "-- copied "
+ASKED_MARKER = "-- asked the terminal for "
+# #282: joule writes the clipboard itself where it can, and only falls back to
+# asking the terminal over OSC 52 where it cannot. Every scenario here runs
+# with no display and no ssh variables, which is the fallback case, so what it
+# drives is the OSC 52 path deliberately rather than by accident - a runner
+# that happens to have DISPLAY set would otherwise change what these assert.
+# The clipboard is actually read back in scripts/verify_clipboard_pty.py.
+NO_CLIPBOARD_ENV = ["DISPLAY", "WAYLAND_DISPLAY", "SSH_CONNECTION", "SSH_TTY"]
 
 
 def mouse_press(row, col):
@@ -591,7 +599,7 @@ def seed_long_readme(repo_dir):
         f.write("\n".join(lines))
 
 
-def start_stub_session(prefix, rows=24, cols=80):
+def start_stub_session(prefix, rows=24, cols=80, env_extra=None, env_drop=None):
     """A fresh workspace, stub model, and joule pty session.
 
     The stub's scripted step counter lives in the stub process, so a scenario
@@ -619,6 +627,9 @@ def start_stub_session(prefix, rows=24, cols=80):
     joule_env["JOULE_CODE_MODEL"] = "stub"
     joule_env["JOULE_CODE_API_KEY"] = "stub-key"  # non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
     joule_env["TERM"] = "xterm-256color"
+    for name in (env_drop or []):
+        joule_env.pop(name, None)
+    joule_env.update(env_extra or {})
     return work_dir, stub_proc, PtySession([JOULE_BIN], joule_env, repo_dir, rows=rows, cols=cols)
 
 
@@ -1201,7 +1212,7 @@ def run_mouse_setting_scenario():
     stub_proc = None
     session = None
     try:
-        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-mouse-")
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-mouse-", env_drop=NO_CLIPBOARD_ENV)
         home_dir = os.path.join(work_dir, "home")
         session.wait_for(BANNER, timeout=10.0)
         session.settle(0.2, 1.5)
@@ -1241,7 +1252,8 @@ def run_mouse_setting_scenario():
         session.settle(0.3, 2.0)
         state_screen = strip_sgr(last_redraw_block(text(bytes(session.raw))))
         ok("mouse reporting on" in state_screen, "/mouse with no argument says which state it is in")
-        ok("OSC 52" in state_screen, "/mouse names the mechanism the copy travels over, so a refusal is diagnosable")
+        ok("OSC 52" in state_screen, "/mouse names the mechanism the copy will really travel over here - no clipboard command on this box, so OSC 52 (#282)")
+        ok("clipboard command" in state_screen, "and says why, rather than presenting OSC 52 as the only thing joule knows how to do")
 
         before_off = len(session.raw)
         session.write("/mouse off\r")
@@ -1313,14 +1325,20 @@ def drag_over(session, top_row, bottom_row, cols):
 def run_mouse_selection_scenario():
     """#170: with reporting on, joule does the selecting itself. A drag over the
     transcript highlights the rows it covers and says so in words, the release
-    hands exactly those rows to the clipboard over OSC 52, the wheel keeps
-    scrolling throughout, and /mouse off takes the whole thing away again."""
+    hands exactly those rows to the clipboard, the wheel keeps scrolling
+    throughout, and /mouse off takes the whole thing away again.
+
+    This session has no display and no ssh variables, so there is no clipboard
+    command for joule to run and OSC 52 is the only mechanism left - which is
+    what makes the payload assertions below meaningful. That the clipboard
+    itself ends up holding the text is a different claim, and the one #282 was
+    about; scripts/verify_clipboard_pty.py reads it back to make it."""
     import base64
     work_dir = None
     stub_proc = None
     session = None
     try:
-        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-select-")
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-select-", env_drop=NO_CLIPBOARD_ENV)
         session.wait_for(BANNER, timeout=10.0)
         session.write("/cat file_a.txt\r")
         session.wait_for("FILE_A_LINE_050", timeout=10.0)
@@ -1369,15 +1387,16 @@ def run_mouse_selection_scenario():
             ok(base64.b64decode(payloads[0]).decode("latin1") == expected, "and it decodes back to the selected text, line breaks and all")
 
         copied_screen = strip_sgr(last_redraw_block(text(bytes(session.raw))))
-        ok(COPIED_MARKER in copied_screen, "after the release the screen says what was copied, in words")
-        ok("/mouse off" in copied_screen, "and names the way out, because OSC 52 has no reply to wait on when a terminal refuses it")
+        ok(ASKED_MARKER in copied_screen, "after the release the screen says what happened, in words")
+        ok(COPIED_MARKER not in copied_screen, "and does not claim a copy that only a terminal could have completed, because OSC 52 has no reply to wait on (#282)")
+        ok("/mouse off" in copied_screen, "and names the way out")
         ok(reversed_rows(last_redraw_block(text(bytes(session.raw)))) == list(range(top_row, bottom_row + 1)), "the copied range stays highlighted until it is cleared")
 
         session.write(b"\x1b")
         session.settle(0.4, 2.0)
         cleared = last_redraw_block(text(bytes(session.raw)))
         ok(not reversed_rows(cleared), "Escape clears the highlight")
-        ok(COPIED_MARKER not in strip_sgr(cleared), "and takes the copied note away with it")
+        ok(ASKED_MARKER not in strip_sgr(cleared), "and takes the copy note away with it")
 
         for _ in range(3):
             session.write(WHEEL_UP)
@@ -1401,7 +1420,7 @@ def run_mouse_selection_scenario():
             off_block = last_redraw_block(text(bytes(session.raw)))
             ok(not reversed_rows(off_block), "and no row on screen is highlighted")
             off_screen = strip_sgr(off_block)
-            ok(SELECTING_MARKER not in off_screen and COPIED_MARKER not in off_screen, "and the selection indicator is absent entirely, so the whole feature is gone")
+            ok(SELECTING_MARKER not in off_screen and ASKED_MARKER not in off_screen, "and the selection indicator is absent entirely, so the whole feature is gone")
 
         session.resize(15, 45)
         session.write("z")

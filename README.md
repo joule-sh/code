@@ -149,11 +149,24 @@ status line saying how many lines are held. The wheel keeps scrolling while a
 drag is in progress: the selection stays on the text it was drawn over rather
 than on the screen rows.
 
-Releasing copies, over OSC 52 (`ESC ] 52 ; c ; <base64> BEL`), which is the
-mechanism that survives ssh. Not every terminal accepts it, and one that
-refuses sends no reply, so there is nothing to detect and nothing to retry.
-Joule says what it wrote and names the way out rather than reporting a copy it
-cannot confirm: `copied 3 lines - Esc clears - /mouse off if nothing pasted`.
+Releasing copies. Joule is a local process, so it writes the clipboard itself
+rather than asking your terminal to: `pbcopy` on macOS, `wl-copy` on Wayland,
+`xclip` or `xsel` on X11, `clip.exe` on Windows. That works on every terminal,
+including the ones that refuse OSC 52 clipboard writes by default and the ones
+that never implemented it. The status line then reports a copy that really
+happened: `copied 3 lines - Esc clears`.
+
+Over ssh the local clipboard is the wrong one - the one you paste into is at
+your end of the connection - so a remote session falls back to OSC 52
+(`ESC ] 52 ; c ; <base64> BEL`), which travels back over the terminal. So does
+a machine with no clipboard command installed. A terminal that refuses OSC 52
+sends no reply, so there is nothing to detect and nothing to retry, and the
+status line says only what it can stand behind: `asked the terminal for 3
+lines - /mouse off if nothing pasted`. If the clipboard command is there and
+fails, nothing is claimed at all: `no clipboard here - Esc clears - /mouse off
+to select with the terminal`. `/mouse` on its own names which of the three
+this machine will use.
+
 Escape clears the selection, typing puts the status line back, and the next
 click starts a new one.
 
@@ -162,8 +175,8 @@ Sign-in codes are never selectable: the row map covers transcript rows only,
 and no selection can start, extend or copy while the input line is capturing.
 
 `/mouse off` hands selection back to your terminal's own, for anyone who
-prefers it or whose terminal blocks OSC 52; the button events are then ignored
-outright. It writes `"mouse": "off"` into `~/.config/joule-code/config.json`,
+prefers it or whose machine can reach no clipboard at all; the button events
+are then ignored outright. It writes `"mouse": "off"` into `~/.config/joule-code/config.json`,
 `/mouse on` puts it back, and `JOULE_CODE_MOUSE` overrides the file for a
 single run.
 

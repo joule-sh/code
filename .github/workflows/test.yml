@@ -52,6 +52,34 @@ jobs:
       - run: python3 --version
       - run: make terminal-harness
 
+  # Reads the clipboard back after a drag instead of trusting an escape
+  # sequence (#282). Needs a display and a clipboard command; the harness
+  # starts and stops its own Xvfb, and both runners take jobs, so the check
+  # installs what is missing the way the editor-window job does.
+  clipboard:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - name: Make sure this runner has a display and a clipboard command
+        run: |
+          missing=""
+          command -v Xvfb >/dev/null || missing="xvfb"
+          command -v xclip >/dev/null || missing="$missing xclip"
+          if [ -z "$missing" ]; then echo "already provisioned"; exit 0; fi
+          echo "missing:$missing"
+          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y -qq --no-install-recommends xvfb xclip
+      - run: python3 --version && xclip -version || true
+      - run: make clipboard-harness
+
   layout-harness:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10
@@ -315,6 +343,9 @@ jobs:
           ./bin/relay --version
           ./bin/joule-daemon --version
       - run: make macos-test
+      # The platform the clipboard bug was reported on, and the only place
+      # pbcopy can actually be driven (#282).
+      - run: make clipboard-harness
       - run: make daemon-concurrent-harness
       - run: make daemon-attach-harness
       - run: make daemon-stop-harness

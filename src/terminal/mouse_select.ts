@@ -3,7 +3,7 @@ import { Scrollback } from "./scrollback.ts";
 import { InputLine } from "./input_state.ts";
 import { isScrollKey, applyScrollKey } from "./scroll_keys.ts";
 import { Selection, selectedText, countLines } from "./selection.ts";
-import { writeClipboard } from "./osc52.ts";
+import { copySelection } from "./clipboard.ts";
 
 export function isMouseSelectKey(kind: string): bool {
   return kind == KEY_MOUSE_PRESS || kind == KEY_MOUSE_DRAG || kind == KEY_MOUSE_RELEASE;
@@ -31,7 +31,8 @@ export function copyOnRelease(sb: Scrollback): string {
 }
 
 export function finishSelection(sb: Scrollback): bool {
-  writeClipboard(copyOnRelease(sb));
+  let text = copyOnRelease(sb);
+  if (text != "") { sb.selection.copiedWhere = copySelection(text); }
   return true;
 }
 

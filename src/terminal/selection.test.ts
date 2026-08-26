@@ -1,4 +1,5 @@
 import { Selection, countLines, plainSlice, highlightRange, rangeForLine, selectedText, selectionIndicator, lineCountWord, COL_END } from "./selection.ts";
+import { COPY_TOOL, COPY_TERMINAL, COPY_NOWHERE } from "./clipboard.ts";
 import { REVERSE, RESET, VIOLET, DIM } from "./style.ts";
 
 const ESC_CODE: int = 27;
@@ -184,10 +185,28 @@ test("the indicator says what is happening in words, not only in colour", () => 
   sel.dragging = false;
   sel.copied = true;
   sel.copiedLines = 3;
+  sel.copiedWhere = COPY_TOOL;
   let done = selectionIndicator(sel);
   expect(done.indexOf("copied 3 lines") >= 0);
-  expect(done.indexOf("nothing pasted") >= 0);
-  expect(done.indexOf("/mouse off") >= 0);
+  expect(done.indexOf("/mouse off") < 0);
+});
+
+test("the indicator claims a copy only when a clipboard command took the text", () => {
+  let sel = dragged(2, 1, 4, 5);
+  sel.dragging = false;
+  sel.copied = true;
+  sel.copiedLines = 3;
+  sel.copiedWhere = COPY_TERMINAL;
+  let asked = selectionIndicator(sel);
+  expect(asked.indexOf("copied") < 0);
+  expect(asked.indexOf("asked the terminal for 3 lines") >= 0);
+  expect(asked.indexOf("nothing pasted") >= 0);
+  expect(asked.indexOf("/mouse off") >= 0);
+  sel.copiedWhere = COPY_NOWHERE;
+  let none = selectionIndicator(sel);
+  expect(none.indexOf("copied") < 0);
+  expect(none.indexOf("no clipboard here") >= 0);
+  expect(none.indexOf("/mouse off") >= 0);
 });
 
 test("each indicator fits an 80 column terminal without being clipped", () => {
@@ -195,13 +214,21 @@ test("each indicator fits an 80 column terminal without being clipped", () => {
   expect(selectionIndicator(sel).length <= 80);
   sel.dragging = false;
   sel.copied = true;
-  sel.copiedLines = 3;
+  sel.copiedLines = 99999;
+  sel.copiedWhere = COPY_TOOL;
+  expect(selectionIndicator(sel).length <= 80);
+  sel.copiedWhere = COPY_TERMINAL;
+  expect(selectionIndicator(sel).length <= 80);
+  sel.copiedWhere = COPY_NOWHERE;
   expect(selectionIndicator(sel).length <= 80);
 });
 
 test("a cleared selection shows nothing and highlights nothing", () => {
   let sel = dragged(2, 1, 4, 5);
+  sel.copied = true;
+  sel.copiedWhere = COPY_TOOL;
   sel.clear();
+  expect(sel.copiedWhere == "");
   expect(!sel.hasRange());
   expect(!sel.isLive());
   expect(selectionIndicator(sel) == "");

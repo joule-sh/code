@@ -1,4 +1,5 @@
 import { REVERSE, RESET } from "./style.ts";
+import { COPY_TOOL, COPY_TERMINAL } from "./clipboard.ts";
 
 const ESC_CODE: int = 27;
 export const COL_END: int = 1000000;
@@ -100,6 +101,7 @@ export class Selection {
   moved: bool;
   copied: bool;
   copiedLines: int;
+  copiedWhere: string;
   rowLine: int[];
 
   constructor() {
@@ -112,6 +114,7 @@ export class Selection {
     this.moved = false;
     this.copied = false;
     this.copiedLines = 0;
+    this.copiedWhere = "";
     this.rowLine = [];
   }
 
@@ -131,6 +134,7 @@ export class Selection {
     this.moved = false;
     this.copied = false;
     this.copiedLines = 0;
+    this.copiedWhere = "";
   }
 
   begin(line: int, col: int): void {
@@ -230,8 +234,12 @@ export function selectionIndicator(sel: Selection): string {
   if (sel.dragging && sel.hasRange()) {
     return "-- selecting " + lineCountWord(sel.lineSpan()) + ", release to copy --";
   }
-  if (sel.copied) {
-    return "-- copied " + lineCountWord(sel.copiedLines) + " - Esc clears - /mouse off if nothing pasted --";
+  if (!sel.copied) { return ""; }
+  if (sel.copiedWhere == COPY_TOOL) {
+    return "-- copied " + lineCountWord(sel.copiedLines) + " - Esc clears --";
   }
-  return "";
+  if (sel.copiedWhere == COPY_TERMINAL) {
+    return "-- asked the terminal for " + lineCountWord(sel.copiedLines) + " - /mouse off if nothing pasted --";
+  }
+  return "-- no clipboard here - Esc clears - /mouse off to select with the terminal --";
 }

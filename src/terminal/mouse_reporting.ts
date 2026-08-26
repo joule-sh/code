@@ -1,6 +1,7 @@
 import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING } from "../vendor/tty/tty.ts";
 import { loadConfigFile, configFilePath, rememberMouse } from "../providers/config.ts";
 import { envOr } from "../vendor/platform/platform.ts";
+import { currentPlan, planText } from "./clipboard.ts";
 
 export const MOUSE_ENV: string = "JOULE_CODE_MOUSE";
 export const MOUSE_ON: string = "on";
@@ -22,11 +23,13 @@ export function mouseSettingWord(on: bool): string {
   return MOUSE_OFF;
 }
 
+export function mouseOnText(route: string): string {
+  return "\nmouse reporting on - the wheel scrolls, drag selects, release copies"
+    + "\n" + route;
+}
+
 export function mouseStateText(on: bool): string {
-  if (on) {
-    return "\nmouse reporting on - the wheel scrolls, drag selects, release copies (OSC 52)"
-      + "\nnothing pasted? this terminal refused it - /mouse off gives selection back to it";
-  }
+  if (on) { return mouseOnText(planText(currentPlan())); }
   return "\nmouse reporting off - your terminal's own drag selects, PageUp/PageDown scroll";
 }
 
