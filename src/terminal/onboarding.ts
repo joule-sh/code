@@ -1,5 +1,6 @@
 import { rawEnable, rawDisable, readKey, CLEAR_LINE, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF } from "../vendor/tty/tty.ts";
 import { ConfigFile, saveConfigFile, loadConfigFile, configFilePath } from "../providers/config.ts";
+import { platformOf } from "../providers/platform.ts";
 import { InputLine } from "./input_state.ts";
 import { VIOLET, BOLD, DIM, wrap } from "./style.ts";
 
@@ -16,9 +17,9 @@ export function providerBaseUrl(choice: string): string {
 }
 
 export function providerLabel(choice: string): string {
-  if (choice == PROVIDER_OPENAI) { return "openai"; }
-  if (choice == PROVIDER_DEEPSEEK) { return "deepseek"; }
-  return "custom";
+  let platform = platformOf(providerBaseUrl(choice));
+  if (platform == "") { return "custom"; }
+  return platform;
 }
 
 function write(text: string): void {

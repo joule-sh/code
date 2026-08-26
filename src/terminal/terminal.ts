@@ -1,5 +1,6 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { displayModel, qualifiedModel, wireModel } from "../providers/platform.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -173,7 +174,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       return;
     }
-    let result = relay.connect(workspaceRoot, live.cfg.model);
+    let result = relay.connect(workspaceRoot, displayModel(live.cfg));
     if (!result.ok) {
       sb.append("\ncould not attach to the relay: " + result.error);
       drawScreen(sb, input, gate.mode, rk);
@@ -181,7 +182,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     }
     let hello: SessionHelloFrame = {
       v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
-      sessionId: relay.sessionId, workspace: workspaceRoot, model: live.cfg.model,
+      sessionId: relay.sessionId, workspace: workspaceRoot, model: displayModel(live.cfg),
       mode: session.mode, protocol: PROTOCOL_VERSION, build: VERSION,
     };
     relay.publish(encodeSessionHello(hello));
@@ -215,7 +216,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   applyMouseState(sb, mouse.on);
   rawEnable(STDIN);
 
-  sb.append(buildWelcomeBox(cfg.model, workspaceRoot, gate.mode, server.base));
+  sb.append(buildWelcomeBox(displayModel(cfg), workspaceRoot, gate.mode, server.base));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit") + skillsStartupNote(workspaceRoot));
   for (const n of startupNotes) { sb.append("\n" + styleBanner(n)); }
   if (resume.note != "") { sb.append(resume.note); }
@@ -366,10 +367,10 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (cmd.kind == CMD_MODEL) {
       if (cmd.arg == "") {
-        sb.append("\nmodel: " + live.cfg.model);
+        sb.append("\nmodel: " + displayModel(live.cfg));
       } else {
-        live.cfg = { baseUrl: live.cfg.baseUrl, model: cmd.arg, apiKey: live.cfg.apiKey };
-        sb.append("\nmodel set to " + cmd.arg);
+        live.cfg = { baseUrl: live.cfg.baseUrl, model: wireModel(live.cfg.baseUrl, cmd.arg), apiKey: live.cfg.apiKey };
+        sb.append("\nmodel set to " + displayModel(live.cfg));
       }
       drawScreen(sb, input, gate.mode, rk);
       continue;

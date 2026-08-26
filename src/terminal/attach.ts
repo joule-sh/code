@@ -23,6 +23,7 @@ import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { displayModel } from "../providers/platform.ts";
 import { ServerOrigin } from "../auth/server.ts";
 import { PendingUpdateInstall, beginUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
@@ -58,7 +59,7 @@ export function runDaemonJoule(argv: string[]): DaemonAttempt {
   if (!result.client.socketReady) {
     return declined(declineNotes(result.notes, workspaceRoot));
   }
-  runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, false);
+  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, false);
   return attached();
 }
 
@@ -86,7 +87,7 @@ export function runAttach(argv: string[]): void {
     process.exit(1);
     return;
   }
-  runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, true);
+  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, true);
 }
 
 function resumeNoteFor(argv: string[], workspaceRoot: string, result: AttachResult, wantsResume: bool): string {
