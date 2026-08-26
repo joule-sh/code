@@ -115,8 +115,6 @@ export function appendFile(filePath: string, text: string): void {
   plat_append(filePath, text);
 }
 
-export const GC_INTERIOR_POINTERS_NOT_APPLICABLE: int = -1;
-
 export function gcInteriorPointers(): int {
   return plat_gc_interior_pointers();
 }
@@ -163,12 +161,8 @@ export function shellArgs(script: string): string[] {
   return ["-c", script];
 }
 
-test("a Windows build collects with interior pointers on, which is what keeps a retained line alive", () => {
-  if (isWindows()) {
-    expect(gcInteriorPointers() == 1);
-  } else {
-    expect(gcInteriorPointers() == GC_INTERIOR_POINTERS_NOT_APPLICABLE);
-  }
+test("every build collects with interior pointers on, which is what keeps a parsed field alive", () => {
+  expect(gcInteriorPointers() == 1);
 });
 
 test("the port probe answers open, closed, or that the platform has nothing to say", () => {
