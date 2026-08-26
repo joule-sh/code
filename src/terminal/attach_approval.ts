@@ -1,6 +1,7 @@
 import { InputLine, PendingApproval, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { approvalOptionRow } from "./renderer.ts";
+import { noteApprovalBlock, settleApprovalBlock } from "./approval_settled.ts";
 import { TurnStatusTracker, drawScreen } from "./screen.ts";
 
 export class ApprovalLog {
@@ -35,6 +36,11 @@ export class ApprovalLog {
   }
 }
 
+export function beginApprovalBlockLocal(sb: Scrollback, pending: PendingApproval, callId: string, tool: string, summary: string, detail: string): void {
+  pending.begin(callId, tool);
+  noteApprovalBlock(sb, pending, summary, detail);
+}
+
 export function repaintApprovalOptionsLocal(sb: Scrollback, pending: PendingApproval): void {
   if (!pending.hasOptionRows()) { return; }
   let i = 0;
@@ -53,11 +59,12 @@ function reportForeignDecision(sb: Scrollback, decision: string, attempted: bool
 }
 
 export function answerApprovalLocal(log: ApprovalLog, sb: Scrollback, input: InputLine, rk: TurnStatusTracker, pending: PendingApproval, index: int): string {
-  pending.select(index, APPROVAL_OPTION_COUNT);
-  repaintApprovalOptionsLocal(sb, pending);
   let callId = pending.callId;
   let decision = decisionForApprovalOption(index);
   let applied = log.reply(callId, decision);
+  let shown = decision;
+  if (!applied) { shown = log.findReply(callId); }
+  settleApprovalBlock(sb, pending, shown);
   pending.clearIfMatches(callId);
   if (!applied) {
     reportForeignDecision(sb, log.findReply(callId), true);
@@ -70,6 +77,7 @@ export function reportIfResolvedElsewhereLocal(log: ApprovalLog, sb: Scrollback,
   if (pending.callId == "") { return; }
   let decision = log.findReply(pending.callId);
   if (decision == "") { return; }
+  settleApprovalBlock(sb, pending, decision);
   pending.clearIfMatches(pending.callId);
   reportForeignDecision(sb, decision, false);
   drawScreen(sb, input, log.mode, rk);

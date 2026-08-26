@@ -124,7 +124,7 @@ def run():
         session.wait_for(harness.APPROVAL_MARKER, timeout=10.0)
         session.settle(0.2, 1.5)
         full = harness.text(bytes(session.raw))
-        ok(len(harness.approval_option_rows(full)) == harness.APPROVAL_OPTION_COUNT, "the approval option list still renders in full with the box present")
+        harness.check_option_list_complete(full, "the approval option list with the input box present")
         session.write("y")
         session.wait_for("Done.", timeout=15.0)
         session.settle(0.3, 2.0)

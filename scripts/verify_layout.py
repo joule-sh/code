@@ -190,9 +190,7 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         # labels themselves are clipped at narrow widths, so only the row
         # structure is asserted here, not the label text.
         full_at_approval = harness.text(bytes(session.raw))
-        option_rows = harness.approval_option_rows(full_at_approval)
-        ok(len(option_rows) == harness.APPROVAL_OPTION_COUNT, "all %d approval option rows are on screen at once" % harness.APPROVAL_OPTION_COUNT + label_suffix + (" (got %d)" % len(option_rows)))
-        ok([r["number"] for r in option_rows] == [1, 2, 3], "the approval option rows read 1, 2, 3 down the list" + label_suffix)
+        option_rows = harness.check_option_list_complete(full_at_approval, "the approval option list" + label_suffix)
         ok(harness.highlighted_option(option_rows) == 1, "the first approval option is the highlighted one" + label_suffix)
 
         rows_at_approval = harness.parse_redraw_rows(harness.last_redraw_block(full_at_approval))

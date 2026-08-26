@@ -15,6 +15,7 @@ var INPUT_FRAME = "input";
 var CANCEL_FRAME = "cancel";
 var APPROVAL_REPLY_FRAME = "approval.reply";
 var APPROVAL_REPLY_RESULT = "approval.reply.result";
+var APPROVAL_SETTLED = "approval.settled";
 var RESUME_FRAME = "resume";
 var MODE_SET_FRAME = "mode.set";
 var MODEL_SET_FRAME = "model.set";
@@ -308,14 +309,24 @@ function renderFrameText(frameJson, prevKind) {
     if (f.applied) { return ""; }
     return "\\n  (a reply for that approval arrived after it was already decided: " + f.decision + ")";
   }
+  if (kind === APPROVAL_SETTLED) {
+    return "\\n  ? " + f.summary + " [" + f.detail + "] - " + settledDecisionText(f.decision, f.decidedBy);
+  }
   return "";
 }
 
 function isKnownFrameType(t) {
   if (t === SESSION_HELLO || t === TURN_START || t === TEXT_DELTA || t === TOOL_CALL) { return true; }
   if (t === TOOL_RESULT || t === APPROVAL_REQUEST || t === TURN_END || t === ERROR_FRAME) { return true; }
-  if (t === APPROVAL_REPLY_RESULT || t === NOTICE_FRAME) { return true; }
+  if (t === APPROVAL_REPLY_RESULT || t === NOTICE_FRAME || t === APPROVAL_SETTLED) { return true; }
   return false;
+}
+
+function settledDecisionText(decision, by) {
+  if (by === "mode") { return "allowed by the session's approval mode"; }
+  if (decision === DECISION_ALWAYS) { return "allowed, and not asked again this session"; }
+  if (decision === DECISION_DENY) { return "denied"; }
+  return "allowed";
 }
 
 function noticeLineClass(level) {

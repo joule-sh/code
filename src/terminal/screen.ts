@@ -4,8 +4,8 @@ import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { TurnTracker } from "../providers/live.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
-import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END, APPROVAL_REQUEST } from "../protocol/frames.ts";
-import { renderFrame, approvalOptionsFor } from "./renderer.ts";
+import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END, APPROVAL_REQUEST, APPROVAL_SETTLED } from "../protocol/frames.ts";
+import { renderFrame, approvalOptionsFor, approvalSettledFor } from "./renderer.ts";
 import { styleFrame, styleScrollIndicator } from "./style.ts";
 import { StatusInfo, NO_TURN, buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
@@ -114,8 +114,13 @@ export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: st
     if (flushed != "") {
       sb.appendBlock(flushed);
     }
-    appendStyled(sb, kind, styleFrame(kind, rendered));
-    if (kind == APPROVAL_REQUEST) { sb.appendFixed(approvalOptionsFor(frameJson)); }
+    if (kind == APPROVAL_SETTLED) {
+      sb.appendFixed(approvalSettledFor(frameJson, sb.width));
+    } else {
+      if (kind == APPROVAL_REQUEST) { sb.markApprovalBlock(); }
+      appendStyled(sb, kind, styleFrame(kind, rendered));
+      if (kind == APPROVAL_REQUEST) { sb.appendFixed(approvalOptionsFor(frameJson)); }
+    }
   }
   rk.recordFrame(frameJson);
 }
