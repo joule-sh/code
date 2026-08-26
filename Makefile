@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -166,6 +166,15 @@ daemon-concurrent-harness: build bin/stub_model
 
 daemon-attach-harness: build bin/stub_model
 	python3 scripts/verify_attach_pty.py
+
+# A client of one build meeting a daemon of another, which is the one thing
+# the build-mismatch refusal (#276) is for and the one thing nothing ran. It
+# compiles a second daemon from a copy of the tree with another version.ts,
+# so the two really are different builds, and then asserts the client's exit
+# status rather than only its output: the refusal printed correctly and the
+# process aborted straight afterwards (#291).
+build-mismatch-harness: build bin/stub_model
+	python3 scripts/verify_build_mismatch_pty.py
 
 daemon-commands-harness: build bin/stub_model
 	node scripts/verify_daemon_mode_model.mjs

@@ -146,9 +146,8 @@ function withBuffer(conn: Connection, buffer: string, open: bool): Connection {
   return out;
 }
 
-export function closeConnection(conn: Connection, code: int, reason: string): void {
-  if (conn.open) {
-    conn.socket.write(encodeClose(code, reason, true, maskKey()));
-  }
-  conn.socket.close();
+export function sendClose(conn: Connection, code: int, reason: string): void {
+  if (!conn.open) { return; }
+  conn.socket.write(encodeClose(code, reason, true, maskKey()));
 }
+
