@@ -162,18 +162,18 @@ test("SHARE_REQUEST round-trips", () => {
 });
 
 test("SHARE_STARTED round-trips", () => {
-  let f: ShareStartedFrame = { v: PROTOCOL_VERSION, seq: 22, type: SHARE_STARTED, code: "ABCDEF", url: "https://joule.sh/w/ABCDEF" };
+  let f: ShareStartedFrame = { v: PROTOCOL_VERSION, seq: 22, type: SHARE_STARTED, code: "ABCDEF", url: "https://console.example.com/terminal/sessions?code=ABCDEF" };
   let back = decodeShareStarted(encodeShareStarted(f));
   expect(back != null);
   expect(back!.code == "ABCDEF");
-  expect(back!.url == "https://joule.sh/w/ABCDEF");
+  expect(back!.url == "https://console.example.com/terminal/sessions?code=ABCDEF");
 });
 
 test("SHARE_FAILED round-trips", () => {
-  let f: ShareFailedFrame = { v: PROTOCOL_VERSION, seq: 23, type: SHARE_FAILED, error: "relay refused: 503" };
+  let f: ShareFailedFrame = { v: PROTOCOL_VERSION, seq: 23, type: SHARE_FAILED, error: "the relay refused this session" };
   let back = decodeShareFailed(encodeShareFailed(f));
   expect(back != null);
-  expect(back!.error == "relay refused: 503");
+  expect(back!.error == "the relay refused this session");
 });
 
 test("the new session-state and lifecycle frame types are known", () => {

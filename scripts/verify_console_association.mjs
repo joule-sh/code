@@ -1,4 +1,5 @@
 import { connect } from "./miniws.mjs";
+import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
@@ -103,16 +104,9 @@ async function main() {
   const workspace = scratchDir("joule-console-assoc-");
   fs.writeFileSync(path.join(workspace, "README.md"), "# demo\n\nNo health route yet.\n");
 
-  const homeDir = scratchDir("joule-console-assoc-home-");
   const credentialSecret = "e2e-terminal-secret-abc123";
   const account = { id: "acct-e2e-1", email: "e2e@example.com" };
   const server = "http://joule-console-assoc.invalid";
-  fs.mkdirSync(path.join(homeDir, ".config", "joule-code"), { recursive: true });
-  const credLine = JSON.stringify({
-    server, secret: credentialSecret, accountId: "", accountEmail: "",
-    keyId: "key_e2e", keyPrefix: "jl_e2", scopes: "", savedAt: `${Date.now()}`,
-  });
-  fs.writeFileSync(path.join(homeDir, ".config", "joule-code", "credentials.jsonl"), credLine + "\n");
 
   const consoleStub = await startConsoleStub(credentialSecret, account);
   const consolePort = consoleStub.address().port;
@@ -122,6 +116,20 @@ async function main() {
   const relayHttpPort = await freePort();
   const relayWsPort = await freePort();
   const relayWsBrowserPort = await freePort();
+
+  // Everything the daemon is going to know about its server, written where a
+  // real /login writes it. The daemon is spawned with only JOULE_DAEMON_PORT
+  // (src/daemon/lifecycle.ts), so anything that lives only in an environment
+  // is not there when it dials the relay - joule-sh/code#279.
+  const watchPage = `${server}/terminal/sessions`;
+  const homeDir = signedInHome({
+    prefix: "joule-console-assoc-home",
+    server,
+    secret: credentialSecret,
+    relayUrl: `http://127.0.0.1:${relayHttpPort}`,
+    relayWsUrl: `ws://127.0.0.1:${relayWsPort}`,
+    webUrl: watchPage,
+  });
 
   const stub = spawn(path.join(REPO_ROOT, "bin", "stub_model"), [], {
     cwd: workspace,
@@ -141,22 +149,22 @@ async function main() {
     stdio: ["ignore", fs.openSync(relayLog, "w"), fs.openSync(relayLog, "a")],
   });
 
+  // Only what posixDaemonSpawnCommand actually hands a daemon, plus the
+  // provider settings and HOME any spawning shell would have had. No
+  // JOULE_CODE_SERVER and no JOULE_RELAY_*: naming those here is what let an
+  // anonymous share pass this harness while failing against a real console.
   const daemonLog = path.join(workspace, "daemon.log");
   const daemon = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
     cwd: workspace,
-    env: {
+    env: withoutInheritedConfig({
       ...process.env,
       HOME: homeDir,
-      JOULE_CODE_SERVER: server,
       JOULE_DAEMON_PORT: String(daemonPort),
       JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
       JOULE_CODE_MODEL: "stub-model",
       JOULE_CODE_API_KEY: "test-key",
-      JOULE_RELAY_HOST: "127.0.0.1",
-      JOULE_RELAY_HTTP_PORT: String(relayHttpPort),
-      JOULE_RELAY_WS_PORT: String(relayWsPort),
       TMPDIR: workspace,
-    },
+    }),
     stdio: ["ignore", fs.openSync(daemonLog, "w"), fs.openSync(daemonLog, "a")],
   });
 
@@ -184,6 +192,13 @@ async function main() {
     const started = await collectUntil(attachFrames, (f) => f.type === "share.started" || f.type === "share.failed", 5000, "share.started or share.failed after share.request");
     ok(started.type === "share.started", "share.request produced share.started" + (started.error ? " (" + started.error + ")" : ""));
     if (started.type !== "share.started") { throw new Error("cannot continue: " + started.error); }
+
+    // The url is composed inside the frame, so a client that printed something
+    // else would not save anybody: this is the address a browser is sent to.
+    ok(started.url === `${watchPage}?code=${started.code}`,
+      "share.started names the console page that watches a terminal, carrying the code, got " + started.url);
+    ok(started.url.indexOf("joule.sh") < 0,
+      "no built-in joule.sh address survives into a self-hosted share, got " + started.url);
 
     // Association: the relay verified the credential against the console
     // stub and now lists the session for that account, and only that one.
@@ -246,6 +261,53 @@ async function main() {
 
     const readmeAfter = fs.readFileSync(path.join(workspace, "README.md"), "utf8");
     ok(readmeAfter.includes("Added a health check note."), "the approved tool's effect landed on the real workspace filesystem, driven by the associated-and-paired browser");
+
+    // A daemon that never found a credential must say so, not share into the
+    // relay anonymously: an anonymous session is one no console can ever list,
+    // and the old silent success is what cost a day of hand debugging.
+    const blindHome = scratchDir("joule-console-assoc-blind-");
+    fs.mkdirSync(path.join(blindHome, ".config", "joule-code"), { recursive: true });
+    fs.writeFileSync(
+      path.join(blindHome, ".config", "joule-code", "config.json"),
+      JSON.stringify({ baseUrl: "", model: "", apiKey: "", server, updateCheck: "", mouse: "" }),
+    );
+    const blindPort = await freePort();
+    const blindLog = path.join(workspace, "blind-daemon.log");
+    const blind = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
+      cwd: workspace,
+      env: withoutInheritedConfig({
+        ...process.env,
+        HOME: blindHome,
+        JOULE_DAEMON_PORT: String(blindPort),
+        JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
+        JOULE_CODE_MODEL: "stub-model",
+        JOULE_CODE_API_KEY: "test-key",
+        TMPDIR: workspace,
+      }),
+      stdio: ["ignore", fs.openSync(blindLog, "w"), fs.openSync(blindLog, "a")],
+    });
+    try {
+      ok(await waitForPort(blindPort, 5000), "a daemon with no credential still comes up");
+      const blindAttach = await connect("127.0.0.1", blindPort, "/attach/e2e-blind/ws", {});
+      const blindFrames = [];
+      blindAttach.onMessage((text) => { try { blindFrames.push(JSON.parse(text)); } catch { /* ignore */ } });
+      blindAttach.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
+      await sleep(200);
+      blindAttach.send(JSON.stringify({ v: 1, seq: 0, type: "share.request" }));
+      const refused = await collectUntil(blindFrames, (f) => f.type === "share.started" || f.type === "share.failed", 5000, "an answer to share.request without a credential");
+      ok(refused.type === "share.failed", "sharing without a credential fails rather than going up anonymously");
+      const said = refused.error ?? "";
+      ok(said.indexOf(server) >= 0, "the refusal names the server it has no credential for, got " + JSON.stringify(said));
+      ok(said.indexOf("/login") >= 0, "the refusal says what to do about it, got " + JSON.stringify(said));
+      ok(said.split("\n").every((line) => line.length <= 80), "every line fits 80 columns, which scrollback clips rather than wraps");
+      const mineAfterBlind = await fetchJson(`http://127.0.0.1:${relayHttpPort}/sessions/mine`, {
+        headers: { "x-user": account.id },
+      });
+      ok(mineAfterBlind.json.sessions.length === 1, "the refused share put nothing in the relay");
+    } finally {
+      blind.kill();
+      if (!process.env.DEBUG_KEEP) { fs.rmSync(blindHome, { recursive: true, force: true }); }
+    }
 
     console.log("PASS: a daemon holding a #97 credential associates its session with the account on /share, the console-facing listing shows only the owning account's sessions with no code or secret, and driving the session still requires the human-shared pairing code exactly as before");
   } finally {

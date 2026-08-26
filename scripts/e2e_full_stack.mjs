@@ -1,4 +1,5 @@
 import { connect } from "./miniws.mjs";
+import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
@@ -109,18 +110,24 @@ function seedRepo(repoDir) {
   runSync("git", ["-c", "user.email=e2e@example.com", "-c", "user.name=e2e", "commit", "-q", "-m", "seed"], repoDir);
 }
 
-const DAEMON_INFO_DIR = path.join(os.homedir(), ".config", "joule-code", "daemon");
+// The daemon registers itself under HOME, and this run gives it a HOME of its
+// own so the credential it reads is the harness's rather than the machine's.
+let daemonInfoHome = os.homedir();
+
+function daemonInfoDir() {
+  return path.join(daemonInfoHome, ".config", "joule-code", "daemon");
+}
 const residue = [];
 
 function daemonInfoNames() {
-  try { return fs.readdirSync(DAEMON_INFO_DIR).filter((n) => n.endsWith(".json")); }
+  try { return fs.readdirSync(daemonInfoDir()).filter((n) => n.endsWith(".json")); }
   catch { return []; }
 }
 
 function daemonInfoFor(workspace, skip) {
   for (const name of daemonInfoNames()) {
     if (skip && skip.has(name)) continue;
-    const file = path.join(DAEMON_INFO_DIR, name);
+    const file = path.join(daemonInfoDir(), name);
     try {
       const info = JSON.parse(fs.readFileSync(file, "utf8"));
       if (info && info.workspace === workspace) {
@@ -220,6 +227,14 @@ async function runScenario(name, approve) {
   };
 
   const workDir = scratchDir("joule-e2e-");
+  const homeDir = signedInHome({
+    prefix: "joule-e2e-home",
+    server: "http://joule-e2e.invalid",
+    secret: "e2e-full-stack-secret",
+    relayUrl: `http://127.0.0.1:${ports.http}`,
+    relayWsUrl: `ws://127.0.0.1:${ports.ws}`,
+  });
+  daemonInfoHome = homeDir;
   const repoDir = path.join(workDir, "repo");
   seedRepo(repoDir);
   const readmePath = path.join(repoDir, "README.md");
@@ -252,16 +267,14 @@ async function runScenario(name, approve) {
     const knownDaemons = new Set(daemonInfoNames());
     term = spawnBg("script", ["-qec", `${REPO_ROOT}/bin/joule --share`, termLog], {
       cwd: repoDir,
-      env: {
+      env: withoutInheritedConfig({
         ...process.env,
+        HOME: homeDir,
         JOULE_CODE_BASE_URL: `http://127.0.0.1:${ports.stub}`,
         JOULE_CODE_MODEL: "stub",
         JOULE_CODE_API_KEY: "stub-key", // non-empty so the first-run wizard (#46) does not trigger; the stub model does not check it
-        JOULE_RELAY_HOST: "127.0.0.1",
-        JOULE_RELAY_HTTP_PORT: String(ports.http),
-        JOULE_RELAY_WS_PORT: String(ports.ws),
         TMPDIR: workDir,
-      },
+      }),
     });
     let termBuf = "";
     term.stdout.on("data", (d) => { termBuf += d.toString("utf8"); });
@@ -350,6 +363,7 @@ async function runScenario(name, approve) {
     await reapPort(ports.stub, "the stub model", name);
     if (clean) {
       try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { }
+      try { fs.rmSync(homeDir, { recursive: true, force: true }); } catch { }
     } else {
       console.error(name + ": left " + workDir + " in place for inspection");
     }

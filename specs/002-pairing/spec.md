@@ -145,3 +145,43 @@ credential file, a real relay verifying it against a stub console, a
 listing scoped correctly to one account and empty for another, a listing
 that never carries the code, and the same POST /pair + browser websocket
 path this spec always described still gating the actual drive.
+
+## Update, #279: a share is made under an account, or not at all
+
+The relay is unchanged by this. Everything the #134 update says about what
+the relay does with a `credentialSecret` -- verify it, attribute the
+session when it can, degrade to unowned when it cannot, never gate sharing
+on account validity -- still holds exactly. `POST /sessions` with no
+secret still creates an unowned session and answers 200.
+
+What changes is the client, and one bullet above with it. That bullet said
+a terminal with no credential is unaffected: it shares, and the session
+appears in nobody's list. That was true and it was useless. The address a
+share prints is now the console's own `/terminal/sessions` page, carrying
+the code, because there is no `/w/` route on joule.sh or on any
+self-hosted console and never was. That address comes from the server the
+terminal signed in to, advertised at `/login` and stored beside the
+per-server credential.
+
+So with no credential there is no address to print, and the session that
+would be created is one no console can list and no browser can be sent to.
+The client refuses instead, where a person is looking and can act on it:
+
+    not signed in to <server>
+      a shared terminal is watched from that console, under your
+      account, so sharing needs its credential. Run /login.
+
+A relay run without any console in front of it still serves its own page
+at `/` and still pairs unowned sessions by code. That path is a property
+of the relay, and this is a client refusing to enter it blind rather than
+the relay closing it.
+
+Verified in `make console-association-harness`, which now spawns the
+daemon with only what `posixDaemonSpawnCommand` actually hands one. The
+previous harness passed `JOULE_CODE_SERVER` and the relay address in the
+daemon's environment -- the four values the real spawn drops -- and so
+asserted an association it had arranged. It now reads them off disk, the
+way a signed-in machine does, and additionally asserts that the printed
+address is the console page, that no joule.sh address survives a
+self-hosted share, and that a daemon holding no credential says so and
+puts nothing in the relay.

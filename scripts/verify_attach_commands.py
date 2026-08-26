@@ -42,11 +42,15 @@ def main():
     stub_port = free_port()
     daemon_port = free_port()
 
+    home = os.path.join(workspace, "home")
+    os.makedirs(home, exist_ok=True)
+
     stub_env = dict(os.environ)
     stub_env["E2E_STUB_PORT"] = str(stub_port)
     stub = subprocess.Popen([os.path.join(REPO_ROOT, "bin", "stub_model")], cwd=workspace, env=stub_env)
 
     daemon_env = dict(os.environ)
+    daemon_env["HOME"] = home
     daemon_env["JOULE_DAEMON_PORT"] = str(daemon_port)
     daemon_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
     daemon_env["JOULE_CODE_MODEL"] = "stub-model"
@@ -60,6 +64,7 @@ def main():
         ok(wait_for_port(daemon_port, 5.0), "daemon came up")
 
         attach_env = dict(os.environ)
+        attach_env["HOME"] = home
         attach_env["TERM"] = "xterm-256color"
         attach_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:%d" % stub_port
         attach_env["JOULE_CODE_MODEL"] = "stub-model"
@@ -96,8 +101,8 @@ def main():
         session.write("/share\r")
         session.wait_for("asking the daemon to share this session over the relay", timeout=5.0)
         ok(True, "/share now asks the daemon to start sharing, instead of refusing outright")
-        session.wait_for("could not attach to the relay", timeout=5.0)
-        ok(True, "with no relay reachable in this harness, the daemon reports share.failed rather than hanging or crashing")
+        session.wait_for("not signed in to", timeout=5.0)
+        ok(True, "with nobody signed in on this HOME, the daemon refuses the share by name rather than hanging, crashing or going up anonymously")
 
         session.write("/help\r")
         session.wait_for("stop-daemon", timeout=5.0)

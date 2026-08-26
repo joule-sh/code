@@ -34,6 +34,7 @@ export class RelayClient {
 
   mailboxPath: string;
   mailboxSeen: int;
+  configProblem: string;
 
   backoffMs: i64;
   nextRetryAt: i64;
@@ -62,6 +63,7 @@ export class RelayClient {
     this.outageSince = 0;
     this.mailboxPath = "";
     this.mailboxSeen = 0;
+    this.configProblem = "";
     this.backoffMs = BACKOFF_START_MS;
     this.nextRetryAt = 0;
     this.inboundQueue = [];
@@ -72,19 +74,35 @@ export class RelayClient {
     return this.attaching;
   }
 
+  reachFailure(where: string, status: int, body: string): string {
+    if (status >= 0) {
+      return "the relay refused this session\n"
+        + "  asked " + where + "\n"
+        + "  it answered " + `${status}` + " " + body;
+    }
+    return "cannot reach the relay\n"
+      + "  tried " + where + "\n"
+      + "  nothing answered there, so nothing refused anything\n"
+      + "  that address came from the server you signed in to";
+  }
+
   connect(workspace: string, model: string): ConnectResult {
     if (this.attaching) {
       let already: ConnectResult = { ok: false, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "already attached" };
       return already;
     }
+    if (this.configProblem != "") {
+      let unset: ConnectResult = { ok: false, code: "", url: "", error: this.configProblem };
+      return unset;
+    }
 
     let req: CreateSessionRequest = { workspace: workspace, model: model, credentialSecret: this.credentialSecret };
     let headers = new Map<string, string>();
     headers.set("Content-Type", "application/json");
-    let url = "http://" + this.host + ":" + `${this.httpPort}` + "/sessions";
-    let resp = http.request(url, "POST", JSON.stringify(req), headers);
+    let where = "http://" + this.host + ":" + `${this.httpPort}`;
+    let resp = http.request(where + "/sessions", "POST", JSON.stringify(req), headers);
     if (!resp.ok) {
-      let failed: ConnectResult = { ok: false, code: "", url: "", error: "relay refused: " + `${resp.status}` + " " + resp.body };
+      let failed: ConnectResult = { ok: false, code: "", url: "", error: this.reachFailure(where, resp.status, resp.body) };
       return failed;
     }
 

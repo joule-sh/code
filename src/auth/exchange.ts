@@ -75,6 +75,7 @@ function notJoule(base: string): ExchangeResult {
 function credentialFrom(base: string, body: string, now: i64): Credential {
   let credAt = jsonMemberStart(body, 0, "credential");
   let acctAt = jsonMemberStart(body, 0, "account");
+  let relayAt = jsonMemberStart(body, 0, "relay");
   let c: Credential = {
     server: normalizeServer(base),
     secret: jsonStringMemberAt(body, credAt, "secret"),
@@ -84,6 +85,9 @@ function credentialFrom(base: string, body: string, now: i64): Credential {
     keyPrefix: jsonStringMemberAt(body, credAt, "keyPrefix"),
     scopes: jsonStringMemberAt(body, credAt, "scopes"),
     savedAt: `${now}`,
+    relayUrl: relayAt < 0 ? "" : jsonStringMemberAt(body, relayAt, "url"),
+    relayWsUrl: relayAt < 0 ? "" : jsonStringMemberAt(body, relayAt, "ws"),
+    webUrl: relayAt < 0 ? "" : jsonStringMemberAt(body, relayAt, "web"),
   };
   return c;
 }

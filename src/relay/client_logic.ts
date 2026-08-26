@@ -83,29 +83,91 @@ export function mailboxPathFor(tmpDir: string, sessionId: string): string {
 }
 
 export function webUrlFor(baseUrl: string, code: string): string {
-  return baseUrl + code;
+  if (baseUrl == "") { return ""; }
+  if (baseUrl.indexOf("?") >= 0) { return baseUrl + "&code=" + code; }
+  return baseUrl + "?code=" + code;
 }
 
-export type RelayConfig = { host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string };
+export const RELAY_URL_ENV: string = "JOULE_RELAY_URL";
+export const RELAY_WS_URL_ENV: string = "JOULE_RELAY_WS_URL";
+export const WEB_URL_ENV: string = "JOULE_WEB_BASE_URL";
 
-export function resolveRelayConfig(rawHost: string, rawHttpPort: string, rawWsPort: string, rawWebBaseUrl: string, rawTmpDir: string): RelayConfig {
-  let host = rawHost;
-  if (host == "") { host = "127.0.0.1"; }
-  let httpPort = Number.parseInt(rawHttpPort, 10) ?? 8090;
-  let wsPort = Number.parseInt(rawWsPort, 10) ?? 8091;
-  let webBaseUrl = rawWebBaseUrl;
-  if (webBaseUrl == "") { webBaseUrl = "https://joule.sh/w/"; }
+export type Endpoint = { host: string, port: int, ok: bool };
+
+function schemePort(url: string): int {
+  let t = url.trim().toLowerCase();
+  if (t.startsWith("https://") || t.startsWith("wss://")) { return 443; }
+  if (t.startsWith("http://") || t.startsWith("ws://")) { return 80; }
+  return 0;
+}
+
+function lastColon(text: string): int {
+  let i = text.length - 1;
+  while (i >= 0) {
+    if (text.charAt(i) == ":") { return i; }
+    i = i - 1;
+  }
+  return -1;
+}
+
+export function splitEndpoint(url: string): Endpoint {
+  let none: Endpoint = { host: "", port: 0, ok: false };
+  let text = url.trim();
+  let scheme = text.indexOf("://");
+  if (scheme >= 0) { text = text.slice(scheme + 3, text.length); }
+  let slash = text.indexOf("/");
+  if (slash >= 0) { text = text.slice(0, slash); }
+  if (text == "") { return none; }
+  let colon = lastColon(text);
+  if (colon < 0) {
+    let implied = schemePort(url);
+    if (implied == 0) { return none; }
+    let bare: Endpoint = { host: text, port: implied, ok: true };
+    return bare;
+  }
+  let host = text.slice(0, colon);
+  let port = Number.parseInt(text.slice(colon + 1, text.length), 10) ?? 0;
+  if (host == "" || port <= 0) { return none; }
+  let out: Endpoint = { host: host, port: port, ok: true };
+  return out;
+}
+
+export type RelayConfig = { host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string, configured: bool };
+
+export function resolveRelayConfig(rawRelayUrl: string, rawRelayWsUrl: string, rawWebUrl: string, rawTmpDir: string): RelayConfig {
+  let httpAt = splitEndpoint(rawRelayUrl);
+  let wsAt = splitEndpoint(rawRelayWsUrl);
+  let webBaseUrl = rawWebUrl.trim();
   let tmpDir = rawTmpDir;
   if (tmpDir == "") { tmpDir = "/tmp"; }
-  let cfg: RelayConfig = { host: host, httpPort: httpPort, wsPort: wsPort, webBaseUrl: webBaseUrl, tmpDir: tmpDir };
+  let cfg: RelayConfig = {
+    host: httpAt.host, httpPort: httpAt.port, wsPort: wsAt.port,
+    webBaseUrl: webBaseUrl, tmpDir: tmpDir,
+    configured: httpAt.ok && wsAt.ok && webBaseUrl != "",
+  };
   return cfg;
 }
 
-export function loadRelayConfig(): RelayConfig {
-  let rawHost = envOr("JOULE_RELAY_HOST", "");
-  let rawHttpPort = envOr("JOULE_RELAY_HTTP_PORT", "");
-  let rawWsPort = envOr("JOULE_RELAY_WS_PORT", "");
-  let rawWebBaseUrl = envOr("JOULE_WEB_BASE_URL", "");
-  let rawTmpDir = envOr("TMPDIR", "");
-  return resolveRelayConfig(rawHost, rawHttpPort, rawWsPort, rawWebBaseUrl, rawTmpDir);
+export function loadRelayConfig(credRelayUrl: string, credRelayWsUrl: string, credWebUrl: string): RelayConfig {
+  let relayUrl = envOr(RELAY_URL_ENV, "");
+  if (relayUrl == "") { relayUrl = credRelayUrl; }
+  let relayWsUrl = envOr(RELAY_WS_URL_ENV, "");
+  if (relayWsUrl == "") { relayWsUrl = credRelayWsUrl; }
+  let webUrl = envOr(WEB_URL_ENV, "");
+  if (webUrl == "") { webUrl = credWebUrl; }
+  return resolveRelayConfig(relayUrl, relayWsUrl, webUrl, envOr("TMPDIR", ""));
+}
+
+export function shareProblem(server: string, credentialSecret: string, cfg: RelayConfig): string {
+  if (credentialSecret == "") {
+    return "not signed in to " + server + "\n"
+      + "  a shared terminal is watched from that console, under your\n"
+      + "  account, so sharing needs its credential. Run /login.";
+  }
+  if (!cfg.configured) {
+    return server + " did not say where its relay is\n"
+      + "  sign in again with /login to pick that up, or set\n"
+      + "  " + RELAY_URL_ENV + ", " + RELAY_WS_URL_ENV + " and " + WEB_URL_ENV + ".";
+  }
+  return "";
 }
