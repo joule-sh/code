@@ -378,6 +378,7 @@ jobs:
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: make session-listing-harness
       - run: make console-association-harness
+      - run: make owner-admission-harness
 
   relay-reconnect:
     runs-on: [self-hosted, diff]
@@ -549,6 +550,10 @@ jobs:
       # relay lost a session's owner seconds after making it and every green
       # harness had been asking a build that could not have the fault.
       - run: node scripts/verify_session_listing_lifecycle.mjs
+      # For the same reason, one step down: the owner name a session admits
+      # its console by is another field parsed out of a create command and
+      # kept, so it is another thing a released collector could lose (#296).
+      - run: node scripts/verify_owner_admission.mjs
 
   # The macOS counterpart to linux-release, and the only job that sees what a
   # release actually publishes. The `macos` job above builds for the runner and

@@ -13,7 +13,7 @@ function freshRuntimeDir(name: string): string {
 }
 
 function unowned(workspace: string, now: i64): CreateCommand {
-  let c: CreateCommand = { kind: CMD_CREATE, workspace: workspace, model: "gpt", now: now, accountId: "", accountEmail: "" };
+  let c: CreateCommand = { kind: CMD_CREATE, workspace: workspace, model: "gpt", now: now, accountId: "", accountEmail: "", ownerUser: "" };
   return c;
 }
 
@@ -122,7 +122,7 @@ test("sweepTick removes a session once it has been idle past the TTL", () => {
 
 test("handleCreate stores the accountId and accountEmail the caller already resolved", () => {
   let owner = new RelayOwner(freshRuntimeDir("create-owned"));
-  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com" };
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: "/repo", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com", ownerUser: "" };
   let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(cmd)));
   expect(created != null);
   if (created != null) {
@@ -137,8 +137,8 @@ test("handleCreate stores the accountId and accountEmail the caller already reso
 
 test("handleListMine returns only the caller's own sessions, and an unowned session appears for no one", () => {
   let owner = new RelayOwner(freshRuntimeDir("list-mine"));
-  let mine: CreateCommand = { kind: CMD_CREATE, workspace: "/mine", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com" };
-  let other: CreateCommand = { kind: CMD_CREATE, workspace: "/other", model: "gpt", now: BASE_TIME, accountId: "acct-2", accountEmail: "b@example.com" };
+  let mine: CreateCommand = { kind: CMD_CREATE, workspace: "/mine", model: "gpt", now: BASE_TIME, accountId: "acct-1", accountEmail: "a@example.com", ownerUser: "" };
+  let other: CreateCommand = { kind: CMD_CREATE, workspace: "/other", model: "gpt", now: BASE_TIME, accountId: "acct-2", accountEmail: "b@example.com", ownerUser: "" };
   owner.handleCreate(encodeCreateCommand(mine));
   owner.handleCreate(encodeCreateCommand(other));
   owner.handleCreate(encodeCreateCommand(unowned("/nobody", BASE_TIME)));
@@ -196,5 +196,87 @@ test("a swept session is forgotten by the activity tracker rather than tracked f
     owner.sweepTick(BASE_TIME + 10 * 1000 + 31 * 60 * 1000);
     expect(owner.store.find(created.sessionId) == null);
     expect(owner.seenLogBytes.get(created.sessionId) == null);
+  }
+});
+
+function owned(workspace: string, now: i64, ownerUser: string): CreateCommand {
+  let c: CreateCommand = { kind: CMD_CREATE, workspace: workspace, model: "gpt", now: now, accountId: "acct-1", accountEmail: "a@example.com", ownerUser: ownerUser };
+  return c;
+}
+
+function browserConnect(sessionId: string, credential: string, now: i64): ConnectCommand {
+  let c: ConnectCommand = { kind: CMD_CONNECT, sessionId: sessionId, role: ROLE_BROWSER_CMD, credential: credential, now: now };
+  return c;
+}
+
+test("a browser presenting the owner user the console vouched for connects with no pairing", () => {
+  let owner = new RelayOwner(freshRuntimeDir("owner-admitted"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(owned("/repo", BASE_TIME, "owner-token-1"))));
+  expect(created != null);
+  if (created != null) {
+    let answer = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "owner-token-1", BASE_TIME + 10))));
+    expect(answer != null);
+    if (answer != null) {
+      expect(answer.ok);
+      expect(answer.refusal == "");
+    }
+  }
+});
+
+test("a browser under any other name is still told the session is not paired", () => {
+  let owner = new RelayOwner(freshRuntimeDir("owner-stranger"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(owned("/repo", BASE_TIME, "owner-token-1"))));
+  expect(created != null);
+  if (created != null) {
+    let answer = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "5f8b0c2e-0000-4000-8000-000000000000", BASE_TIME + 10))));
+    expect(answer != null);
+    if (answer != null) {
+      expect(!answer.ok);
+      expect(answer.refusal == "not_paired");
+    }
+  }
+});
+
+test("a session the console would not vouch for admits nobody without a code", () => {
+  let owner = new RelayOwner(freshRuntimeDir("owner-rejected"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(unowned("/repo", BASE_TIME))));
+  expect(created != null);
+  if (created != null) {
+    let blank = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "", BASE_TIME + 10))));
+    expect(blank != null);
+    if (blank != null) {
+      expect(!blank.ok);
+      expect(blank.refusal == "not_paired");
+    }
+    let guessed = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "owner-token-1", BASE_TIME + 11))));
+    expect(guessed != null);
+    if (guessed != null) {
+      expect(!guessed.ok);
+      expect(guessed.refusal == "not_paired");
+    }
+  }
+});
+
+test("the code path is untouched: a third party pairs and connects on the same owned session", () => {
+  let owner = new RelayOwner(freshRuntimeDir("owner-and-guest"));
+  let created = decodeCreateResult(owner.handleCreate(encodeCreateCommand(owned("/repo", BASE_TIME, "owner-token-1"))));
+  expect(created != null);
+  if (created != null) {
+    let refused = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "guest-uuid", BASE_TIME + 10))));
+    expect(refused != null);
+    if (refused != null) { expect(!refused.ok); }
+
+    let pairCmd: PairCommand = { kind: CMD_PAIR, code: created.code, userId: "guest-uuid", now: BASE_TIME + 20 };
+    let paired = decodePairResult(owner.handlePair(encodePairCommand(pairCmd)));
+    expect(paired != null);
+    if (paired != null) { expect(paired.sessionId == created.sessionId); }
+
+    let admitted = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "guest-uuid", BASE_TIME + 30))));
+    expect(admitted != null);
+    if (admitted != null) { expect(admitted.ok); }
+
+    let still = decodeConnectResult(owner.handleConnect(encodeConnectCommand(browserConnect(created.sessionId, "owner-token-1", BASE_TIME + 40))));
+    expect(still != null);
+    if (still != null) { expect(still.ok); }
   }
 });
