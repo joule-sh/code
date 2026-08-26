@@ -1,4 +1,5 @@
 import { loadConfig, loadServerBase } from "../providers/config.ts";
+import { displayModel } from "../providers/platform.ts";
 import { loadCredential } from "../auth/credentials.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -138,7 +139,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 
   let hello: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
-    sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: cfg.model,
+    sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: displayModel(cfg),
     mode: gate.mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   let helloUndelivered = appendBroadcast(runtimeDir, encodeSessionHello(hello));

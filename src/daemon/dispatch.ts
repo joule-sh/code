@@ -1,6 +1,7 @@
 import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { LiveProvider } from "../providers/live.ts";
+import { displayModel } from "../providers/platform.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { RelayInputBridge, dispatchInboundFrame } from "../terminal/relay_bridge.ts";
 import { ShareController } from "./share_controller.ts";
@@ -42,7 +43,7 @@ export function dispatchDaemonFrame(session: Session, gate: Gate, live: LiveProv
   if (t == MODEL_SET) { handleModelSet(session, live, frameJson); return false; }
   if (t == TASKS_REQUEST) { handleTasksRequest(session, tasks, frameJson); return false; }
   if (t == DAEMON_STOP) { handleDaemonStop(session); return true; }
-  if (t == SHARE_REQUEST) { handleShareRequest(session, uplink, live.cfg.model); return false; }
+  if (t == SHARE_REQUEST) { handleShareRequest(session, uplink, displayModel(live.cfg)); return false; }
   if (t == APPROVAL_REPLY && tryDispatchTaskApprovalReply(tasks, frameJson)) { return false; }
   if (t == APPROVAL_REPLY) { handleApprovalReply(session, gate, bridge, frameJson); return false; }
 
