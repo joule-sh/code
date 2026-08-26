@@ -54,7 +54,7 @@ Pick one:
 Marketplace](https://marketplace.visualstudio.com/items?itemName=joule-sh.joule-editor),
 or the `.vsix` every release attaches. Not on Open VSX.
 
-It drives the same session the terminal does rather than carrying an agent of
+It drives the same daemon the terminal does rather than carrying an agent of
 its own, so install `joule` first. [editor/README.md](editor/README.md) has the
 settings and the Windows notes.
 
@@ -71,6 +71,6 @@ needs the one printed on the terminal.
 
 - [docs/00-plan.md](docs/00-plan.md): architecture, the decisions and what
   forced them.
-- [docs/07-building.md](docs/07-building.md): building from source.
 - [docs/06-selection.md](docs/06-selection.md): mouse selection and copy.
+- [docs/07-building.md](docs/07-building.md): building from source.
 - [specs/](specs/): one directory per decided piece.
