@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { refusalCodeOf, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -276,4 +276,12 @@ test("a share the relay no longer holds is refused rather than replayed with its
   let said = staleShareProblem("cannot reach the relay");
   expect(said.indexOf("no longer holds") >= 0);
   expect(said.indexOf("not printed again") >= 0);
+});
+
+test("a relay too busy to answer its own store is an outage, not a refusal of this terminal", () => {
+  expect(!refusalEndsShare(REFUSAL_BUSY));
+  expect(!refusalEndsShare(REFUSAL_SESSION_GONE));
+  expect(!refusalEndsShare(""));
+  expect(refusalEndsShare("unauthorized"));
+  expect(refusalEndsShare("unknown_role"));
 });

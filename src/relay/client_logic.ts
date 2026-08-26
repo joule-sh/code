@@ -10,6 +10,7 @@ export const SHARE_GIVE_UP_MS: i64 = 120000;
 export const DETAIL_MAX: int = 58;
 
 export const REFUSAL_SESSION_GONE: string = "session_not_found";
+export const REFUSAL_BUSY: string = "relay_timeout";
 
 export const TAG_FRAME: string = "FRAME";
 export const TAG_CONNECTED: string = "CTRL:CONNECTED";
@@ -239,4 +240,11 @@ export function staleShareProblem(detail: string): string {
   return "the relay no longer holds this session, and would not re-make it\n"
     + "  last answer: " + firstLine(detail) + "\n"
     + "  the code this printed before is dead, so it is not printed again";
+}
+
+export function refusalEndsShare(code: string): bool {
+  if (code == "") { return false; }
+  if (code == REFUSAL_SESSION_GONE) { return false; }
+  if (code == REFUSAL_BUSY) { return false; }
+  return true;
 }

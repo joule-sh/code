@@ -1,7 +1,7 @@
 import { LEVEL_INFO, LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
 import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
-import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, shouldGiveUp, refusalCodeOf, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, REFUSAL_SESSION_GONE, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, shouldGiveUp, refusalCodeOf, refusalEndsShare, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, REFUSAL_SESSION_GONE, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
 import { configureWorker, currentSocket, receiveLoop, stopReceiveLoop } from "./client_worker.ts";
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
@@ -229,6 +229,7 @@ export class RelayClient {
       this.sessionLost = true;
       return;
     }
+    if (!refusalEndsShare(code)) { return; }
     this.endShare(refusedMessage(code));
   }
 
