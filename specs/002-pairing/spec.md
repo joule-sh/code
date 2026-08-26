@@ -232,3 +232,103 @@ that does not know the credential, is asserted to produce `share.failed`
 naming that console, with nothing left in the relay. Both harnesses that share
 a credential now run a console stub for the relay to ask, because one that has
 no console to ask attributes nothing.
+
+## Update, #296: the account a session was made under is admitted without a code
+
+Rule 1 said the code is a pointer, not a credential, and the #134 update went
+further: a signed-in browser cannot claim a session by being signed in, only by
+presenting the same code it always needed. That was the right answer to the
+question being asked then, which was whether *association* — a fact the relay
+learns cheaply — should be allowed to become authorization. It should not, and
+it still does not.
+
+This is a different question. Not "is this browser signed in", which is a claim
+the relay would be taking on trust, but "is this the account the console
+already vouched for at `POST /sessions`, named by that same answer". That fact
+is not asserted by the browser and cannot be. It is handed to the relay by the
+console, in the reply to the one outbound call the #134 update introduced.
+
+**What the console now answers.** `POST /terminal/verify` returns
+
+    { "account": { "id": ..., "email": ..., "relayUser": ... } }
+
+where `relayUser` is the same opaque name that console already puts in every
+`POST /pair` header and every browser websocket url for that account — an HMAC
+of the account id under the console's own session secret, which is why the
+relay cannot compute it and a browser cannot guess it. Nothing new is
+disclosed: the relay was being sent this value on every pair already. What
+changes is that it now arrives attached to a verified account instead of
+arriving on its own.
+
+**What the relay does with it.** The create command carries `ownerUser`
+alongside `accountId`, set from that verify answer and from nowhere else, and
+only when the verify said `ok`. A browser connecting in the browser role whose
+`x-user` equals a session's `ownerUser` is admitted. Everything else is exactly
+the code path that was there before: no `ownerUser`, no match, or no verified
+account, and the answer is still `not_paired`.
+
+**Why the recorder is the point.** The console's transcript is written by a
+socket in the browser role. Until now that socket was refused until a human
+typed the code, so nothing at all was recorded before somebody looked: a
+terminal shared and left alone did its work with no record of it. It now
+attaches as soon as the console learns the share is happening — which is at the
+verify call, the moment of `/share` — and the relay replays that session's ring
+from its first frame, so the conversation begins at `/share` rather than at
+first sight.
+
+**Admitted is also drivable, deliberately.** The alternative was an owner who
+may watch but must still spend a code to type. It was rejected for two reasons.
+The narrow one: with the console rendering a shared terminal as a conversation,
+the recorder's socket *is* the drive path, so a read-only admission would mean
+inventing a second, weaker browser role on the relay to hold a distinction
+nothing else needs. The wide one: the code exists so that a person at the
+terminal consents to a watcher who cannot otherwise be identified. Here the
+person at the terminal is the person at the browser — the credential the share
+was made under is one they signed in with and can revoke — and asking them to
+copy six characters out of their own terminal into their own console is not a
+second party consenting. It is the same party, twice.
+
+**Rule 4 is unchanged and load-bearing.** `ownerUser` is a bearer name inside
+the relay, exactly as a paired uuid always was, and the relay still binds to
+loopback or the tailnet and still trusts what reaches it there. This adds no
+new reason to expose it and takes none away.
+
+**Two-sided consent for a third party is untouched.** Admitting the owner
+spends nothing: `codeUsed` stays false, `pairedUserId` stays empty, the listing
+still reports the session unpaired, and the code the terminal printed still
+pairs somebody else afterwards — who is then admitted alongside the owner
+rather than instead of them. A browser signed in to a different account is
+refused with `not_paired` and has to be handed the code, which is spec 002 as
+written.
+
+**Revocation.** The exemption is created by that one verify and by nothing
+else, so a credential the console will not vouch for produces no `accountId`,
+no `ownerUser`, and admits nobody — the share itself is already refused at the
+client for the same reason (#279 follow-up). A credential revoked while a
+session is already running leaves that session's `ownerUser` in place for as
+long as the session lasts, which is the same thing #134 already decided about
+`accountId`, and is bounded by the terminal's own process: the revoked key is
+the one that terminal makes its inference calls with. What matters is that
+there is no second trust path to revoke separately. There is one call, it
+happens at create, and it decides both facts together.
+
+**The relay's own page is unaffected.** It is account-blind, it invents a
+random uuid for `x-user`, and it talks to a relay that may have no console at
+all. A session no console vouched for has an empty `ownerUser` and admits
+nobody without a code, so this cannot become a route by which that page lets
+anyone in.
+
+Verified in `make owner-admission-harness`
+(`scripts/verify_owner_admission.mjs`): a real daemon holding a real credential
+shares into a real relay verifying it against a console stub, and with nothing
+pairing anything, a browser under the owner name is admitted, replayed from
+`session.hello`, sees a turn happen and approves it, and the file the tool
+wrote is checked on disk. The relay's own command log is asserted on — one
+create carrying the owner name, no pair command at all, and every browser
+connect presenting that name — rather than the absence of an error. A browser
+under any other name is refused `not_paired`, is shown nothing, then pairs with
+the printed code and is admitted by the path that was always there. A second
+relay whose console names no `relayUser` admits neither that name nor the bare
+account id. CI runs it on the host build and against the binaries linux-release
+publishes, because `ownerUser` is one more field parsed out of a create command
+and kept, which is what #292 was.

@@ -76,7 +76,7 @@ async function main() {
   fs.writeFileSync(path.join(workspace, "README.md"), "# demo\n\nNo health route yet.\n");
 
   const credentialSecret = "e2e-terminal-secret-abc123";
-  const account = { id: "acct-e2e-1", email: "e2e@example.com" };
+  const account = { id: "acct-e2e-1", email: "e2e@example.com", relayUser: "assoc-owner-browser-name" };
   const server = "http://joule-console-assoc.invalid";
 
   const consoleStub = await startConsoleStub(credentialSecret, account);
@@ -199,6 +199,16 @@ async function main() {
 
     const bodyText = JSON.stringify(mine.json);
     ok(bodyText.indexOf(started.code) < 0, "the listing never carries the pairing code itself");
+
+    // The owner exemption of #296 is live on this relay - the console stub
+    // names a relayUser - and it changes nothing here: every browser below
+    // dials under the account id or a guest uuid, neither of which is that
+    // name, so all of them still meet spec 002's code exactly as they did.
+    const notTheOwner = await fetchJson(`http://127.0.0.1:${relayHttpPort}/sessions/mine`, {
+      headers: { "x-user": "assoc-owner-browser-name" },
+    });
+    ok(notTheOwner.status === 200 && notTheOwner.json.sessions.length === 0,
+      "the owner browser name lists nothing: it admits a session, it is not an account");
 
     const someoneElse = await fetchJson(`http://127.0.0.1:${relayHttpPort}/sessions/mine`, {
       headers: { "x-user": "a-different-account" },

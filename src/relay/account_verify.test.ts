@@ -14,6 +14,26 @@ test("a 200 with an account object is read into a verified result", () => {
   expect(r.accountEmail == "aymen@example.com");
 });
 
+test("the relayUser the console names is read alongside the account it belongs to", () => {
+  let body = "{\"account\":{\"id\":\"acct_1\",\"email\":\"\",\"relayUser\":\"Zm9vYmFy\"}}";
+  let r = parseAccountVerify(200, body);
+  expect(r.status == VERIFY_OK);
+  expect(r.relayUser == "Zm9vYmFy");
+});
+
+test("a console that names no relayUser leaves it empty, which admits nobody", () => {
+  let body = "{\"account\":{\"id\":\"acct_1\",\"email\":\"a@example.com\"}}";
+  let r = parseAccountVerify(200, body);
+  expect(r.status == VERIFY_OK);
+  expect(r.relayUser == "");
+});
+
+test("a rejected credential carries no relayUser to admit anything with", () => {
+  let r = parseAccountVerify(401, "{\"account\":{\"id\":\"acct_1\",\"relayUser\":\"Zm9vYmFy\"}}");
+  expect(r.status == VERIFY_REJECTED);
+  expect(r.relayUser == "");
+});
+
 test("a 200 with no account member is rejected, not treated as anonymous-ok", () => {
   let r = parseAccountVerify(200, "{\"ok\":true}");
   expect(r.status == VERIFY_REJECTED);

@@ -29,8 +29,9 @@ export class SessionRecord {
   lastActivityAt: i64;
   accountId: string;
   accountEmail: string;
+  ownerUser: string;
 
-  constructor(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string) {
+  constructor(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string, ownerUser: string) {
     this.sessionId = sessionId;
     this.secret = secret;
     this.workspace = workspace;
@@ -43,6 +44,7 @@ export class SessionRecord {
     this.lastActivityAt = now;
     this.accountId = accountId;
     this.accountEmail = accountEmail;
+    this.ownerUser = ownerUser;
   }
 
   summary(): SessionSummary {
@@ -92,8 +94,8 @@ export class SessionStore {
     this.pairLimiter = new RateLimiter(PAIR_RATE_LIMIT_MAX, PAIR_RATE_LIMIT_WINDOW_MS);
   }
 
-  create(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string): SessionRecord {
-    let created = new SessionRecord(sessionId, secret, workspace, model, code, now, accountId, accountEmail);
+  create(sessionId: string, secret: string, workspace: string, model: string, code: string, now: i64, accountId: string, accountEmail: string, ownerUser: string): SessionRecord {
+    let created = new SessionRecord(sessionId, secret, workspace, model, code, now, accountId, accountEmail, ownerUser);
     this.sessions.set(sessionId, created);
     return created;
   }
@@ -160,7 +162,16 @@ export class SessionStore {
     return constantTimeEqual(secret, forAuthTerminal.secret);
   }
 
+  ownerAdmits(sessionId: string, userId: string): bool {
+    let forOwner = this.sessions.get(sessionId);
+    if (forOwner == null) { return false; }
+    if (userId == "") { return false; }
+    if (forOwner.accountId == "" || forOwner.ownerUser == "") { return false; }
+    return constantTimeEqual(userId, forOwner.ownerUser);
+  }
+
   authorizeBrowser(sessionId: string, userId: string): bool {
+    if (this.ownerAdmits(sessionId, userId)) { return true; }
     let forAuthBrowser = this.sessions.get(sessionId);
     if (forAuthBrowser == null) { return false; }
     if (forAuthBrowser.pairedUserId == "") { return false; }

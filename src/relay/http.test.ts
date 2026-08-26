@@ -25,10 +25,10 @@ function directCaller(owner: RelayOwner): StoreCaller {
 function stubVerifier(knownSecret: string, accountId: string, accountEmail: string): AccountVerifier {
   return (secret: string) => {
     if (secret == knownSecret) {
-      let ok: AccountVerifyResult = { status: VERIFY_OK, accountId: accountId, accountEmail: accountEmail };
+      let ok: AccountVerifyResult = { status: VERIFY_OK, accountId: accountId, accountEmail: accountEmail, relayUser: "owner-token-" + accountId };
       return ok;
     }
-    let rejected: AccountVerifyResult = { status: VERIFY_REJECTED, accountId: "", accountEmail: "" };
+    let rejected: AccountVerifyResult = { status: VERIFY_REJECTED, accountId: "", accountEmail: "", relayUser: "" };
     return rejected;
   };
 }

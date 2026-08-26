@@ -2,10 +2,11 @@
 
 An agentic coding terminal you can also drive from a web page.
 
-You run it in a repo on your own machine. It prints a short pairing code. You
-open the page, enter the code, and from then on the browser and the terminal are
-the same session. You start work at the desk and keep steering it from a laptop
-or a phone.
+You run it in a repo on your own machine and share it. Your own console picks
+it up straight away, because the machine is already signed in to your account,
+and from then on the browser and the terminal are the same session. You start
+work at the desk and keep steering it from a laptop or a phone. It also prints a
+short pairing code, which is how you show that session to somebody else.
 
 The agent reads and edits files, runs commands and makes commits **on your
 machine**. The browser is a remote control, never an executor.

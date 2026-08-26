@@ -8,7 +8,7 @@ export const VERIFY_OK: string = "ok";
 export const VERIFY_UNREACHABLE: string = "unreachable";
 export const VERIFY_REJECTED: string = "rejected";
 
-export type AccountVerifyResult = { status: string, accountId: string, accountEmail: string };
+export type AccountVerifyResult = { status: string, accountId: string, accountEmail: string, relayUser: string };
 
 export function consoleUrlFromEnv(envValue: string): string {
   let raw = envValue.trim();
@@ -21,12 +21,12 @@ export function verifyUrl(consoleBase: string): string {
 }
 
 function unreachable(): AccountVerifyResult {
-  let r: AccountVerifyResult = { status: VERIFY_UNREACHABLE, accountId: "", accountEmail: "" };
+  let r: AccountVerifyResult = { status: VERIFY_UNREACHABLE, accountId: "", accountEmail: "", relayUser: "" };
   return r;
 }
 
 function rejected(): AccountVerifyResult {
-  let r: AccountVerifyResult = { status: VERIFY_REJECTED, accountId: "", accountEmail: "" };
+  let r: AccountVerifyResult = { status: VERIFY_REJECTED, accountId: "", accountEmail: "", relayUser: "" };
   return r;
 }
 
@@ -38,7 +38,8 @@ export function parseAccountVerify(status: int, body: string): AccountVerifyResu
   let accountId = jsonStringMemberAt(body, acctAt, "id");
   if (accountId == "") { return rejected(); }
   let accountEmail = jsonStringMemberAt(body, acctAt, "email");
-  let r: AccountVerifyResult = { status: VERIFY_OK, accountId: accountId, accountEmail: accountEmail };
+  let relayUser = jsonStringMemberAt(body, acctAt, "relayUser");
+  let r: AccountVerifyResult = { status: VERIFY_OK, accountId: accountId, accountEmail: accountEmail, relayUser: relayUser };
   return r;
 }
 

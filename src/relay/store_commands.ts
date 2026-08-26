@@ -9,7 +9,7 @@ export const CMD_LIST_MINE: string = "list_mine";
 export const ROLE_TERMINAL_CMD: string = "terminal";
 export const ROLE_BROWSER_CMD: string = "browser";
 
-export type CreateCommand = { kind: string, workspace: string, model: string, now: i64, accountId: string, accountEmail: string };
+export type CreateCommand = { kind: string, workspace: string, model: string, now: i64, accountId: string, accountEmail: string, ownerUser: string };
 export type CreateResult = { sessionId: string, secret: string, code: string, expiresAt: i64 };
 
 export type PairCommand = { kind: string, code: string, userId: string, now: i64 };
