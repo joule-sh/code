@@ -284,8 +284,12 @@ async function main() {
     term.sock.send(JSON.stringify({ v: 1, seq: 0, type: "approval.reply", callId: askedBefore.callId, decision: "allow" }));
     const endedBefore = await collectUntil(term.frames, (f) => f.type === "turn.end", 20000, "the first turn to end");
     ok(endedBefore.reason === "done", "the turn before the restart finished, reason " + endedBefore.reason);
-    ok(browser1.frames.some((f) => f.type === "turn.end" && f.turnId === endedBefore.turnId),
-      "the browser watched that same turn end");
+    const watchedBefore = await collectUntil(
+      browser1.frames, (f) => f.type === "turn.end" && f.turnId === endedBefore.turnId,
+      15000, "the browser to watch that same turn end",
+    );
+    ok(watchedBefore.reason === endedBefore.reason,
+      "the browser watched that same turn end, and agrees how it ended: " + watchedBefore.reason);
     ok(fs.readFileSync(path.join(workspace, "README.md"), "utf8").includes("Added a health check note."),
       "the turn before the restart really ran its tool on the workspace");
 
@@ -360,7 +364,6 @@ async function main() {
     const browser2 = await pairBrowser(ports.http, ports.browser, second.code);
     ok(browser2.sessionId === sessionAfter,
       "the code /share printed is one the relay actually holds, and it is the re-made session");
-    ok(browser2.frames.length >= 0, "the browser socket opened");
     await collectUntil(browser2.frames, (f) => f.type === "session.hello", 8000, "the re-made session to describe itself");
     ok(browser2.frames.some((f) => f.type === "session.hello" && f.workspace === workspacePath),
       "the re-made session replays session.hello, so a browser meeting it is not looking at an unnamed session");
@@ -376,7 +379,11 @@ async function main() {
     browser2.sock.send(JSON.stringify({ v: 1, seq: 0, type: "approval.reply", callId: askedAfter.callId, decision: "allow" }));
     const endedAfter = await collectUntil(browser2.frames, (f) => f.type === "turn.end" && f.turnId !== endedBefore.turnId, 25000, "the turn after the restart to end");
     ok(endedAfter.reason === "done", "a turn driven from the browser after the restart ran to completion, reason " + endedAfter.reason);
-    ok(term.frames.some((f) => f.type === "turn.end" && f.turnId === endedAfter.turnId),
+    const watchedAfter = await collectUntil(
+      term.frames, (f) => f.type === "turn.end" && f.turnId === endedAfter.turnId,
+      15000, "the terminal to see that same turn end",
+    );
+    ok(watchedAfter.reason === endedAfter.reason,
       "the terminal saw that same turn, so both ends are on one session again");
     const noteCount = fs.readFileSync(path.join(workspace, "README.md"), "utf8").split("Added a health check note.").length - 1;
     ok(noteCount === 2, "the turn after the restart ran its tool on the real workspace too, notes on disk: " + noteCount);
