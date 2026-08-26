@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -164,6 +164,9 @@ daemon-commands-harness: build bin/stub_model
 
 daemon-stop-harness: build bin/stub_model
 	node scripts/verify_daemon_stop.mjs
+
+stop-then-start-harness: build bin/stub_model
+	python3 scripts/verify_stop_then_start.py
 
 attach-commands-harness: build bin/stub_model
 	python3 scripts/verify_attach_commands.py

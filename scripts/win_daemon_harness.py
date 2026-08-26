@@ -295,12 +295,12 @@ def main():
         second = None
 
         stopped = stop_daemon(ws, env)
-        checks.that(stopped is not None and "acknowledged the request" in stopped.stdout,
-                    "joule --stop got an acknowledgement from the daemon")
+        checks.that(stopped is not None and "has stopped" in stopped.stdout,
+                    "joule --stop waited for the daemon to go rather than for it to answer")
+        checks.that(records(home) == [],
+                    "joule --stop had already seen the record go when it returned, got %r" % records(home))
         checks.that(wait_for_port(daemon_port, 20, want=False),
                     "the daemon's port stops accepting after the stop request")
-        checks.that(records(home) == [],
-                    "the daemon removed its record on the way out, got %r" % records(home))
     except AssertionError as e:
         print("FAIL %s" % e)
         checks.failed += 1
