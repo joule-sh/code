@@ -36,7 +36,9 @@ Intel build fails without it.
 The release archives link that library statically on both platforms, so an
 installed release carries it, and there is no library to install alongside
 it: a macOS binary needs nothing beyond the system's own libSystem, and a
-Linux one needs nothing at all. macOS uses Homebrew's `libgc.a`. Linux names a
+Linux one needs nothing at all - no libc version, no loader, no shared
+library - so it runs the same on Ubuntu 22.04, on a decade-old enterprise
+release and on Alpine. macOS uses Homebrew's `libgc.a`. Linux names a
 target instead, which links musl and a collector the compiler builds for that
 target, leaving a binary with nothing to resolve. To reproduce what a Linux
 release ships:
