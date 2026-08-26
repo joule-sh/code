@@ -90,7 +90,22 @@ REVERSE_SEQ = "\x1b[7m"
 # so it holds at narrow widths where the label itself is clipped.
 APPROVAL_OPTION_RE = re.compile(r"^\s*(>|\s)\s*([123])\. (.*?)\s*$")
 APPROVAL_ALWAYS_LABEL_PREFIX = "Yes, and don't ask again for "
-APPROVAL_OPTION_COUNT = 3
+# The marker an open option list draws on the row the keys would confirm.
+APPROVAL_MARKER_CURSOR = "> 1. "
+# #297: an answered approval collapses to one settled line naming what was
+# asked and how it was decided. The decision is anchored at the end of the
+# row on purpose: scrollback lines are clipped to the terminal's width rather
+# than wrapped, so a settled line that outran 80 columns would lose exactly
+# this half, and would then match nothing here.
+SETTLED_DECISIONS = (
+    "allowed",
+    "allowed, and not asked again this session",
+    "denied",
+    "allowed by the session's approval mode",
+)
+APPROVAL_SETTLED_RE = re.compile(
+    r"^\s*\? (.+?) - (" + "|".join(re.escape(d) for d in SETTLED_DECISIONS) + r")$"
+)
 CTRL_O = b"\x0f"
 # #94: long tool output is collapsed to a head plus a marker naming how many
 # rows are hidden, and ctrl-o toggles it. Matched with the SGR stripped, since
@@ -426,21 +441,82 @@ def highlighted_option(option_rows):
     return lit[0]["number"] if len(lit) == 1 else 0
 
 
+def approval_settled_rows(full_text):
+    """The settled approval lines in the latest redraw, in transcript order (#297)."""
+    out = []
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        m = APPROVAL_SETTLED_RE.match(strip_sgr(cell).rstrip())
+        if m is None:
+            continue
+        out.append({"ask": m.group(1), "decision": m.group(2), "width": display_width(cell)})
+    return out
+
+
+def approval_option_labels(tool):
+    """Every decision an open approval offers, in list order.
+
+    This is where the old "exactly three rows" assertion went (#297). The open
+    prompt has to offer each of these once and an answered one has to offer
+    none of them, and the list's length is whatever this is - so neither check
+    restates a row count that goes stale the day a decision is added or taken
+    away, and neither one pins a fact about approvals in general that only ever
+    held while the prompt was open.
+    """
+    return ["Yes", APPROVAL_ALWAYS_LABEL_PREFIX + tool + " this session", "No"]
+
+
+def check_option_list_complete(full_text, label):
+    """The open option list is whole on screen, without saying how long it is.
+
+    A narrow terminal clips the labels at the right edge, so only the ends of
+    the list are named: it starts at the first decision and ends at the last
+    one, numbered straight through, with one marker cursor somewhere on it.
+    That catches a row the layout pushed off the screen or failed to repaint
+    without restating a row count, which was only ever a fact about the open
+    state and stopped being true of approvals in general with #297.
+    """
+    rows = approval_option_rows(full_text)
+    numbers = [r["number"] for r in rows]
+    ok(numbers == list(range(1, len(rows) + 1)), label + ": the option rows on screen run 1 upwards with no gaps, got %r" % numbers)
+    ends = approval_option_labels("")
+    ok(len(rows) > 0 and rows[0]["label"] == ends[0], label + ": the list starts at the first decision, got %r" % [r["label"] for r in rows[:1]])
+    ok(len(rows) > 0 and rows[-1]["label"] == ends[-1], label + ": the list ends at the last decision, got %r" % [r["label"] for r in rows[-1:]])
+    ok(len([r for r in rows if r["marked"]]) == 1, label + ": exactly one option row carries the marker cursor")
+    return rows
+
+
+def check_approval_open(full_text, tool, label):
+    """Assert an approval is drawn open: the whole menu, one cursor, no verdict."""
+    rows = check_option_list_complete(full_text, label)
+    labels = [r["label"] for r in rows]
+    ok(labels == approval_option_labels(tool), label + ": an open approval offers each decision once, in list order, got %r" % labels)
+    ok(len([r for r in rows if r["highlighted"]]) == 1, label + ": exactly one option row is drawn in reverse video")
+    ok(approval_settled_rows(full_text) == [], label + ": an approval still waiting for an answer has settled nothing")
+    return rows
+
+
 def check_approval_option_list(session, tool, label):
     """Assert the shape of a freshly rendered, not yet answered, option list."""
     session.settle(0.3, 2.0)
-    rows = approval_option_rows(text(bytes(session.raw)))
-    ok(len(rows) == APPROVAL_OPTION_COUNT, label + ": the approval prompt renders one row per decision, got %d" % len(rows))
-    if len(rows) != APPROVAL_OPTION_COUNT:
-        return rows
-    ok([r["number"] for r in rows] == [1, 2, 3], label + ": the option rows read 1, 2, 3 down the list")
-    ok(rows[0]["label"] == "Yes", label + ": option 1 is Yes, got %r" % rows[0]["label"])
-    ok(rows[1]["label"] == APPROVAL_ALWAYS_LABEL_PREFIX + tool + " this session", label + ": option 2 is the always option and names the tool, got %r" % rows[1]["label"])
-    ok(rows[2]["label"] == "No", label + ": option 3 is No, got %r" % rows[2]["label"])
-    ok(len([r for r in rows if r["highlighted"]]) == 1, label + ": exactly one option row is drawn in reverse video")
-    ok(len([r for r in rows if r["marked"]]) == 1, label + ": exactly one option row carries the marker cursor")
-    ok(highlighted_option(rows) == 1, label + ": option 1 is the highlighted one before any key is pressed")
+    rows = check_approval_open(text(bytes(session.raw)), tool, label)
+    if len(rows) == len(approval_option_labels(tool)):
+        ok(highlighted_option(rows) == 1, label + ": option 1 is the highlighted one before any key is pressed")
     return rows
+
+
+def check_approval_settled(full_text, tool, decisions, cols, label):
+    """Assert answered approvals left settled lines and no menu at all (#297)."""
+    rows = approval_option_rows(full_text)
+    ok(rows == [], label + ": an answered approval leaves no option rows on screen, got %r" % [r["label"] for r in rows])
+    screen = strip_sgr(last_redraw_block(full_text))
+    ok(APPROVAL_ALWAYS_LABEL_PREFIX not in screen, label + ": the wording of an option a reader can no longer take is gone from the transcript")
+    ok(APPROVAL_MARKER_CURSOR not in screen, label + ": no marker cursor is left reading as though something is still waiting on it")
+    settled = approval_settled_rows(full_text)
+    ok([r["decision"] for r in settled] == decisions, label + ": the settled lines record how each approval was decided, got %r" % [r["decision"] for r in settled])
+    for r in settled:
+        ok(r["ask"].startswith(tool + " ["), label + ": a settled line still records what was asked, got %r" % r["ask"])
+        ok(r["width"] <= cols, label + ": a settled line fits the %d column terminal, got %d" % (cols, r["width"]))
+    return settled
 
 
 def check_zero_newlines(full_text):
@@ -742,7 +818,7 @@ def run_approval_arrow_key_scenario():
         session.settle(0.3, 2.0)
         after_enter = text(bytes(session.raw[pre_enter:]))
         ok(RUN_TOOL_CALL_MARKER not in after_enter, "Enter confirms the highlighted option rather than the default one: option 3 denies the call and the run tool never fires")
-        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 3, "the answered prompt keeps the confirmed option highlighted in the transcript")
+        check_approval_settled(text(bytes(session.raw)), "run", ["denied"], session.cols, "a denied approval")
 
         check_clean_exit_invariants(session, "arrow-driven approval")
     finally:
@@ -764,7 +840,7 @@ def run_approval_number_key_scenario():
         session.wait_for(RUN_TOOL_CALL_MARKER, timeout=10.0)
         session.wait_for("Done.", timeout=15.0)
         session.settle(0.3, 2.0)
-        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 2, "the number key 2 jumps the highlight onto the always option and confirms it")
+        check_approval_settled(text(bytes(session.raw)), "run", ["allowed, and not asked again this session"], session.cols, "an approval answered with the always option")
 
         rows_after = parse_redraw_rows(last_redraw_block(text(bytes(session.raw))))
         input_rows = [strip_sgr(c).rstrip() for (_, c) in rows_after if strip_sgr(c).rstrip() == ">" or strip_sgr(c).rstrip().endswith("> 2")]
@@ -778,6 +854,44 @@ def run_approval_number_key_scenario():
 
 RESUME_HEADER = "resumed previous session"
 NO_PREVIOUS_SESSION = "no previous session found for this workspace"
+
+
+def run_settled_approval_scenario():
+    """#297: the three decision kinds settle into three different lines.
+
+    "Yes", "yes, and don't ask again", and an approval the session's own mode
+    satisfied without ever asking are separate facts, and the console records
+    exactly that distinction. The always answer is what raises the third: the
+    turn's second run call meets a session that already decided, so no prompt
+    is ever drawn for it, and the only trace it leaves is its settled line.
+    """
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-settled-", script="always")
+        drive_to_approval(session)
+        check_approval_option_list(session, "run", "the first approval of an always-answered turn")
+
+        session.write("2")
+        session.wait_for("Done.", timeout=20.0)
+        session.settle(0.4, 3.0)
+        full_text = text(bytes(session.raw))
+        settled = check_approval_settled(
+            full_text, "run",
+            ["allowed, and not asked again this session", "allowed by the session's approval mode"],
+            session.cols,
+            "an always answer and the call it went on to settle without asking",
+        )
+        if len(settled) == 2:
+            ok(settled[0]["ask"] != settled[1]["ask"], "each settled line records the call it settled, not a repeat of the first")
+        ok(strip_sgr(last_redraw_block(full_text)).count(RUN_TOOL_CALL_MARKER) == 2, "both run calls of the turn actually fired, so the mode-satisfied line is not describing a call that never happened")
+        check_no_row_overflows(full_text, session.cols, "settled approvals")
+
+        check_clean_exit_invariants(session, "settled approval")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
 
 
 def run_resume_scenario():
@@ -1002,8 +1116,7 @@ def run_collapse_scenario():
         last_line = "README_LINE_%03d" % LONG_README_LINES
         ok(last_line not in collapsed_screen, "the tail of the collapsed output is off screen while it is collapsed")
 
-        options_collapsed = approval_option_rows(text(bytes(session.raw)))
-        ok(len(options_collapsed) == APPROVAL_OPTION_COUNT, "the approval option list is intact next to a collapsed group, got %d rows" % len(options_collapsed))
+        check_approval_open(text(bytes(session.raw)), "run", "an approval beside a collapsed group")
 
         session.write(CTRL_O)
         session.settle(0.3, 2.0)
@@ -1017,15 +1130,12 @@ def run_collapse_scenario():
         max_row_expanded = max((r for (r, _) in rows_expanded), default=0)
         ok(max_row_expanded <= session.rows, "no row of the expanded redraw addresses past the terminal height, got max row %d of %d" % (max_row_expanded, session.rows))
 
-        options_expanded = approval_option_rows(expanded_full)
-        ok(len(options_expanded) == APPROVAL_OPTION_COUNT, "the approval option list survives the expansion, got %d rows" % len(options_expanded))
-        ok([r["number"] for r in options_expanded] == [1, 2, 3], "the expanded view still reads the option rows 1, 2, 3 down the list")
+        check_approval_open(expanded_full, "run", "an approval whose neighbouring group was expanded")
 
         session.write(ARROW_DOWN)
         session.settle(0.3, 2.0)
-        moved = approval_option_rows(text(bytes(session.raw)))
+        moved = check_approval_open(text(bytes(session.raw)), "run", "an approval repainted while the group above it is expanded")
         ok(highlighted_option(moved) == 2, "the arrow keys still repaint the right approval rows while a group above them is expanded (#96 offsets)")
-        ok(len(moved) == APPROVAL_OPTION_COUNT, "repainting while expanded does not duplicate or drop an option row")
 
         session.write(CTRL_O)
         session.settle(0.3, 2.0)
@@ -1106,7 +1216,7 @@ def run_scenario():
         session.settle(0.3, 2.0)
         turn_segment = text(bytes(session.raw[pre_turn_idx:]))
         ok(APPROVAL_MARKER in turn_segment, "a real model turn through the stub model produced an approval prompt (proves the marker check below is not vacuous)")
-        ok(highlighted_option(approval_option_rows(text(bytes(session.raw)))) == 1, "answering with the y shortcut leaves option 1 as the highlighted, confirmed row (#88 keeps y/n/a working)")
+        check_approval_settled(text(bytes(session.raw)), "run", ["allowed"], session.cols, "an approval granted with the y shortcut (#88 keeps y/n/a working)")
         ok(TOOL_CALL_MARKER in turn_segment, "the same turn produced a tool.call marker (proves the marker check below is not vacuous)")
 
         rows_after_turn = visible_rows(last_redraw_block(text(bytes(session.raw))))
@@ -1527,8 +1637,7 @@ def run_wrapped_transcript_scenario():
         ok(WRAP_RUN_COMMAND in screen, "the whole of a long approval command is on screen, not clipped at the terminal's width")
         check_no_row_overflows(full_text, session.cols, "wrapped transcript")
 
-        options = approval_option_rows(full_text)
-        ok(len(options) == APPROVAL_OPTION_COUNT, "the approval option list is still exactly %d rows beside wrapped text, got %d" % (APPROVAL_OPTION_COUNT, len(options)))
+        options = check_approval_open(full_text, "run", "an approval beside wrapped text")
         ok(highlighted_option(options) == 1, "the first approval option is still the highlighted one beside wrapped text")
 
         check_clean_exit_invariants(session, "wrapped transcript")
@@ -1595,6 +1704,11 @@ def main():
         failures.append(str(e))
     try:
         run_approval_number_key_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_settled_approval_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))

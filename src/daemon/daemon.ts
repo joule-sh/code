@@ -3,6 +3,7 @@ import { displayModel } from "../providers/platform.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
+import { emitApprovalSettled } from "../approval/settled_frame.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
@@ -90,6 +91,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   };
 
   let gate = new Gate(MODE_AUTO_EDIT, APPROVAL_TIMEOUT_MS, workspaceRoot, onApprovalRequest, () => {});
+  gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(sessionBox.items, tracker.current, callId, summary, args));
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
   let session = new Session(workspaceRoot, "agent", provider, tools, approval);

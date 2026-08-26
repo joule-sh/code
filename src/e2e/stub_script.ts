@@ -13,6 +13,14 @@ export function runFixCommand(): string {
   if (isWindows()) { return WINDOWS_RUN_FIX_COMMAND; }
   return POSIX_RUN_FIX_COMMAND;
 }
+const ALWAYS_SCRIPT: string = "always";
+const POSIX_RUN_AGAIN_COMMAND: string = "echo 'Checked the health note again.' >> README.md";
+const WINDOWS_RUN_AGAIN_COMMAND: string = "Add-Content -Path README.md -Value 'Checked the health note again.'";
+
+export function runAgainCommand(): string {
+  if (isWindows()) { return WINDOWS_RUN_AGAIN_COMMAND; }
+  return POSIX_RUN_AGAIN_COMMAND;
+}
 const SKILLS_SCRIPT: string = "skills";
 const SKILLS_RUN_COMMAND: string = "sh .claude/skills/deploy/deploy.sh";
 const TRANSCRIPT_SCRIPT: string = "transcript";
@@ -115,6 +123,15 @@ function runStepBody(): string {
     + DONE_LINE;
 }
 
+function runAgainStepBody(): string {
+  let args = toolCallArgs([strField("command", runAgainCommand())]);
+  let fragment = toolCallFragmentJson(0, "call_run_2", "run", args);
+  return textDeltaChunk("Let me confirm the note landed.")
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
 function finalStepBody(): string {
   return textDeltaChunk("Done.") + finishChunk("stop") + DONE_LINE;
 }
@@ -156,6 +173,11 @@ function skillsRunStepBody(): string {
 }
 
 export function scriptedResponseBodyFor(script: string, step: int): string {
+  if (script == ALWAYS_SCRIPT) {
+    if (step <= 0) { return runStepBody(); }
+    if (step == 1) { return runAgainStepBody(); }
+    return finalStepBody();
+  }
   if (script == SKILLS_SCRIPT) {
     if (step <= 0) { return skillsRunStepBody(); }
     return finalStepBody();
@@ -227,6 +249,16 @@ test("the skills script proposes running the script a skill carries, so it meets
   expect(run.indexOf(".claude/skills/deploy/deploy.sh") >= 0);
   expect(run.indexOf("\"name\":\"run\"") >= 0);
   expect(scriptedResponseBodyFor("skills", 1) == finalStepBody());
+});
+
+test("the always script asks to run twice, so the second call meets a session that already decided", () => {
+  let first = scriptedResponseBodyFor("always", 0);
+  expect(first == runStepBody());
+  let again = scriptedResponseBodyFor("always", 1);
+  expect(again.indexOf("\"name\":\"run\"") >= 0);
+  expect(again.indexOf(runAgainCommand()) >= 0);
+  expect(again != first);
+  expect(scriptedResponseBodyFor("always", 2) == finalStepBody());
 });
 
 test("an unnamed script is the one every other harness drives", () => {

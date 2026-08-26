@@ -19,6 +19,8 @@ import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platfo
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
+import { noteApprovalBlock } from "./approval_settled.ts";
+import { emitApprovalSettled } from "../approval/settled_frame.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
@@ -82,8 +84,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let tasksBox = new TasksBox();
 
   let onApprovalRequest = (callId: string, tool: string, summary: string, args: string) => {
-    pendingApproval.set(callId);
-    pendingApproval.setTool(tool);
+    pendingApproval.begin(callId, tool);
     if (live.sessionSlot.length > 0) {
       let s = live.sessionSlot[0];
       let frame: ApprovalRequestFrame = {
@@ -91,7 +92,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
         turnId: tracker.current, callId: callId, tool: tool, summary: summary, detail: args, args: args,
       };
       s.emit(encodeApprovalRequest(frame));
-      pendingApproval.setOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
+      noteApprovalBlock(sb, pendingApproval, summary, args);
     }
   };
 
@@ -134,6 +135,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   };
 
   let gate = new Gate(MODE_AUTO_EDIT, 120000, workspaceRoot, onApprovalRequest, onApprovalPoll);
+  gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(live.sessionSlot, tracker.current, callId, summary, args));
   gateBox.set(gate);
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 

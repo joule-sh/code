@@ -2,6 +2,7 @@ import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApp
 import { diffLines, diffCounts, renderDiffRows, DIFF_DISPLAY_MAX_ROWS } from "./diff.ts";
 import { DIM, REVERSE, RESET } from "./style.ts";
 import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT, PLAN_DECISION_REJECT, PLAN_DECISION_OPTION_COUNT } from "./input_state.ts";
+import { settledRow } from "./approval_settled.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 
 const TOOL_EDIT: string = "edit";
@@ -136,6 +137,14 @@ function approvalPrompt(summary: string, detail: string, tool: string, args: str
 
 export function approvalOptionsFor(frameJson: string): string {
   return approvalOptionsBlock(jsonStringMemberAt(frameJson, 0, "tool"), APPROVAL_OPTION_ALLOW);
+}
+
+export function approvalSettledFor(frameJson: string, width: int): string {
+  let summary = jsonStringMemberAt(frameJson, 0, "summary");
+  let detail = jsonStringMemberAt(frameJson, 0, "detail");
+  let decision = jsonStringMemberAt(frameJson, 0, "decision");
+  let by = jsonStringMemberAt(frameJson, 0, "decidedBy");
+  return settledRow(summary, detail, decision, by, width);
 }
 
 export function renderFrame(frameJson: string, prevKind: string): string {

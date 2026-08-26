@@ -28,6 +28,7 @@ export class Gate {
   repliedDecisions: string[];
   onRequest: (callId: string, tool: string, summary: string, args: string) => void;
   onPoll: () => void;
+  autoSlot: ((callId: string, tool: string, summary: string, args: string) => void)[];
 
   constructor(mode: string, timeoutMs: int, workspaceRoot: string, onRequest: (callId: string, tool: string, summary: string, args: string) => void, onPoll: () => void) {
     this.mode = mode;
@@ -39,10 +40,19 @@ export class Gate {
     this.repliedDecisions = [];
     this.onRequest = onRequest;
     this.onPoll = onPoll;
+    this.autoSlot = [];
   }
 
   setOnPoll(onPoll: () => void): void {
     this.onPoll = onPoll;
+  }
+
+  setOnAutoAllowed(cb: (callId: string, tool: string, summary: string, args: string) => void): void {
+    this.autoSlot = [cb];
+  }
+
+  noteAutoAllowed(callId: string, tool: string, summary: string, args: string): void {
+    if (this.autoSlot.length > 0) { this.autoSlot[0](callId, tool, summary, args); }
   }
 
   reply(callId: string, decision: string): bool {
@@ -131,10 +141,12 @@ export class Gate {
     }
 
     if (this.isAlwaysAllowed(tool)) {
+      this.noteAutoAllowed(callId, tool, summary, args);
       return { allow: true };
     }
 
     if (this.autoRunByCommandSafety(tool, args)) {
+      this.noteAutoAllowed(callId, tool, summary, args);
       return { allow: true };
     }
 
