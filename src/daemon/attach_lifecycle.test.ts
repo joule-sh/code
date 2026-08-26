@@ -1,4 +1,4 @@
-import { helloWorkspace, helloBuild, describeBuild, buildMismatchNotes, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure } from "./attach_lifecycle.ts";
+import { helloWorkspace, helloBuild, describeBuild, buildMismatchNotes, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure, waitForDaemonGone, stoppedNote, stillRunningNote, tmpDir } from "./attach_lifecycle.ts";
 import { VERSION } from "../version.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello } from "../protocol/frames.ts";
 
@@ -180,4 +180,12 @@ test("a daemon binary that is not there is reported without trying to run it", (
 
 test("a daemon binary that runs and exits cleanly reports no failure", () => {
   expect(daemonBinFailure("/bin/echo") == "");
+});
+
+test("a stop that waits reports the daemon gone rather than merely acknowledged", () => {
+  let ws = tmpDir() + "/joule-stop-gone-" + `${Date.now()}`;
+  expect(waitForDaemonGone(ws, 1));
+  expect(stoppedNote(ws).indexOf("has stopped") > 0);
+  expect(stillRunningNote(ws).indexOf("still running") > 0);
+  expect(stillRunningNote(ws).indexOf("attach to it on its way out") > 0);
 });

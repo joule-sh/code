@@ -13,6 +13,7 @@ const HELLO_WAIT_TICKS: int = 30;
 const DEFAULT_PORT_BASE: int = 8300;
 const DEFAULT_PORT_SPREAD: int = 400;
 const STOP_ACK_TICKS: int = 50;
+const STOP_GONE_TICKS: int = 100;
 const ATTACH_ATTEMPTS: int = 8;
 export const STOP_FLAG: string = "--stop";
 
@@ -164,6 +165,24 @@ function waitForReady(client: DaemonClient, ticks: int): ReadyOutcome {
   }
   let out: ReadyOutcome = { ready: client.socketReady, frames: collected };
   return out;
+}
+
+export function waitForDaemonGone(workspaceRoot: string, ticks: int): bool {
+  let i = 0;
+  while (i < ticks) {
+    if (daemonPortOrZero(workspaceRoot) == 0) { return true; }
+    process.sleep(POLL_MS);
+    i = i + 1;
+  }
+  return daemonPortOrZero(workspaceRoot) == 0;
+}
+
+export function stoppedNote(workspaceRoot: string): string {
+  return "joule --stop: the daemon for " + workspaceRoot + " has stopped";
+}
+
+export function stillRunningNote(workspaceRoot: string): string {
+  return "joule --stop: the daemon for " + workspaceRoot + " acknowledged the request but was still running " + `${STOP_GONE_TICKS * POLL_MS / 1000}` + "s later - it may be finishing an in-flight turn, and a joule started now would attach to it on its way out";
 }
 
 export function waitForPortOpen(port: int, ticks: int): bool {
@@ -358,7 +377,11 @@ export function runAttachStop(workspaceRoot: string): void {
   client.detach();
 
   if (acked) {
-    console.log("joule --stop: the daemon for " + workspaceRoot + " acknowledged the request and is shutting down");
+    if (waitForDaemonGone(workspaceRoot, STOP_GONE_TICKS)) {
+      console.log(stoppedNote(workspaceRoot));
+    } else {
+      console.log(stillRunningNote(workspaceRoot));
+    }
     console.log("joule --stop: note - any already-running background task or subagent it started keeps running as its own detached process; stopping the daemon does not stop those (see docs/03-daemon.md)");
   } else {
     console.log("joule --stop: sent the stop request but saw no acknowledgement within " + `${STOP_ACK_TICKS * POLL_MS}` + "ms - it may still be finishing an in-flight turn before it stops");
@@ -414,6 +437,6 @@ export function reapDaemonForUpdate(workspaceRoot: string): string {
   }
   client.detach();
 
-  if (acked) { return REAP_STOPPED; }
+  if (acked && waitForDaemonGone(workspaceRoot, STOP_GONE_TICKS)) { return REAP_STOPPED; }
   return REAP_NO_ACK;
 }
