@@ -262,7 +262,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
         let build = helloBuild(settled);
         if (build != VERSION) {
           for (const n of buildMismatchNotes(port, build)) { notes.push(n); }
-          client.disconnect();
+          client.detach();
           let stale: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
           return stale;
         }
@@ -270,7 +270,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
         return already;
       }
       notes.push("joule: 127.0.0.1:" + `${port}` + " answers for " + describeWorkspace(seen) + ", not " + workspaceRoot + " - looking for a port of its own");
-      client.disconnect();
+      client.detach();
       taken.push(port);
       port = firstFreePort(nextPortInRange(port), taken);
       recorded = false;
@@ -283,7 +283,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     let binFailure = daemonBinFailure(daemonBinPath);
     if (binFailure != "") {
       notes.push(binFailure);
-      client.disconnect();
+      client.detach();
       let unusable: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
       return unusable;
     }
@@ -291,7 +291,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     let spawn = child_process.spawnSync(shellProgram(), args);
     if (spawn.status != 0) {
       notes.push(spawnFailureText(daemonBinPath, spawn.status, spawn.stderr));
-      client.disconnect();
+      client.detach();
       let unstarted: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
       return unstarted;
     }
@@ -307,7 +307,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     if (seen != "" && seen != workspaceRoot) {
       notes.push("joule: started a daemon for " + workspaceRoot + " on 127.0.0.1:" + `${port}` + " but 127.0.0.1:" + `${port}` + " answered for " + seen);
       notes.push("joule: two daemons are sharing that port - stop the stale one with joule --stop in " + seen);
-      client.disconnect();
+      client.detach();
       let shared: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
       return shared;
     }
@@ -315,7 +315,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     if (seen != "" && started != VERSION) {
       for (const n of buildMismatchNotes(port, started)) { notes.push(n); }
       notes.push("joule: that daemon came from " + daemonBinPath + " - this install has a client and a daemon of different builds beside each other");
-      client.disconnect();
+      client.detach();
       let halfUpdated: AttachResult = { client: client, spawned: true, pending: [], port: port, notes: notes };
       return halfUpdated;
     }

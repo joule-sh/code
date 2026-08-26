@@ -1,9 +1,8 @@
 import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
-import { Connection, sendText, closeConnection } from "../vendor/websocket/client.ts";
-import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
+import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
-import { configureWorker, currentSocket, receiveLoop } from "./client_worker.ts";
+import { configureWorker, currentSocket, receiveLoop, stopReceiveLoop } from "./client_worker.ts";
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
 
@@ -254,11 +253,7 @@ export class RelayClient {
   detach(): void {
     if (!this.attaching) { return; }
     this.detachRequested = true;
-    let sock = currentSocket();
-    if (sock.length > 0) {
-      let conn: Connection = { socket: sock[0], ok: true, buffer: "", open: true, error: "" };
-      closeConnection(conn, CLOSE_NORMAL, "terminal detached");
-    }
+    stopReceiveLoop();
     this.attaching = false;
     this.socketReady = false;
   }

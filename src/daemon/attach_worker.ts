@@ -1,8 +1,12 @@
-import { connectWebSocket, receive, sendText, Connection } from "../vendor/websocket/client.ts";
+import { connectWebSocket, receive, sendText, sendClose, Connection } from "../vendor/websocket/client.ts";
+import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
 import { PROTOCOL_VERSION, RESUME, ResumeFrame, encodeResume } from "../protocol/frames.ts";
 import { encodeMailboxFrame, encodeMailboxControl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
 import { attachPath } from "./paths.ts";
 import { appendAttachMailbox } from "./attach_mailbox.ts";
+
+export const STOP_POLL_MS: int = 10;
+export const STOP_WAIT_TICKS: int = 60;
 
 let g_host: string = "";
 let g_port: int = 0;
@@ -11,6 +15,7 @@ let g_since: int = -1;
 let g_mailboxPath: string = "";
 let g_socket: Socket[] = [];
 let g_generation: int = 0;
+let g_live: int = 0;
 
 export function configureAttachWorker(host: string, port: int, connId: string, since: int, mailboxPath: string): void {
   g_host = host;
@@ -19,10 +24,30 @@ export function configureAttachWorker(host: string, port: int, connId: string, s
   g_since = since;
   g_mailboxPath = mailboxPath;
   g_generation = g_generation + 1;
+  g_live = g_live + 1;
 }
 
 export function currentAttachSocket(): Socket[] {
   return g_socket;
+}
+
+export function attachWorkersLive(): int {
+  return g_live;
+}
+
+export function stopAttachWorker(): bool {
+  let sock = g_socket;
+  g_socket = [];
+  g_generation = g_generation + 1;
+  if (sock.length == 0) { return g_live == 0; }
+  let conn: Connection = { socket: sock[0], ok: true, buffer: "", open: true, error: "" };
+  sendClose(conn, CLOSE_NORMAL, "");
+  let i = 0;
+  while (i < STOP_WAIT_TICKS && g_live > 0) {
+    process.sleep(STOP_POLL_MS);
+    i = i + 1;
+  }
+  return g_live == 0;
 }
 
 function appendMailbox(line: string): void {
@@ -34,6 +59,7 @@ export function attachReceiveLoop(): int {
   let conn = connectWebSocket(g_host, g_port, attachPath(g_connId), new Map<string, string>());
   if (!conn.ok) {
     appendMailbox(encodeMailboxControl(TAG_CONNECT_FAILED, conn.error));
+    g_live = g_live - 1;
     return 0;
   }
 
@@ -60,5 +86,7 @@ export function attachReceiveLoop(): int {
   }
 
   if (g_generation == mine) { g_socket = []; }
+  conn.socket.close();
+  g_live = g_live - 1;
   return count;
 }

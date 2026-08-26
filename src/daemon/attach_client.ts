@@ -1,7 +1,7 @@
 import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
 import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
-import { configureAttachWorker, currentAttachSocket, attachReceiveLoop } from "./attach_worker.ts";
+import { configureAttachWorker, currentAttachSocket, attachReceiveLoop, stopAttachWorker } from "./attach_worker.ts";
 import { attachMailboxPath, openAttachMailbox, reapAttachMailbox, drainAttachMailbox } from "./attach_mailbox.ts";
 import { worthConnectingTo } from "../vendor/platform/platform.ts";
 
@@ -192,19 +192,10 @@ export class DaemonClient {
   }
 
   detach(): void {
-    if (!this.attaching) { return; }
     this.detachRequested = true;
     this.attaching = false;
     this.socketReady = false;
-    this.reapMailbox();
-  }
-
-  disconnect(): void {
-    this.detachRequested = true;
-    this.attaching = false;
-    this.socketReady = false;
-    let sock = currentAttachSocket();
-    if (sock.length > 0) { sock[0].close(); }
+    stopAttachWorker();
     this.reapMailbox();
   }
 }
