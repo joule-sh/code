@@ -7,6 +7,7 @@ import { shellProgram, tempDir, worthConnectingTo } from "../vendor/platform/pla
 export const DAEMON_HOST: string = "127.0.0.1";
 export const POLL_MS: int = 100;
 const CONNECT_WAIT_TICKS: int = 20;
+const PROBE_WAIT_TICKS: int = 5;
 const SPAWN_WAIT_TICKS: int = 50;
 const HELLO_WAIT_TICKS: int = 30;
 const DEFAULT_PORT_BASE: int = 8300;
@@ -44,6 +45,10 @@ export function helloBuild(frames: string[]): string {
     if (frameType(f) == SESSION_HELLO) { return helloFrameBuild(f); }
   }
   return "";
+}
+
+export function startedButSilentNote(workspaceRoot: string, port: int): string {
+  return "joule: started a daemon for " + workspaceRoot + " on 127.0.0.1:" + `${port}` + " but it did not answer in " + `${(SPAWN_WAIT_TICKS + HELLO_WAIT_TICKS) * POLL_MS / 1000}` + "s - it is still running, stop it with joule --stop";
 }
 
 export function describeBuild(build: string): string {
@@ -138,6 +143,11 @@ export function firstFreePort(start: int, taken: int[]): int {
 
 export type ReadyOutcome = { ready: bool, frames: string[] };
 
+export function connectTicks(recorded: bool): int {
+  if (recorded) { return CONNECT_WAIT_TICKS; }
+  return PROBE_WAIT_TICKS;
+}
+
 function waitForReady(client: DaemonClient, ticks: int): ReadyOutcome {
   let collected: string[] = [];
   let i = 0;
@@ -148,6 +158,7 @@ function waitForReady(client: DaemonClient, ticks: int): ReadyOutcome {
       let ready: ReadyOutcome = { ready: true, frames: collected };
       return ready;
     }
+    client.retryNow();
     process.sleep(POLL_MS);
     i = i + 1;
   }
@@ -222,7 +233,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     let first: ReadyOutcome = { ready: false, frames: [] };
     if (worthConnectingTo(DAEMON_HOST, port)) {
       client.connect();
-      first = waitForReady(client, CONNECT_WAIT_TICKS);
+      first = waitForReady(client, connectTicks(recorded));
     }
 
     if (first.ready) {
@@ -267,6 +278,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     }
     waitForPortOpen(port, SPAWN_WAIT_TICKS);
     if (!client.isAttached()) { client.connect(); }
+    client.retryNow();
     let second = waitForReady(client, SPAWN_WAIT_TICKS);
     let combined: string[] = [];
     for (const f of first.frames) { combined.push(f); }
@@ -288,6 +300,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
       let halfUpdated: AttachResult = { client: client, spawned: true, pending: [], port: port, notes: notes };
       return halfUpdated;
     }
+    if (!client.socketReady) { notes.push(startedButSilentNote(workspaceRoot, port)); }
     let fresh: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
     return fresh;
   }

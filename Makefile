@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -148,6 +148,9 @@ onboarding-harness: build bin/stub_model
 
 model-platform-harness: build bin/stub_model
 	python3 scripts/verify_model_platform_pty.py
+
+cold-start-harness: build bin/stub_model
+	python3 scripts/verify_cold_start_pty.py
 
 skills-harness: build bin/stub_model
 	python3 scripts/verify_skills_pty.py

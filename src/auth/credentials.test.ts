@@ -13,6 +13,8 @@ function credFor(server: string, secret: string): Credential {
   let c: Credential = {
     server: server, secret: secret, accountId: "acct_1", accountEmail: "aymen@example.com",
     keyId: "key_1", keyPrefix: "jl_ab", scopes: "search,retrieve", savedAt: "1000",
+    relayUrl: "http://relay.example.com:8790", relayWsUrl: "ws://relay.example.com:8791",
+    webUrl: "https://console.example.com/terminal/sessions",
   };
   return c;
 }
@@ -100,6 +102,17 @@ test("save, load and forget round trip through a real file, keyed per server", (
   expect(!removedAgain);
 });
 
+test("the relay a server advertised is kept per server, beside that server's secret", () => {
+  let root = freshRoot("relayfields");
+  let file = root + "/credentials.jsonl";
+
+  saveCredentialTo(file, credFor("http://100.89.7.80:8090", "staging_secret"));
+  let back = loadCredentialFrom(file, "http://100.89.7.80:8090");
+  expect(back.relayUrl == "http://relay.example.com:8790");
+  expect(back.relayWsUrl == "ws://relay.example.com:8791");
+  expect(back.webUrl == "https://console.example.com/terminal/sessions");
+});
+
 test("loadCredentialFrom on a file that does not exist yet is empty, not an error", () => {
   let root = freshRoot("missing");
   expect(loadCredentialFrom(root + "/nope.jsonl", "https://joule.sh").secret == "");
@@ -133,7 +146,7 @@ test("credentialSource follows env over a stored joule credential over a file ke
 test("accountLabel prefers the email, then the account id, then an unnamed placeholder", () => {
   expect(accountLabel(credFor("https://joule.sh", "s")) == "aymen@example.com");
 
-  let noEmail: Credential = { server: "s", secret: "s", accountId: "acct_9", accountEmail: "", keyId: "", keyPrefix: "", scopes: "", savedAt: "" };
+  let noEmail: Credential = { server: "s", secret: "s", accountId: "acct_9", accountEmail: "", keyId: "", keyPrefix: "", scopes: "", savedAt: "", relayUrl: "", relayWsUrl: "", webUrl: "" };
   expect(accountLabel(noEmail) == "acct_9");
 
   expect(accountLabel(emptyCredential()) == "an unnamed account");

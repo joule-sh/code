@@ -63,7 +63,7 @@ function freshRuntimeDir(name: string): string {
 function fakeUplink(): ShareController {
   return {
     ensureStarted: (workspaceRoot: string, model: string) => {
-      let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://joule.sh/w/ABCDEF", error: "" };
+      let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://console.example.com/terminal/sessions?code=ABCDEF", error: "" };
       return r;
     },
     tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => {},
