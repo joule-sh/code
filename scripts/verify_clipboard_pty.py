@@ -7,13 +7,15 @@
 #
 # Four sessions of the real binary under a real pty:
 #
-#   local       a display and a clipboard command  -> clipboard holds the text,
-#                                                     no OSC 52 is emitted
-#   tool-gone   a display, PATH with no such command -> OSC 52, clipboard untouched
-#   remote      SSH_CONNECTION set, command present -> OSC 52, clipboard untouched,
-#                                                      because the clipboard that
-#                                                      matters is at the far end
-#   dead-display a clipboard command that will fail -> nothing claimed at all
+#   local        a display and a clipboard command    -> clipboard holds the
+#                                                        text, no OSC 52
+#   tool gone    a PATH with no clipboard command      -> OSC 52, clipboard
+#                                                        untouched
+#   remote       SSH_CONNECTION set, command present   -> OSC 52, clipboard
+#                                                        untouched, because the
+#                                                        clipboard that matters
+#                                                        is at the far end
+#   dead display a clipboard command that will fail    -> nothing claimed
 #
 # On Linux the display is an Xvfb this script starts and stops, and the paste
 # command is xclip; on macOS it is the desktop the runner already has, and
@@ -23,6 +25,16 @@
 # The clipboard is read while the session that wrote it is still on screen,
 # because that is when a person pastes, and because an X selection lives in the
 # process that owns it rather than in the server.
+#
+# Two ways to get a session, and which one is used is a platform fact rather
+# than a preference. On Linux joule is started with nothing running and starts
+# its own daemon, which is the shape every other pty harness here uses. On
+# macOS that produces zero bytes - #208, open and not about the clipboard - so
+# the daemon is started first and the client attaches to it, the way
+# verify_attach_pty.py does. What is under test either way is the client: the
+# drag, the clipboard command it runs, and what it says afterwards. Set
+# JOULE_CLIPBOARD_SESSION=attach or =standalone to run either shape anywhere,
+# which is how the macOS shape is exercised on Linux before it is trusted.
 #
 # Zero-dependency: stdlib only, and the pty machinery is the terminal
 # structural harness's own rather than a second copy of it.
@@ -35,11 +47,14 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import scratch
 import terminal_structural_harness as h
 
+DAEMON_BIN = os.path.join(os.path.dirname(h.JOULE_BIN), "joule-daemon")
 SENTINEL = "joule-clipboard-sentinel-not-the-selection"
 DEAD_DISPLAY = ":91"
 DROPPED = ["DISPLAY", "WAYLAND_DISPLAY", "SSH_CONNECTION", "SSH_TTY"]
+CLIPBOARD_COMMANDS = ("xclip", "xsel", "wl-copy", "wl-paste", "pbcopy", "pbpaste", "clip.exe")
 
 failures = []
 
@@ -54,6 +69,13 @@ def ok(cond, label):
 
 def is_macos():
     return sys.platform == "darwin"
+
+
+def session_mode():
+    named = os.environ.get("JOULE_CLIPBOARD_SESSION", "").strip()
+    if named in ("attach", "standalone"):
+        return named
+    return "attach" if is_macos() else "standalone"
 
 
 def copy_cmd():
@@ -128,9 +150,6 @@ def stop_display(proc):
             pass
 
 
-CLIPBOARD_COMMANDS = ("xclip", "xsel", "wl-copy", "wl-paste", "pbcopy", "pbpaste", "clip.exe")
-
-
 def path_without_clipboard(work_root):
     """This machine's PATH with every clipboard command taken out of it.
 
@@ -141,6 +160,8 @@ def path_without_clipboard(work_root):
     with no clipboard command installed on it.
     """
     d = os.path.join(work_root, "path-without-clipboard")
+    if os.path.isdir(d):
+        return d
     os.makedirs(d, exist_ok=True)
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         if entry.strip() == "":
@@ -165,20 +186,102 @@ def path_without_clipboard(work_root):
     return d
 
 
+class AttachSession:
+    """A daemon started here and a client attached to it, for the platform
+    where a client cannot yet start one of its own (#208)."""
+
+    def __init__(self, prefix, env_extra, env_drop):
+        self.work_dir = scratch.scratch_dir(prefix)
+        self.repo_dir = os.path.join(self.work_dir, "repo")
+        self.home_dir = os.path.join(self.work_dir, "home")
+        os.makedirs(self.home_dir, exist_ok=True)
+        h.seed_workspace(self.repo_dir)
+        self.log = open(os.path.join(self.work_dir, "daemon.log"), "w")
+
+        stub_port = h.free_port()
+        stub_env = dict(os.environ)
+        stub_env["E2E_STUB_PORT"] = str(stub_port)
+        self.stub = subprocess.Popen([h.STUB_BIN], env=stub_env,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not h.wait_for_port(stub_port, 10.0):
+            self.close()
+            raise h.Failure("stub model server did not start")
+
+        model_env = {
+            "HOME": self.home_dir,
+            "JOULE_CODE_BASE_URL": "http://127.0.0.1:%d" % stub_port,
+            "JOULE_CODE_MODEL": "stub-model",
+            "JOULE_CODE_API_KEY": "stub-key",
+        }
+        daemon_port = h.free_port()
+        daemon_env = dict(os.environ)
+        daemon_env.update(model_env)
+        daemon_env["JOULE_DAEMON_PORT"] = str(daemon_port)
+        self.daemon = subprocess.Popen([DAEMON_BIN], cwd=self.repo_dir, env=daemon_env,
+                                       stdout=self.log, stderr=self.log)
+        if not h.wait_for_port(daemon_port, 15.0):
+            self.close()
+            raise h.Failure("daemon did not start")
+
+        client_env = dict(os.environ)
+        client_env.update(model_env)
+        client_env["TERM"] = "xterm-256color"
+        for name in env_drop:
+            client_env.pop(name, None)
+        client_env.update(env_extra)
+        self.session = h.PtySession([h.JOULE_BIN, "attach"], client_env, self.repo_dir, rows=24, cols=80)
+        self.session.wait_for("connected to a daemon", timeout=15.0)
+
+    def close(self):
+        session = getattr(self, "session", None)
+        if session is not None:
+            session.close()
+        for proc in (getattr(self, "daemon", None), getattr(self, "stub", None)):
+            if proc is None:
+                continue
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        log = getattr(self, "log", None)
+        if log is not None:
+            log.close()
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+
+
+class StandaloneSession:
+    """joule started with nothing running, which starts its own daemon."""
+
+    def __init__(self, prefix, env_extra, env_drop):
+        self.work_dir, self.stub, self.session = h.start_stub_session(
+            prefix, env_extra=env_extra, env_drop=env_drop)
+        self.session.wait_for(h.BANNER, timeout=15.0)
+
+    def close(self):
+        h.stop_stub_session(self.work_dir, self.stub, self.session)
+
+
+def open_session(prefix, env_extra, env_drop):
+    if session_mode() == "attach":
+        return AttachSession(prefix, env_extra, env_drop)
+    return StandaloneSession(prefix, env_extra, env_drop)
+
+
 def drag_and_release(prefix, env_extra, probe):
     """Drive one session of the real binary to a completed mouse selection.
 
     `probe` is called while that session is still running, right after the
     release, and its answer is handed back with everything else.
     """
-    work_dir = None
-    stub_proc = None
-    session = None
+    holder = open_session(prefix, env_extra, DROPPED)
     try:
-        work_dir, stub_proc, session = h.start_stub_session(prefix, env_extra=env_extra, env_drop=DROPPED)
-        session.wait_for(h.BANNER, timeout=10.0)
+        session = holder.session
         session.write("/cat file_a.txt\r")
-        session.wait_for("FILE_A_LINE_050", timeout=10.0)
+        session.wait_for("FILE_A_LINE_050", timeout=15.0)
         session.settle(0.3, 2.0)
 
         rows = h.file_a_rows(h.text(bytes(session.raw)))
@@ -211,8 +314,7 @@ def drag_and_release(prefix, env_extra, probe):
         session.wait_exit(5.0)
         return {"released": released, "screen": screen, "expected": expected, "state": state, "probed": probed}
     finally:
-        if work_dir is not None:
-            h.stop_stub_session(work_dir, stub_proc, session)
+        holder.close()
 
 
 def with_display(display, extra):
@@ -236,7 +338,7 @@ def run_local_case(display):
        "no OSC 52 is emitted once the platform write succeeded, so a terminal that prints unknown sequences shows nothing")
     ok("-- copied " in r["screen"], "the screen reports the copy that actually happened")
     ok("-- asked the terminal" not in r["screen"], "and does not describe it as a request to the terminal")
-    ok(tool in r["state"], "/mouse names %s, the command this machine will really run" % tool)
+    ok(copy_cmd()[0] in r["state"], "/mouse names %s, the command this machine will really run" % copy_cmd()[0])
     ok("OSC 52" not in r["state"], "and does not offer OSC 52 as the mechanism when it is not the one in use")
 
 
@@ -289,12 +391,10 @@ def run_dead_display_case(display):
 
 
 def main():
-    if not os.path.exists(h.JOULE_BIN):
-        print("verify_clipboard_pty: %s not found, run make build first" % h.JOULE_BIN, file=sys.stderr)
-        sys.exit(1)
-    if not os.path.exists(h.STUB_BIN):
-        print("verify_clipboard_pty: %s not found, run make bin/stub_model first" % h.STUB_BIN, file=sys.stderr)
-        sys.exit(1)
+    for name, path in (("bin/joule", h.JOULE_BIN), ("bin/stub_model", h.STUB_BIN), ("bin/joule-daemon", DAEMON_BIN)):
+        if not os.path.exists(path):
+            print("verify_clipboard_pty: %s not found, run make build bin/stub_model first" % name, file=sys.stderr)
+            sys.exit(1)
     if shutil.which(paste_cmd()[0]) is None:
         print("verify_clipboard_pty: %s is not installed, and this check exists to read the clipboard back"
               % paste_cmd()[0], file=sys.stderr)
@@ -304,9 +404,10 @@ def main():
               file=sys.stderr)
         sys.exit(1)
 
+    print("clipboard harness: %s sessions on %s" % (session_mode(), sys.platform))
     start = time.time()
     xvfb = None
-    work_root = h.scratch.scratch_dir("joule-clipboard-harness-")
+    work_root = scratch.scratch_dir("joule-clipboard-harness-")
     try:
         display, xvfb = start_display()
         cases = [
