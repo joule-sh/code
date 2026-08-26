@@ -228,6 +228,10 @@ export function frameTurnId(text: string): string {
   return rawFieldValue(text, "turnId");
 }
 
+export function errorFrameCode(text: string): string {
+  return rawFieldValue(text, "code");
+}
+
 export function helloFrameWorkspace(text: string): string {
   return rawFieldValue(text, "workspace");
 }

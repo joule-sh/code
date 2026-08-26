@@ -1,7 +1,7 @@
-import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
+import { LEVEL_INFO, LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
 import { Connection, sendText } from "../vendor/websocket/client.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
-import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, shouldGiveUp, refusalCodeOf, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, REFUSAL_SESSION_GONE, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
 import { configureWorker, currentSocket, receiveLoop, stopReceiveLoop } from "./client_worker.ts";
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
@@ -20,16 +20,22 @@ export class RelayClient {
   secret: string;
   code: string;
 
+  workspace: string;
+  model: string;
+  helloFrame: string;
+
   attaching: bool;
   socketReady: bool;
   connecting: bool;
   detachRequested: bool;
+  sessionLost: bool;
 
   lastSeq: int;
   outbound: string[];
   overflowed: bool;
   saidUnreachable: bool;
   outageSince: i64;
+  lastFailure: string;
 
   mailboxPath: string;
   mailboxSeen: int;
@@ -51,15 +57,20 @@ export class RelayClient {
     this.sessionId = "";
     this.secret = "";
     this.code = "";
+    this.workspace = "";
+    this.model = "";
+    this.helloFrame = "";
     this.attaching = false;
     this.socketReady = false;
     this.connecting = false;
     this.detachRequested = false;
+    this.sessionLost = false;
     this.lastSeq = 0;
     this.outbound = [];
     this.overflowed = false;
     this.saidUnreachable = false;
     this.outageSince = 0;
+    this.lastFailure = "";
     this.mailboxPath = "";
     this.mailboxSeen = 0;
     this.configProblem = "";
@@ -71,6 +82,10 @@ export class RelayClient {
 
   isAttached(): bool {
     return this.attaching;
+  }
+
+  whereHttp(): string {
+    return "http://" + this.host + ":" + `${this.httpPort}`;
   }
 
   reachFailure(where: string, status: int, body: string): string {
@@ -85,11 +100,7 @@ export class RelayClient {
       + "  that address came from the server you signed in to";
   }
 
-  connect(workspace: string, model: string): ConnectResult {
-    if (this.attaching) {
-      let already: ConnectResult = { ok: false, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "already attached" };
-      return already;
-    }
+  createSession(workspace: string, model: string, since: int): ConnectResult {
     if (this.configProblem != "") {
       let unset: ConnectResult = { ok: false, code: "", url: "", error: this.configProblem };
       return unset;
@@ -98,7 +109,7 @@ export class RelayClient {
     let req: CreateSessionRequest = { workspace: workspace, model: model, credentialSecret: this.credentialSecret };
     let headers = new Map<string, string>();
     headers.set("Content-Type", "application/json");
-    let where = "http://" + this.host + ":" + `${this.httpPort}`;
+    let where = this.whereHttp();
     let resp = http.request(where + "/sessions", "POST", JSON.stringify(req), headers);
     if (!resp.ok) {
       let failed: ConnectResult = { ok: false, code: "", url: "", error: this.reachFailure(where, resp.status, resp.body) };
@@ -121,30 +132,42 @@ export class RelayClient {
       }
     }
 
-    this.sessionId = sessionId;
-    this.secret = sessionSecret;
-    this.code = pairingCode;
+    this.sessionId = "" + sessionId;
+    this.secret = "" + sessionSecret;
+    this.code = "" + pairingCode;
     this.attaching = true;
     this.socketReady = false;
     this.connecting = true;
     this.detachRequested = false;
-    this.lastSeq = 0;
-    this.outbound = [];
-    this.overflowed = false;
+    this.sessionLost = false;
     this.saidUnreachable = false;
     this.outageSince = 0;
+    this.lastFailure = "";
     this.mailboxPath = mailboxPathFor(this.tmpDir, this.sessionId);
     this.mailboxSeen = 0;
     this.backoffMs = BACKOFF_START_MS;
     this.nextRetryAt = 0;
-    this.inboundQueue = [];
 
     try { fs.writeFileSync(this.mailboxPath, ""); } catch { }
-    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, -1, this.mailboxPath);
+    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, since, this.mailboxPath);
     Worker.run(receiveLoop);
 
     let ok: ConnectResult = { ok: true, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "" };
     return ok;
+  }
+
+  connect(workspace: string, model: string): ConnectResult {
+    if (this.attaching) {
+      let already: ConnectResult = { ok: false, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "already attached" };
+      return already;
+    }
+    this.workspace = workspace;
+    this.model = model;
+    this.lastSeq = 0;
+    this.outbound = [];
+    this.overflowed = false;
+    this.inboundQueue = [];
+    return this.createSession(workspace, model, -1);
   }
 
   writeFrame(frameJson: string): void {
@@ -191,6 +214,7 @@ export class RelayClient {
     this.connecting = false;
     if (this.detachRequested) { return; }
     let now = Date.now();
+    this.lastFailure = "" + detail;
     if (this.outageSince == 0) { this.outageSince = now; }
     if (shouldSayUnreachable(retryFailed, this.saidUnreachable, this.outageSince, now)) {
       this.saidUnreachable = true;
@@ -198,6 +222,46 @@ export class RelayClient {
     }
     this.nextRetryAt = now + this.backoffMs;
     this.backoffMs = nextBackoffMs(this.backoffMs);
+  }
+
+  onRefusal(code: string): void {
+    if (code == REFUSAL_SESSION_GONE) {
+      this.sessionLost = true;
+      return;
+    }
+    this.endShare(refusedMessage(code));
+  }
+
+  endShare(message: string): void {
+    this.diagnostics.push(encodeNotice(noticeFrame("relay.share_ended", LEVEL_WARN, message)));
+    this.detachRequested = true;
+    stopReceiveLoop();
+    this.attaching = false;
+    this.socketReady = false;
+    this.connecting = false;
+    this.sessionLost = false;
+    this.outbound = [];
+    this.code = "";
+  }
+
+  recreate(): void {
+    let held = this.outbound;
+    let seq = this.lastSeq;
+    let result = this.createSession(this.workspace, this.model, seq);
+    if (!result.ok) {
+      let now = Date.now();
+      this.connecting = false;
+      this.lastFailure = "" + result.error;
+      if (this.outageSince == 0) { this.outageSince = now; }
+      this.nextRetryAt = now + this.backoffMs;
+      this.backoffMs = nextBackoffMs(this.backoffMs);
+      return;
+    }
+    this.lastSeq = seq;
+    this.outbound = [];
+    if (this.helloFrame != "") { this.publish(this.helloFrame); }
+    for (const f of held) { this.publish(f); }
+    this.diagnostics.push(encodeNotice(noticeFrame("relay.reshared", LEVEL_INFO, resharedMessage())));
   }
 
   drainMailbox(): void {
@@ -209,7 +273,10 @@ export class RelayClient {
       let parsed = parseMailboxLine(lines[i]);
       if (parsed.tag == TAG_FRAME) {
         this.lastSeq = maxSeqSeen(this.lastSeq, parsed.payload);
-        if (isDownstreamAllowed(frameType(parsed.payload))) {
+        let refusal = refusalCodeOf(parsed.payload);
+        if (refusal != "") {
+          this.onRefusal(refusal);
+        } else if (isDownstreamAllowed(frameType(parsed.payload))) {
           this.inboundQueue.push(parsed.payload);
         } else {
           this.diagnostics.push(encodeNotice(noticeFrame("relay.rejected_frame", LEVEL_WARN, "dropped a frame of a type the terminal never accepts from the relay: " + frameType(parsed.payload))));
@@ -226,19 +293,37 @@ export class RelayClient {
     this.mailboxSeen = lines.length;
   }
 
-  maybeReconnect(): void {
+  maybeRecover(): void {
     if (!this.attaching || this.socketReady || this.connecting || this.detachRequested) { return; }
     if (this.nextRetryAt == 0) { return; }
-    if (Date.now() < this.nextRetryAt) { return; }
+    let now = Date.now();
+    if (now < this.nextRetryAt) { return; }
+    if (shouldGiveUp(this.outageSince, now)) {
+      this.endShare(outageEndedMessage(this.whereHttp(), this.lastFailure));
+      return;
+    }
+    if (this.sessionLost) {
+      this.recreate();
+      return;
+    }
     this.connecting = true;
     configureWorker(this.host, this.wsPort, this.sessionId, this.secret, this.lastSeq, this.mailboxPath);
     Worker.run(receiveLoop);
   }
 
+  reshareNow(): string {
+    if (!this.attaching || this.detachRequested) { return ""; }
+    this.drainMailbox();
+    if (!this.sessionLost) { return ""; }
+    this.recreate();
+    if (!this.sessionLost) { return ""; }
+    return staleShareProblem(this.lastFailure);
+  }
+
   pollInbound(): string[] {
     if (!this.attaching) { return []; }
     this.drainMailbox();
-    this.maybeReconnect();
+    this.maybeRecover();
     let out = this.inboundQueue;
     this.inboundQueue = [];
     return out;

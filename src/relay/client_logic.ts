@@ -1,4 +1,4 @@
-import { frameSeq, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
+import { frameSeq, frameType, errorFrameCode, ERROR, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
 import { envOr } from "../vendor/platform/platform.ts";
 import { VERIFY_OK, VERIFY_UNREACHABLE } from "./account_verify.ts";
 
@@ -6,6 +6,10 @@ export const OUTBOUND_BUFFER_CAP: int = 500;
 export const BACKOFF_START_MS: i64 = 500;
 export const BACKOFF_CAP_MS: i64 = 10000;
 export const UNREACHABLE_QUIET_MS: i64 = 5000;
+export const SHARE_GIVE_UP_MS: i64 = 120000;
+export const DETAIL_MAX: int = 58;
+
+export const REFUSAL_SESSION_GONE: string = "session_not_found";
 
 export const TAG_FRAME: string = "FRAME";
 export const TAG_CONNECTED: string = "CTRL:CONNECTED";
@@ -192,4 +196,47 @@ export function shareProblem(server: string, credentialSecret: string, cfg: Rela
       + "  " + RELAY_URL_ENV + ", " + RELAY_WS_URL_ENV + " and " + WEB_URL_ENV + ".";
   }
   return "";
+}
+
+export function refusalCodeOf(frameJson: string): string {
+  if (frameType(frameJson) != ERROR) { return ""; }
+  return errorFrameCode(frameJson);
+}
+
+export function shouldGiveUp(outageSince: i64, now: i64): bool {
+  if (outageSince == 0) { return false; }
+  return now - outageSince >= SHARE_GIVE_UP_MS;
+}
+
+export function firstLine(detail: string): string {
+  let text = detail.trim();
+  let br = text.indexOf("\n");
+  if (br >= 0) { text = text.slice(0, br); }
+  if (text == "") { return "nothing said why"; }
+  if (text.length > DETAIL_MAX) { return text.slice(0, DETAIL_MAX - 3) + "..."; }
+  return text;
+}
+
+export function resharedMessage(): string {
+  return "the relay restarted, so this shared session was re-made on it\n"
+    + "  the code printed earlier is dead - /share prints the new one";
+}
+
+export function outageEndedMessage(where: string, detail: string): string {
+  return "sharing stopped - no answer from the relay for two minutes\n"
+    + "  tried " + where + "\n"
+    + "  last answer: " + firstLine(detail) + "\n"
+    + "  nothing is watching this terminal now - /share shares it again";
+}
+
+export function refusedMessage(code: string): string {
+  return "sharing stopped - the relay refused this terminal (" + code + ")\n"
+    + "  it answered, so this is a refusal and not an outage\n"
+    + "  nothing is watching this terminal now - /share shares it again";
+}
+
+export function staleShareProblem(detail: string): string {
+  return "the relay no longer holds this session, and would not re-make it\n"
+    + "  last answer: " + firstLine(detail) + "\n"
+    + "  the code this printed before is dead, so it is not printed again";
 }
