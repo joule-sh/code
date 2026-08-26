@@ -35,7 +35,7 @@ test("InputLine setBuf replaces the buffer directly", () => {
 test("PendingApproval tracks and clears a call id", () => {
   let p = new PendingApproval();
   expect(!p.isPending());
-  p.set("c1");
+  p.begin("c1", "run");
   expect(p.isPending());
   expect(p.callId == "c1");
   p.clearIfMatches("c2");
@@ -48,7 +48,7 @@ test("a fresh PendingApproval starts on the first option with no option rows on 
   let p = new PendingApproval();
   expect(p.selected == APPROVAL_OPTION_ALLOW);
   expect(!p.hasOptionRows());
-  p.set("c1");
+  p.begin("c1", "run");
   p.setOptionRows(7);
   expect(p.hasOptionRows());
   expect(p.firstOptionRow == 7);
@@ -83,18 +83,17 @@ test("select ignores an index outside the option list", () => {
 
 test("a new approval resets the highlight back to the first option", () => {
   let p = new PendingApproval();
-  p.set("c1");
+  p.begin("c1", "run");
   p.moveSelection(2, APPROVAL_OPTION_COUNT);
   expect(p.selected == APPROVAL_OPTION_DENY);
-  p.set("c2");
+  p.begin("c2", "run");
   expect(p.selected == APPROVAL_OPTION_ALLOW);
   expect(!p.hasOptionRows());
 });
 
 test("clearing an answered approval forgets its option rows so later keys cannot repaint them", () => {
   let p = new PendingApproval();
-  p.set("c1");
-  p.setTool("run");
+  p.begin("c1", "run");
   p.setOptionRows(3);
   p.clearIfMatches("c1");
   expect(!p.hasOptionRows());

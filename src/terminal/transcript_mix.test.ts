@@ -146,8 +146,7 @@ test("expanding collapsed output above a pending approval keeps its recorded opt
   appendFrame(sb, rk, approval("t1"));
 
   let pending = new PendingApproval();
-  pending.set("c2");
-  pending.setTool("run");
+  pending.begin("c2", "run");
   pending.setOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
   expect(sb.lines[pending.firstOptionRow].indexOf("1. Yes") >= 0);
   expect(sb.lines[pending.firstOptionRow + 2].indexOf("3. No") >= 0);

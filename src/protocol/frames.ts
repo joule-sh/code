@@ -14,6 +14,7 @@ export const CANCEL: string = "cancel";
 export const APPROVAL_REPLY: string = "approval.reply";
 export const RESUME: string = "resume";
 export const APPROVAL_REPLY_RESULT: string = "approval.reply.result";
+export const APPROVAL_SETTLED: string = "approval.settled";
 export const MODE_SET: string = "mode.set";
 export const MODE_CHANGED: string = "mode.changed";
 export const MODEL_SET: string = "model.set";
@@ -37,6 +38,9 @@ export const DECISION_ALLOW: string = "allow";
 export const DECISION_DENY: string = "deny";
 export const DECISION_ALWAYS: string = "always";
 
+export const DECIDED_BY_PERSON: string = "person";
+export const DECIDED_BY_MODE: string = "mode";
+
 export type SessionHelloFrame = { v: int, seq: int, type: string, sessionId: string, workspace: string, model: string, mode: string, protocol: int, build: string };
 export type TurnStartFrame = { v: int, seq: int, type: string, turnId: string, prompt: string };
 export type TextDeltaFrame = { v: int, seq: int, type: string, turnId: string, text: string };
@@ -52,6 +56,7 @@ export type CancelFrame = { v: int, seq: int, type: string, turnId: string };
 export type ApprovalReplyFrame = { v: int, seq: int, type: string, callId: string, decision: string };
 export type ResumeFrame = { v: int, seq: int, type: string, since: int };
 export type ApprovalReplyResultFrame = { v: int, seq: int, type: string, callId: string, applied: bool, decision: string };
+export type ApprovalSettledFrame = { v: int, seq: int, type: string, turnId: string, callId: string, summary: string, detail: string, decision: string, decidedBy: string };
 export type ModeSetFrame = { v: int, seq: int, type: string, mode: string };
 export type ModeChangedFrame = { v: int, seq: int, type: string, mode: string };
 export type ModelSetFrame = { v: int, seq: int, type: string, model: string };
@@ -78,6 +83,7 @@ export function encodeCancel(f: CancelFrame): string { return JSON.stringify(f);
 export function encodeApprovalReply(f: ApprovalReplyFrame): string { return JSON.stringify(f); }
 export function encodeResume(f: ResumeFrame): string { return JSON.stringify(f); }
 export function encodeApprovalReplyResult(f: ApprovalReplyResultFrame): string { return JSON.stringify(f); }
+export function encodeApprovalSettled(f: ApprovalSettledFrame): string { return JSON.stringify(f); }
 export function encodeModeSet(f: ModeSetFrame): string { return JSON.stringify(f); }
 export function encodeModeChanged(f: ModeChangedFrame): string { return JSON.stringify(f); }
 export function encodeModelSet(f: ModelSetFrame): string { return JSON.stringify(f); }
@@ -256,7 +262,7 @@ export function isKnownType(t: string): bool {
   if (t == SESSION_HELLO || t == TURN_START || t == TEXT_DELTA || t == TOOL_CALL) { return true; }
   if (t == TOOL_RESULT || t == APPROVAL_REQUEST || t == TURN_END || t == ERROR) { return true; }
   if (t == INPUT || t == CANCEL || t == APPROVAL_REPLY || t == RESUME) { return true; }
-  if (t == APPROVAL_REPLY_RESULT) { return true; }
+  if (t == APPROVAL_REPLY_RESULT || t == APPROVAL_SETTLED) { return true; }
   if (t == MODE_SET || t == MODE_CHANGED || t == MODEL_SET || t == MODEL_CHANGED) { return true; }
   if (t == TASKS_REQUEST || t == TASKS_RESPONSE || t == DAEMON_STOP || t == DAEMON_STOPPING) { return true; }
   if (t == SHARE_REQUEST || t == SHARE_STARTED || t == SHARE_FAILED) { return true; }

@@ -141,24 +141,32 @@ export function decisionForApprovalOption(index: int): string {
 export class PendingApproval {
   callId: string;
   tool: string;
+  ask: string;
   selected: int;
   firstOptionRow: int;
+  blockRow: int;
 
   constructor() {
     this.callId = "";
     this.tool = "";
+    this.ask = "";
     this.selected = 0;
     this.firstOptionRow = -1;
+    this.blockRow = -1;
   }
 
-  set(id: string): void {
+  begin(id: string, tool: string): void {
     this.callId = id;
+    this.tool = tool;
+    this.ask = "";
     this.selected = 0;
     this.firstOptionRow = -1;
+    this.blockRow = -1;
   }
 
-  setTool(tool: string): void {
-    this.tool = tool;
+  setAsk(ask: string, blockRow: int): void {
+    this.ask = ask;
+    this.blockRow = blockRow;
   }
 
   setOptionRows(first: int): void {
@@ -195,7 +203,9 @@ export class PendingApproval {
     if (this.callId == id) {
       this.callId = "";
       this.tool = "";
+      this.ask = "";
       this.firstOptionRow = -1;
+      this.blockRow = -1;
     }
   }
 

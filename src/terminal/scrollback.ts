@@ -8,6 +8,7 @@ export class CollapseGroup {
   bodyEnd: int;
   hidden: int;
   expanded: bool;
+  pinned: bool;
 
   constructor(markerRow: int, bodyStart: int, bodyEnd: int, hidden: int) {
     this.markerRow = markerRow;
@@ -15,6 +16,7 @@ export class CollapseGroup {
     this.bodyEnd = bodyEnd;
     this.hidden = hidden;
     this.expanded = false;
+    this.pinned = false;
   }
 
   covers(index: int): bool {
@@ -32,6 +34,7 @@ export class Scrollback {
   groups: CollapseGroup[];
   selection: Selection;
   width: int;
+  approvalRow: int;
 
   constructor() {
     this.lines = [""];
@@ -39,10 +42,26 @@ export class Scrollback {
     this.groups = [];
     this.selection = new Selection();
     this.width = 0;
+    this.approvalRow = -1;
   }
 
   setWidth(width: int): void {
     this.width = width;
+  }
+
+  markApprovalBlock(): void {
+    this.approvalRow = this.lines.length;
+  }
+
+  approvalBlockRow(): int {
+    return this.approvalRow;
+  }
+
+  hideRange(start: int, count: int): void {
+    if (count <= 0 || start <= 0 || start + count > this.lines.length) { return; }
+    let g = new CollapseGroup(-1, start, start + count, count);
+    g.pinned = true;
+    this.groups.push(g);
   }
 
   appendFixed(text: string): void {
@@ -110,6 +129,7 @@ export class Scrollback {
     this.lines = [""];
     this.offset = 0;
     this.groups = [];
+    this.approvalRow = -1;
     this.selection.clear();
   }
 
@@ -146,7 +166,7 @@ export class Scrollback {
   collapsedCount(): int {
     let n = 0;
     for (const g of this.groups) {
-      if (!g.expanded) {
+      if (!g.expanded && !g.pinned) {
         n = n + 1;
       }
     }
@@ -154,10 +174,14 @@ export class Scrollback {
   }
 
   toggleLastGroup(): bool {
-    if (this.groups.length == 0) {
+    let at = this.groups.length - 1;
+    while (at >= 0 && this.groups[at].pinned) {
+      at = at - 1;
+    }
+    if (at < 0) {
       return false;
     }
-    let g = this.groups[this.groups.length - 1];
+    let g = this.groups[at];
     g.expanded = !g.expanded;
     if (g.expanded) {
       this.setLine(g.markerRow, expandedMarker(g.hidden));

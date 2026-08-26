@@ -3,7 +3,7 @@ import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVA
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
-import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal } from "./attach_approval.ts";
+import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal, beginApprovalBlockLocal } from "./attach_approval.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns } from "./tasks_bridge.ts";
 import { PlanOfferTracker, maybeOfferPlanDecision, tryHandlePlanDecisionArrow, tryHandlePlanDecisionEnter, tryHandlePlanDecisionChar } from "./attach_plan.ts";
 import { isNavigationKey, handleNavigationKey } from "./attach_keys.ts";
@@ -177,9 +177,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       if (t == APPROVAL_REQUEST) {
         let req = decodeApprovalRequest(f);
         if (req != null) {
-          pendingApproval.set(req.callId);
-          pendingApproval.setTool(req.tool);
-          pendingApproval.setOptionRows(sb.lineCount() - APPROVAL_OPTION_COUNT);
+          beginApprovalBlockLocal(sb, pendingApproval, req.callId, req.tool, req.summary, req.detail);
         }
       }
       if (t == MODE_CHANGED) {

@@ -225,6 +225,11 @@ function applyFrameToTranscript(frameJson) {
     renderApprovalCard(f);
     return;
   }
+  if (kind === APPROVAL_SETTLED) {
+    state.currentTextEl = null;
+    appendLine("line-notice", "? " + f.summary + " [" + f.detail + "] - " + settledDecisionText(f.decision, f.decidedBy));
+    return;
+  }
   if (kind === TURN_END) {
     state.currentTextEl = null;
     state.currentTurnId = null;
