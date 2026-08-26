@@ -30,7 +30,8 @@ export function maybeOfferPlanDecision(pending: PendingPlanDecision, tracker: Pl
   if (reason != REASON_DONE) { return; }
   if (mode != MODE_PLAN) { return; }
   if (!tracker.sawAssistantText) { return; }
-  sb.append("\n" + styleBanner(PLAN_OFFER_BANNER) + planDecisionOptionsBlock(PLAN_DECISION_ACCEPT));
+  sb.append("\n" + styleBanner(PLAN_OFFER_BANNER));
+  sb.appendFixed(planDecisionOptionsBlock(PLAN_DECISION_ACCEPT));
   pending.open();
   pending.setOptionRows(sb.lineCount() - PLAN_DECISION_OPTION_COUNT);
 }

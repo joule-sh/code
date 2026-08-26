@@ -1,9 +1,9 @@
-import { frameTurnId, frameType, TEXT_DELTA, TURN_END } from "../protocol/frames.ts";
+import { frameTurnId, frameType, TEXT_DELTA, TURN_END, APPROVAL_REQUEST } from "../protocol/frames.ts";
 import { ApprovalResponder } from "../tasks/types.ts";
 import { approvalOptionForChar, decisionForApprovalOption, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { Scrollback } from "./scrollback.ts";
 import { MarkdownState, appendMarkdownDelta, flushMarkdown } from "./markdown.ts";
-import { renderFrame, approvalOptionRow } from "./renderer.ts";
+import { renderFrame, approvalOptionRow, approvalOptionsFor } from "./renderer.ts";
 
 const BG_PREFIX: string = "bg:";
 const AGENT_PREFIX: string = "agent:";
@@ -99,6 +99,9 @@ export function appendTaggedFrame(sb: Scrollback, turns: TaggedTurns, frameJson:
   let rendered = renderFrame(frameJson, "");
   if (rendered != "") {
     sb.appendBlock(insertTag(rendered, tag));
+  }
+  if (kind == APPROVAL_REQUEST) {
+    sb.appendFixed(approvalOptionsFor(frameJson));
   }
   if (kind == TURN_END) {
     turns.forget(turnId);

@@ -13,7 +13,8 @@ export function startUpdateNotifier(): UpdateNotifier {
 export function pollUpdateNotice(notifier: UpdateNotifier, offer: PendingUpdateOffer, sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker): void {
   let notice = notifier.poll();
   if (notice == "") { return; }
-  sb.append("\n" + styleBanner(notice) + updateOfferOptionsBlock(UPDATE_OFFER_ACCEPT));
+  sb.append("\n" + styleBanner(notice));
+  sb.appendFixed(updateOfferOptionsBlock(UPDATE_OFFER_ACCEPT));
   offer.open(notifier.latestVersion);
   offer.setOptionRows(sb.lineCount() - UPDATE_OFFER_OPTION_COUNT);
   drawScreen(sb, input, mode, rk);

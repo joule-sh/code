@@ -591,7 +591,7 @@ def seed_long_readme(repo_dir):
         f.write("\n".join(lines))
 
 
-def start_stub_session(prefix, rows=24, cols=80):
+def start_stub_session(prefix, rows=24, cols=80, script=""):
     """A fresh workspace, stub model, and joule pty session.
 
     The stub's scripted step counter lives in the stub process, so a scenario
@@ -608,6 +608,7 @@ def start_stub_session(prefix, rows=24, cols=80):
     stub_env = dict(os.environ)
     stub_env["E2E_STUB_PORT"] = str(stub_port)
     stub_env["E2E_STUB_LOG"] = os.path.join(work_dir, "stub_requests.log")
+    stub_env["E2E_STUB_SCRIPT"] = script
     stub_proc = subprocess.Popen([STUB_BIN], env=stub_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not wait_for_port(stub_port, 5.0):
         stop_stub_session(work_dir, stub_proc, None)
@@ -1431,6 +1432,110 @@ def run_mouse_selection_scenario():
             stop_stub_session(work_dir, stub_proc, session)
 
 
+
+WRAP_PROSE = (
+    "I read the server and the handler it registers, and the only thing missing is a "
+    "health route, so I will add one now and then run the whole test suite to be sure "
+    "nothing else moved while I was in there."
+)
+WRAP_RUN_COMMAND = (
+    "npm run build --silent && npm test -- --reporter=verbose --runInBand "
+    "tests/health.spec.js tests/routes.spec.js"
+)
+
+
+def display_width(cell):
+    plain = strip_ansi(cell).rstrip()
+    try:
+        return len(plain.encode("latin1").decode("utf-8"))
+    except UnicodeDecodeError:
+        return len(plain)
+
+
+def squashed_screen(full_text):
+    """Every painted row of the latest redraw, joined the way a wrap reads back.
+
+    A wrapped row drops the space it broke on, so rejoining the rows with a
+    single space puts a sentence spread over several rows back together. Any
+    text a row lost to clipping instead of a wrap simply will not be there.
+    """
+    rows = [strip_ansi(c).strip() for (_, c) in parse_redraw_rows(last_redraw_block(full_text))]
+    return re.sub(r"\s+", " ", " ".join(r for r in rows if r != ""))
+
+
+def check_no_row_overflows(full_text, cols, label):
+    widest = 0
+    for (_, cell) in parse_redraw_rows(last_redraw_block(full_text)):
+        widest = max(widest, display_width(cell))
+    ok(widest <= cols, "no painted row is wider than the %d column terminal in the %s scenario, widest was %d" % (cols, label, widest))
+
+
+def run_wrapped_transcript_scenario():
+    """A line too long for the terminal wraps instead of losing its tail.
+
+    Both halves of what the owner sees are here: the model's prose, which is
+    one long line, and the approval prompt's command, which is another. The
+    check is not that they are painted somewhere - it is that all of the text
+    is still on screen once the rows are read back, which clipping cannot do.
+    """
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-wrap-", rows=30, script="wrap")
+        session.wait_for(BANNER, timeout=10.0)
+        session.write("add a health route\r")
+        session.wait_for(APPROVAL_MARKER, timeout=15.0)
+        session.settle(0.4, 6.0)
+        full_text = text(bytes(session.raw))
+
+        screen = squashed_screen(full_text)
+        ok(WRAP_PROSE in screen, "the whole of a long assistant line is on screen, not clipped at the terminal's width")
+        ok(WRAP_RUN_COMMAND in screen, "the whole of a long approval command is on screen, not clipped at the terminal's width")
+        check_no_row_overflows(full_text, session.cols, "wrapped transcript")
+
+        options = approval_option_rows(full_text)
+        ok(len(options) == APPROVAL_OPTION_COUNT, "the approval option list is still exactly %d rows beside wrapped text, got %d" % (APPROVAL_OPTION_COUNT, len(options)))
+        ok(highlighted_option(options) == 1, "the first approval option is still the highlighted one beside wrapped text")
+
+        check_clean_exit_invariants(session, "wrapped transcript")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
+def run_command_echo_scenario():
+    """A slash command is echoed like a prompt, so its answer is not orphaned.
+
+    #186 and before: `/model` printed a bare "model: <name>" line with nothing
+    saying what asked for it, so asking twice read as one line duplicated.
+    """
+    work_dir = None
+    stub_proc = None
+    session = None
+    try:
+        work_dir, stub_proc, session = start_stub_session("joule-terminal-harness-echo-")
+        session.wait_for(BANNER, timeout=10.0)
+        session.write("/model\r")
+        session.settle(0.4, 5.0)
+        session.write("/model\r")
+        session.settle(0.4, 5.0)
+        full_text = text(bytes(session.raw))
+
+        rows = [strip_ansi(c).strip() for (_, c) in parse_redraw_rows(last_redraw_block(full_text))]
+        echoes = [r for r in rows if r == "> /model"]
+        answers = [r for r in rows if r.startswith("model: ")]
+        ok(len(echoes) == 2, "each /model is echoed into the transcript like a typed prompt, got %d echo row(s)" % len(echoes))
+        ok(len(answers) == 2, "each /model prints its own answer, got %d answer row(s)" % len(answers))
+        adjacent = any(rows[i] == rows[i + 1] and rows[i].startswith("model: ") for i in range(len(rows) - 1))
+        ok(not adjacent, "two answers to /model never sit next to each other unattributed, which reads as one duplicated line")
+
+        check_clean_exit_invariants(session, "command echo")
+    finally:
+        if work_dir is not None:
+            stop_stub_session(work_dir, stub_proc, session)
+
+
 def main():
     if not os.path.exists(JOULE_BIN):
         print("terminal_structural_harness: %s not found, run make build first" % JOULE_BIN, file=sys.stderr)
@@ -1482,6 +1587,16 @@ def main():
         failures.append(str(e))
     try:
         run_mouse_selection_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_wrapped_transcript_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_command_echo_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))

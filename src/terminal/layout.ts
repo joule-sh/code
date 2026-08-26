@@ -1,9 +1,9 @@
 import { DIM, wrap } from "./style.ts";
 import { visualWidth, padTo, repeatChar } from "./text.ts";
-import { buildWelcomeBox } from "./welcome.ts";
+import { buildWelcomeBox, terminalWidth } from "./welcome.ts";
 import { MODE_SAFE_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
-export { visualWidth, buildWelcomeBox };
+export { visualWidth, buildWelcomeBox, terminalWidth };
 
 function modeDisplay(mode: string): string {
   if (mode == MODE_SAFE_AUTO) { return mode + " (commands run unattended)"; }

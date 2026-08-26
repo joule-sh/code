@@ -1,4 +1,4 @@
-import { renderFrame, approvalOptionLabel, approvalOptionRow, approvalOptionsBlock } from "./renderer.ts";
+import { renderFrame, approvalOptionsFor, approvalOptionLabel, approvalOptionRow, approvalOptionsBlock } from "./renderer.ts";
 import { fixtureScript } from "./fixture.ts";
 import { frameType, TEXT_DELTA, PROTOCOL_VERSION, TOOL_CALL, APPROVAL_REQUEST, ToolCallFrame, ApprovalRequestFrame, encodeToolCall, encodeApprovalRequest, encodeNotice, noticeFrame, LEVEL_INFO, LEVEL_WARN } from "../protocol/frames.ts";
 import { GREEN, RED, DIM, REVERSE, RESET } from "./style.ts";
@@ -75,7 +75,7 @@ test("a truncated tool.result says so", () => {
 
 test("approval.request renders the summary and detail", () => {
   let f = "{\"v\":1,\"seq\":1,\"type\":\"approval.request\",\"turnId\":\"t1\",\"callId\":\"c1\",\"tool\":\"run\",\"summary\":\"run npm test\",\"detail\":\"npm test\",\"args\":\"{\\\"command\\\":\\\"npm test\\\"}\"}";
-  let out = renderFrame(f, "");
+  let out = renderFrame(f, "") + approvalOptionsFor(f);
   expect(out.indexOf("run npm test") >= 0);
   expect(out.indexOf("1. Yes") >= 0);
   expect(out.indexOf("2. Yes, and don't ask again for run this session") >= 0);
@@ -157,7 +157,7 @@ test("a tool.call for a non-diffable tool still dumps its raw args, unchanged", 
 
 test("an edit approval.request renders the diff above the option list, before any answer is given", () => {
   let f = editApprovalFrame("src/a.ts", "const x = 1;", "const x = 2;");
-  let out = renderFrame(f, "");
+  let out = renderFrame(f, "") + approvalOptionsFor(f);
   let diffAt = out.indexOf(RED + "- const x = 1;");
   let decisionAt = out.indexOf("1. Yes");
   expect(diffAt >= 0);
@@ -168,7 +168,7 @@ test("an edit approval.request renders the diff above the option list, before an
 
 test("a write approval.request renders the diff above the option list", () => {
   let f = writeApprovalFrame("src/new.ts", "line one\nline two");
-  let out = renderFrame(f, "");
+  let out = renderFrame(f, "") + approvalOptionsFor(f);
   let diffAt = out.indexOf(GREEN + "+ line one");
   let decisionAt = out.indexOf("1. Yes");
   expect(diffAt >= 0);
@@ -178,7 +178,7 @@ test("a write approval.request renders the diff above the option list", () => {
 
 test("a run approval.request renders no diff, just the plain summary and the option list", () => {
   let f = runApprovalFrame("npm test");
-  let out = renderFrame(f, "");
+  let out = renderFrame(f, "") + approvalOptionsFor(f);
   expect(out.indexOf("run npm test") >= 0);
   expect(out.indexOf("1. Yes") >= 0);
   expect(out.indexOf(GREEN) < 0);
@@ -187,7 +187,7 @@ test("a run approval.request renders no diff, just the plain summary and the opt
 
 test("an edit approval.request with unchanged text renders no diff body either", () => {
   let f = editApprovalFrame("src/same.ts", "same", "same");
-  let out = renderFrame(f, "");
+  let out = renderFrame(f, "") + approvalOptionsFor(f);
   expect(out.indexOf(GREEN) < 0);
   expect(out.indexOf(RED) < 0);
   expect(out.indexOf("1. Yes") >= 0);
@@ -228,7 +228,7 @@ test("the option block is one row per option, each on its own line, highlighting
 });
 
 test("an approval.request highlights the first option by default so Enter on an untouched prompt allows", () => {
-  let out = renderFrame(runApprovalFrame("npm test"), "");
+  let out = approvalOptionsFor(runApprovalFrame("npm test"));
   expect(out.indexOf(REVERSE + "> 1. Yes") >= 0);
   expect(out.indexOf(REVERSE + "> 3. No") < 0);
 });

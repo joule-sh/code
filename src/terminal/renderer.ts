@@ -131,7 +131,11 @@ export function planDecisionOptionsBlock(selected: int): string {
 
 function approvalPrompt(summary: string, detail: string, tool: string, args: string): string {
   let diff = diffBlockFor(tool, args);
-  return "\n  ? " + summary + " [" + detail + "] " + diff + approvalOptionsBlock(tool, APPROVAL_OPTION_ALLOW);
+  return "\n  ? " + summary + " [" + detail + "]" + diff;
+}
+
+export function approvalOptionsFor(frameJson: string): string {
+  return approvalOptionsBlock(jsonStringMemberAt(frameJson, 0, "tool"), APPROVAL_OPTION_ALLOW);
 }
 
 export function renderFrame(frameJson: string, prevKind: string): string {

@@ -377,3 +377,49 @@ test("expanding a group never shifts the absolute row of anything appended after
   let view = sb.tail(100);
   expect(view[view.length - 1] == "    > 3. No");
 });
+
+test("with a width set, an appended line too long for it is broken into rows", () => {
+  let sb = new Scrollback();
+  sb.setWidth(20);
+  sb.append("alpha beta gamma delta epsilon");
+  expect(sb.lines.length == 2);
+  expect(sb.lines[0] == "alpha beta gamma");
+  expect(sb.lines[1] == "delta epsilon");
+});
+
+test("a streamed line keeps wrapping as more of it arrives", () => {
+  let sb = new Scrollback();
+  sb.setWidth(20);
+  sb.append("alpha beta gamma ");
+  sb.append("delta epsilon zeta");
+  expect(sb.lines.length == 2);
+  expect(sb.lines[1] == "delta epsilon zeta");
+});
+
+test("with no width set nothing is wrapped, which is what the tests above assume", () => {
+  let sb = new Scrollback();
+  sb.append("alpha beta gamma delta epsilon");
+  expect(sb.lines.length == 1);
+});
+
+test("appendFixed keeps a block at one row per line however narrow the terminal is", () => {
+  let sb = new Scrollback();
+  sb.setWidth(20);
+  sb.appendFixed("
+    > 1. Yes
+      2. Yes, and don't ask again for run this session
+      3. No");
+  expect(sb.lines.length == 4);
+  expect(sb.lines[3] == "      3. No");
+});
+
+test("a collapsed group's marker counts the rows it actually hid, wrapping included", () => {
+  let sb = new Scrollback();
+  sb.setWidth(20);
+  sb.appendCollapsible("head", "one line that is far too long for this width
+two", 2);
+  let group = sb.groups[sb.groups.length - 1];
+  expect(group.size() == sb.lines.length - group.bodyStart);
+  expect(sb.lines[group.markerRow].indexOf(`${group.size()}`) >= 0);
+});
+
