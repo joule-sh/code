@@ -187,6 +187,9 @@ No hosted sandbox, the agent runs on your machine only. No multi-agent, no
 subagents, no MCP. No session persistence across restarts. Each of these is a
 follow-up, not a gap we forgot.
 
+Since written: subagents landed with #77, and session persistence with
+`joule --continue`. No hosted sandbox and no MCP still hold.
+
 ## Code organization
 
 No file over 450 lines, enforced the same way the no-comments rule is: the
