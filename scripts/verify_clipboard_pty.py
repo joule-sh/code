@@ -39,11 +39,18 @@
 # Zero-dependency: stdlib only, and the pty machinery is the terminal
 # structural harness's own rather than a second copy of it.
 
+import faulthandler
 import os
 import shutil
 import subprocess
 import sys
 import time
+
+# Line buffering, because a run that has to be killed still has to say how far
+# it got: block-buffered output on a CI pipe is thrown away with the process,
+# and a step that times out having printed nothing is not diagnosable.
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,6 +58,11 @@ import scratch
 import terminal_structural_harness as h
 
 DAEMON_BIN = os.path.join(os.path.dirname(h.JOULE_BIN), "joule-daemon")
+# Every wait below is bounded, so passing this means something blocked in a
+# call that was not supposed to be able to. Dumping the stack beats being
+# killed by the job timeout with nothing to read.
+WATCHDOG_SECONDS = 420
+CLIPBOARD_TIMEOUT = 15
 SENTINEL = "joule-clipboard-sentinel-not-the-selection"
 DEAD_DISPLAY = ":91"
 DROPPED = ["DISPLAY", "WAYLAND_DISPLAY", "SSH_CONNECTION", "SSH_TTY"]
@@ -99,13 +111,27 @@ def clip_env(display):
 
 
 def set_clipboard(display, value):
-    subprocess.run(copy_cmd(), input=value.encode(), env=clip_env(display), timeout=20, check=True)
+    subprocess.run(copy_cmd(), input=value.encode(), env=clip_env(display),
+                   timeout=CLIPBOARD_TIMEOUT, check=True)
 
 
 def get_clipboard(display):
     done = subprocess.run(paste_cmd(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                          env=clip_env(display), timeout=20)
+                          env=clip_env(display), timeout=CLIPBOARD_TIMEOUT)
     return done.stdout.decode("utf-8", "replace")
+
+
+def clipboard_round_trips(display):
+    """Whether this machine has a clipboard at all, asked before anything is
+    asserted about one. A CI runner with no window session is a normal thing
+    to be; being unable to tell that apart from a failing product is not."""
+    probe = SENTINEL + "-preflight"
+    try:
+        set_clipboard(display, probe)
+        return get_clipboard(display) == probe
+    except Exception as e:
+        print("verify_clipboard_pty: %s round trip failed: %s" % (copy_cmd()[0], e), file=sys.stderr)
+        return False
 
 
 def free_display():
@@ -405,11 +431,19 @@ def main():
         sys.exit(1)
 
     print("clipboard harness: %s sessions on %s" % (session_mode(), sys.platform))
+    faulthandler.dump_traceback_later(WATCHDOG_SECONDS, exit=True)
     start = time.time()
     xvfb = None
     work_root = scratch.scratch_dir("joule-clipboard-harness-")
     try:
         display, xvfb = start_display()
+        print("clipboard harness: display=%r, clipboard command=%s" % (display, copy_cmd()[0]))
+        if not clipboard_round_trips(display):
+            print("SKIPPED: this machine's own %s and %s do not round trip, so it has no clipboard for "
+                  "joule to write and nothing here could tell a working copy from a broken one"
+                  % (copy_cmd()[0], paste_cmd()[0]))
+            sys.exit(0)
+        print("ok: this machine's own clipboard round trips, so the checks below mean something")
         cases = [
             lambda: run_local_case(display),
             lambda: run_tool_gone_case(display, path_without_clipboard(work_root)),
@@ -429,6 +463,7 @@ def main():
     finally:
         stop_display(xvfb)
         shutil.rmtree(work_root, ignore_errors=True)
+        faulthandler.cancel_dump_traceback_later()
 
     print("clipboard harness finished in %dms" % int((time.time() - start) * 1000))
     if failures:
