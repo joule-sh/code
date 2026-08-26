@@ -20,7 +20,7 @@ import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPl
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
-import { buildWelcomeBox } from "./layout.ts";
+import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
 import { loadRelayConfig } from "../relay/client_logic.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
@@ -63,6 +63,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
 
   let sb = new Scrollback();
+  sb.setWidth(terminalWidth());
   let input = new InputLine();
   let history = new InputHistory();
   let rk = new TurnStatusTracker();
@@ -361,6 +362,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
+
+    sb.append("\n" + stylePrompt("> ") + line);
 
     if (cmd.kind == CMD_HELP) { sb.append("\n" + helpText()); drawScreen(sb, input, gate.mode, rk); continue; }
     if (cmd.kind == CMD_SKILLS) { let skillInput = runSkillCommand(workspaceRoot, cmd.arg, sb); drawScreen(sb, input, gate.mode, rk); if (skillInput != "") { bridge.runNow(session, skillInput); drawScreen(sb, input, gate.mode, rk); } continue; }

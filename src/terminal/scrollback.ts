@@ -1,5 +1,6 @@
 import { collapsedMarker, expandedMarker } from "./collapse.ts";
 import { Selection } from "./selection.ts";
+import { wrapToWidth } from "./wrap.ts";
 
 export class CollapseGroup {
   markerRow: int;
@@ -30,25 +31,40 @@ export class Scrollback {
   offset: int;
   groups: CollapseGroup[];
   selection: Selection;
+  width: int;
 
   constructor() {
     this.lines = [""];
     this.offset = 0;
     this.groups = [];
     this.selection = new Selection();
+    this.width = 0;
+  }
+
+  setWidth(width: int): void {
+    this.width = width;
+  }
+
+  appendFixed(text: string): void {
+    this.pushParts(text.split("\n"), false);
   }
 
   append(text: string): void {
+    this.pushParts(text.split("\n"), true);
+  }
+
+  pushParts(parts: string[], reflow: bool): void {
     let before = this.lines.length;
-    let parts = text.split("\n");
     let i = 0;
     while (i < parts.length) {
       if (i == 0) {
-        let last = this.lines.length - 1;
-        let merged = this.lines[last] + parts[i];
-        this.lines = [...this.lines.slice(0, last), merged];
+        if (parts[0] != "") {
+          let last = this.lines.length - 1;
+          let merged = this.lines[last] + parts[0];
+          this.lines = [...this.lines.slice(0, last), ...this.rows(merged, reflow)];
+        }
       } else {
-        this.lines.push(parts[i]);
+        for (const row of this.rows(parts[i], reflow)) { this.lines.push(row); }
       }
       i = i + 1;
     }
@@ -58,6 +74,11 @@ export class Scrollback {
         this.offset = this.offset + added;
       }
     }
+  }
+
+  rows(line: string, reflow: bool): string[] {
+    if (!reflow || this.width <= 0) { return [line]; }
+    return wrapToWidth(line, this.width);
   }
 
   appendBlock(text: string): void {
@@ -77,7 +98,9 @@ export class Scrollback {
     this.append("\n" + collapsedMarker(hidden));
     let bodyStart = this.lines.length;
     this.append("\n" + body);
-    this.groups.push(new CollapseGroup(markerRow, bodyStart, this.lines.length, hidden));
+    let actual = this.lines.length - bodyStart;
+    this.setLine(markerRow, collapsedMarker(actual));
+    this.groups.push(new CollapseGroup(markerRow, bodyStart, this.lines.length, actual));
     if (startOffset > 0) {
       this.offset = startOffset + (markerRow - startLen) + 1;
     }
