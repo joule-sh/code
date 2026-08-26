@@ -151,6 +151,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 
   Worker.run(() => { runDaemonWebSocket(port, runtimeDir); return 0; });
   worker.loop();
+  uplink.stop();
   removeDaemonInfo(workspaceRoot);
   console.log("joule-daemon: stopped");
   process.exit(0);

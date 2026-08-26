@@ -332,3 +332,83 @@ relay whose console names no `relayUser` admits neither that name nor the bare
 account id. CI runs it on the host build and against the binaries linux-release
 publishes, because `ownerUser` is one more field parsed out of a create command
 and kept, which is what #292 was.
+
+## Update, #300: a share the relay forgot is re-made by the client
+
+A relay restart drops every session it holds. Before this, the terminal went on
+believing it was shared, the console's conversation went offline, and only a
+person re-running `/share` recovered it. Restarting a relay is ordinary - a
+deploy, an upgrade, a crash with systemd bringing it back - and none of those
+are a decision to stop sharing.
+
+**Rule 6 is not weakened; it is what forces the shape.** The relay still stores
+nothing durable, and nothing here asks it to remember a session across a
+restart. The client re-creates. A re-made session is a *new* session in every
+way rule 6 already implies: a new id, a new secret, a new code, an empty ring,
+and nobody paired to it. What survives the restart lives on the two machines
+that were doing the work, never on the relay.
+
+**Deliberately not in scope** above says session persistence across a *terminal*
+restart is not a thing, and that stays true. This is the other side: the
+terminal is still running and still has everything the relay was given. Handing
+it back is not persistence, it is repetition.
+
+**How the two failures are told apart.** A relay that does not answer may come
+back, so the terminal keeps retrying it, with backoff, and says so once the
+outage outlives a short quiet window. A relay that *answers* and refuses is a
+different fact, and the refusal now says which one it is: the terminal
+websocket is sent the same `error` frame the browser one always was, rather
+than being closed with an unexplained 4401.
+
+- `session_not_found` - the relay is up and has never heard of this session.
+  That is the restart, and it is the only refusal that re-creates.
+- anything else - the relay knows the session and will not have this terminal.
+  Re-creating would be guessing, so the share ends and says why.
+
+This is the distinction joule-sh/console#51 drew for the recorder, held to on
+this side too.
+
+**What is never re-made.** Only a share that is live, was not detached, and was
+lost while the terminal still wanted it. A daemon that stops now closes its
+relay socket on the way out, so the relay is *told* the share ended and drops
+the session rather than leaving it to the idle sweep - and a session ended that
+way is gone from the account's listing at once. A share the terminal gave up on
+is ended the same way. Neither comes back by itself; `/share` is how a person
+asks for a new one.
+
+**Giving up rather than going quiet.** Retries double from 500ms to a ten-second
+cap. If nothing has answered for two minutes the share ends and the terminal is
+told, naming the address it tried and the last thing that happened there. It
+does not keep knocking after that.
+
+**What the terminal prints, and why it is not a code.** A silent re-share prints
+one notice: that the relay restarted, that the session was re-made, and that the
+code printed earlier is dead. It does not print the new code. A code nobody
+asked for is noise in the middle of somebody's work, and with the owner's own
+console admitted without one (#296) the code is a third-party concern - a
+person who has to hand six characters to somebody else can ask for them with
+`/share`, which now always answers with a code the relay actually holds. That
+last part is joule-sh/code#295: the daemon's cached share was a claim, and
+`/share` reconciles with the relay before repeating it.
+
+**A third party's pairing does not survive it.** The code they spent bought a
+session that no longer exists, and nothing about a relay restarting makes them
+identifiable to the new one, so they are not re-admitted. Rule 1 is the reason:
+authority comes from spending a code against a session that is there, never
+from having spent one once. The owner is the exception #296 argued, and only
+because they hold a credential they signed in with; a third party holds no such
+thing before the restart and no such thing after it. Re-admitting them would
+mean somebody remembering a pairing across the restart, which is rule 6 again.
+
+What a re-make owes them is the truth and the same offer as the first time:
+that the session was replaced, and somewhere to put a new code. Being shown
+nothing, or a conversation that will not revive, is the one answer that is
+wrong. That surface belongs to the console, and the relay already hands it what
+it needs - a browser dialling the old session is answered `session_not_found`,
+which is the whole of what a relay keeping nothing durable can honestly say.
+
+**The conversation continues, and that is the point.** The console keys a
+terminal conversation on account and workspace, never on session id, so a
+re-made session carrying the same verified account and the same workspace lands
+in the conversation that was already there, with its history. The create the
+relay records after a restart is asserted to carry both.

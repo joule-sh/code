@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -277,6 +277,17 @@ npm-package:
 
 relay-reconnect-harness: bin/relay
 	node scripts/verify_relay_reconnect.mjs
+
+# A relay restart, driven the way one happens: the process is killed, a
+# replacement comes up on the same ports, and nobody touches the terminal.
+# It asserts on the relay's own command log - a create after the restart
+# carrying the same account and workspace, and a terminal connect against
+# what that create made - rather than on the absence of an error (#280).
+# The give-up path runs at its real two-minute budget, so this target is
+# slow on purpose: a budget a harness can shorten is one the shipped binary
+# never has to honour.
+relay-reshare-harness: build bin/stub_model
+	node scripts/verify_relay_reshare.mjs
 
 ws-peer-lifecycle-harness: build bin/stub_model
 	node scripts/verify_ws_peer_lifecycle.mjs

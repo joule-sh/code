@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -208,4 +208,80 @@ test("a clean disconnect is not a failed retry, so it never warns however long i
 
 test("with no outage recorded there is nothing to warn about", () => {
   expect(!shouldSayUnreachable(true, false, 0, 60000));
+});
+
+test("a relay that answers no such session is told apart from one that does not answer", () => {
+  let gone = "{\"v\":1,\"seq\":0,\"type\":\"error\",\"code\":\"session_not_found\",\"message\":\"no such session\"}";
+  let held = "{\"v\":1,\"seq\":0,\"type\":\"error\",\"code\":\"unauthorized\",\"message\":\"held\"}";
+  expect(refusalCodeOf(gone) == REFUSAL_SESSION_GONE);
+  expect(refusalCodeOf(held) == "unauthorized");
+  expect(refusalCodeOf("{\"v\":1,\"seq\":4,\"type\":\"input\",\"text\":\"hi\"}") == "");
+  expect(refusalCodeOf("") == "");
+});
+
+test("an outage gives up only once it has run the whole budget", () => {
+  let started: i64 = 1000;
+  expect(!shouldGiveUp(started, started));
+  expect(!shouldGiveUp(started, started + SHARE_GIVE_UP_MS - 1));
+  expect(shouldGiveUp(started, started + SHARE_GIVE_UP_MS));
+});
+
+test("with no outage recorded there is nothing to give up on", () => {
+  expect(!shouldGiveUp(0, 999999));
+});
+
+test("firstLine takes one line and bounds it, so a banner is never clipped in half", () => {
+  expect(firstLine("the peer closed the connection") == "the peer closed the connection");
+  expect(firstLine("cannot reach the relay\n  tried http://x:1\n  nothing") == "cannot reach the relay");
+  expect(firstLine("") == "nothing said why");
+  expect(firstLine("   ") == "nothing said why");
+  let long = "";
+  let i = 0;
+  while (i < 200) { long = long + "x"; i = i + 1; }
+  expect(firstLine(long).length <= 58);
+  expect(firstLine(long).endsWith("..."));
+});
+
+test("every line the reshare paths print fits a terminal that clips rather than wraps", () => {
+  let said = resharedMessage() + "\n"
+    + outageEndedMessage("http://100.89.7.80:8790", "the peer closed the connection") + "\n"
+    + refusedMessage("unauthorized") + "\n"
+    + staleShareProblem("cannot reach the relay\n  tried http://100.89.7.80:8790");
+  for (const line of said.split("\n")) {
+    expect(line.length <= 80);
+  }
+});
+
+test("the silent re-share says the old code is dead without printing a new one", () => {
+  let said = resharedMessage();
+  expect(said.indexOf("re-made") >= 0);
+  expect(said.indexOf("dead") >= 0);
+  expect(said.indexOf("/share") >= 0);
+});
+
+test("giving up names the address tried and what it last answered, never silence", () => {
+  let said = outageEndedMessage("http://100.89.7.80:8790", "the peer closed the connection");
+  expect(said.indexOf("http://100.89.7.80:8790") >= 0);
+  expect(said.indexOf("the peer closed the connection") >= 0);
+  expect(said.indexOf("/share") >= 0);
+});
+
+test("a refusal is reported as a refusal, not as an outage", () => {
+  let said = refusedMessage("unauthorized");
+  expect(said.indexOf("unauthorized") >= 0);
+  expect(said.indexOf("not an outage") >= 0);
+});
+
+test("a share the relay no longer holds is refused rather than replayed with its old code", () => {
+  let said = staleShareProblem("cannot reach the relay");
+  expect(said.indexOf("no longer holds") >= 0);
+  expect(said.indexOf("not printed again") >= 0);
+});
+
+test("a relay too busy to answer its own store is an outage, not a refusal of this terminal", () => {
+  expect(!refusalEndsShare(REFUSAL_BUSY));
+  expect(!refusalEndsShare(REFUSAL_SESSION_GONE));
+  expect(!refusalEndsShare(""));
+  expect(refusalEndsShare("unauthorized"));
+  expect(refusalEndsShare("unknown_role"));
 });

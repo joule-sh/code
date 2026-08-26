@@ -24,6 +24,7 @@ function refusalMessage(code: string): string {
   if (code == "wrong_user") { return "frames are refused to a different paired uuid"; }
   if (code == "not_paired") { return "this session has not been paired to a browser yet"; }
   if (code == "session_not_found") { return "no such session"; }
+  if (code == "unauthorized") { return "this session is held under another secret"; }
   if (code == "unsupported_frame") { return "this frame type is not accepted from a browser"; }
   return code;
 }
@@ -109,7 +110,11 @@ export function serveTerminalWebSocket(port: int, runtimeDir: string): void {
         if (sid == "") { closePeer(peer, CLOSE_PROTOCOL_ERROR, "bad path"); return; }
         let secret = peer.headers.get("x-relay-secret") ?? "";
         let result = connectRpc(state.runtimeDir, sid, ROLE_TERMINAL_CMD, secret);
-        if (!result.ok) { closePeer(peer, 4401, "unauthorized"); return; }
+        if (!result.ok) {
+          sendRefusal(peer, result.refusal);
+          closePeer(peer, closeCodeForRefusal(result.refusal), "refused");
+          return;
+        }
         state.sessionId = sid;
         state.authorized = true;
       }

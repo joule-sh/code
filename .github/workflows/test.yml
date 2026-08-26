@@ -395,6 +395,20 @@ jobs:
       - run: node --version
       - run: make relay-reconnect-harness
 
+  relay-reshare:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 15
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: make relay-reshare-harness
+
   # Every other job here is a Linux runner, which is why #197 shipped twice:
   # the daemon's frame transport was broken on macOS and nothing on macOS
   # ever ran. This job builds the three binaries on macOS, runs each one,
@@ -550,6 +564,12 @@ jobs:
       # relay lost a session's owner seconds after making it and every green
       # harness had been asking a build that could not have the fault.
       - run: node scripts/verify_session_listing_lifecycle.mjs
+      # Re-sharing keeps a workspace and a model across a reconnect and hands
+      # them back to the relay in a second create. That is the same shape as
+      # #292 - a string parsed out of one frame kept past the moment it was
+      # read - so it is asked of the binaries a release publishes, not only
+      # of a host build whose collector cannot have the fault.
+      - run: node scripts/verify_relay_reshare.mjs
       # For the same reason, one step down: the owner name a session admits
       # its console by is another field parsed out of a create command and
       # kept, so it is another thing a released collector could lose (#296).
