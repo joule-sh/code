@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -196,6 +196,18 @@ share-bridge-harness: build bin/stub_model
 
 console-association-harness: build bin/stub_model
 	node scripts/verify_console_association.mjs
+
+# Polls the relay's account listing right through a session's life - created,
+# paired, driven, browser gone, terminal still connected - rather than once
+# just after /share. A session that is listed at one convenient moment and not
+# at the next is what #292 shipped, and a point-in-time check passed the whole
+# time it was broken.
+#
+# It takes the binaries as they are, so the release jobs can point it at what
+# they built. That is the half that matters here: the fault was in which
+# collector a targeted build links, so it did not exist in a host build.
+session-listing-harness: build bin/stub_model
+	node scripts/verify_session_listing_lifecycle.mjs
 
 # The Windows sibling of terminal-harness. It drives the real binary through a
 # ConPTY, which is what Windows Terminal hosts a console program with, rather
