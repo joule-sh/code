@@ -26,15 +26,10 @@
 # because that is when a person pastes, and because an X selection lives in the
 # process that owns it rather than in the server.
 #
-# Two ways to get a session, and which one is used is a platform fact rather
-# than a preference. On Linux joule is started with nothing running and starts
-# its own daemon, which is the shape every other pty harness here uses. On
-# macOS that produces zero bytes - #208, open and not about the clipboard - so
-# the daemon is started first and the client attaches to it, the way
-# verify_attach_pty.py does. What is under test either way is the client: the
-# drag, the clipboard command it runs, and what it says afterwards. Set
-# JOULE_CLIPBOARD_SESSION=attach or =standalone to run either shape anywhere,
-# which is how the macOS shape is exercised on Linux before it is trusted.
+# Every session here is started with nothing else running, so joule starts its
+# own daemon, on both platforms. That shape produced zero bytes on macOS until
+# #281 fixed the spawn that held the client's pipe, which is why this could not
+# have been written this way a day earlier.
 #
 # Zero-dependency: stdlib only, and the pty machinery is the terminal
 # structural harness's own rather than a second copy of it.
@@ -57,7 +52,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scratch
 import terminal_structural_harness as h
 
-DAEMON_BIN = os.path.join(os.path.dirname(h.JOULE_BIN), "joule-daemon")
 # Every wait below is bounded, so passing this means something blocked in a
 # call that was not supposed to be able to. Dumping the stack beats being
 # killed by the job timeout with nothing to read.
@@ -81,13 +75,6 @@ def ok(cond, label):
 
 def is_macos():
     return sys.platform == "darwin"
-
-
-def session_mode():
-    named = os.environ.get("JOULE_CLIPBOARD_SESSION", "").strip()
-    if named in ("attach", "standalone"):
-        return named
-    return "attach" if is_macos() else "standalone"
 
 
 def copy_cmd():
@@ -212,89 +199,16 @@ def path_without_clipboard(work_root):
     return d
 
 
-class AttachSession:
-    """A daemon started here and a client attached to it, for the platform
-    where a client cannot yet start one of its own (#208)."""
-
-    def __init__(self, prefix, env_extra, env_drop):
-        self.work_dir = scratch.scratch_dir(prefix)
-        self.repo_dir = os.path.join(self.work_dir, "repo")
-        self.home_dir = os.path.join(self.work_dir, "home")
-        os.makedirs(self.home_dir, exist_ok=True)
-        h.seed_workspace(self.repo_dir)
-        self.log = open(os.path.join(self.work_dir, "daemon.log"), "w")
-
-        stub_port = h.free_port()
-        stub_env = dict(os.environ)
-        stub_env["E2E_STUB_PORT"] = str(stub_port)
-        self.stub = subprocess.Popen([h.STUB_BIN], env=stub_env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if not h.wait_for_port(stub_port, 10.0):
-            self.close()
-            raise h.Failure("stub model server did not start")
-
-        model_env = {
-            "HOME": self.home_dir,
-            "JOULE_CODE_BASE_URL": "http://127.0.0.1:%d" % stub_port,
-            "JOULE_CODE_MODEL": "stub-model",
-            "JOULE_CODE_API_KEY": "stub-key",
-        }
-        daemon_port = h.free_port()
-        daemon_env = dict(os.environ)
-        daemon_env.update(model_env)
-        daemon_env["JOULE_DAEMON_PORT"] = str(daemon_port)
-        self.daemon = subprocess.Popen([DAEMON_BIN], cwd=self.repo_dir, env=daemon_env,
-                                       stdout=self.log, stderr=self.log)
-        if not h.wait_for_port(daemon_port, 15.0):
-            self.close()
-            raise h.Failure("daemon did not start")
-
-        client_env = dict(os.environ)
-        client_env.update(model_env)
-        client_env["TERM"] = "xterm-256color"
-        for name in env_drop:
-            client_env.pop(name, None)
-        client_env.update(env_extra)
-        self.session = h.PtySession([h.JOULE_BIN, "attach"], client_env, self.repo_dir, rows=24, cols=80)
-        self.session.wait_for("connected to a daemon", timeout=15.0)
-
-    def close(self):
-        session = getattr(self, "session", None)
-        if session is not None:
-            session.close()
-        for proc in (getattr(self, "daemon", None), getattr(self, "stub", None)):
-            if proc is None:
-                continue
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-        log = getattr(self, "log", None)
-        if log is not None:
-            log.close()
-        shutil.rmtree(self.work_dir, ignore_errors=True)
-
-
-class StandaloneSession:
-    """joule started with nothing running, which starts its own daemon."""
+class Session:
+    """joule started with nothing else running, which starts its own daemon."""
 
     def __init__(self, prefix, env_extra, env_drop):
         self.work_dir, self.stub, self.session = h.start_stub_session(
             prefix, env_extra=env_extra, env_drop=env_drop)
-        self.session.wait_for(h.BANNER, timeout=15.0)
+        self.session.wait_for(h.BANNER, timeout=20.0)
 
     def close(self):
         h.stop_stub_session(self.work_dir, self.stub, self.session)
-
-
-def open_session(prefix, env_extra, env_drop):
-    if session_mode() == "attach":
-        return AttachSession(prefix, env_extra, env_drop)
-    return StandaloneSession(prefix, env_extra, env_drop)
 
 
 def drag_and_release(prefix, env_extra, probe):
@@ -303,7 +217,7 @@ def drag_and_release(prefix, env_extra, probe):
     `probe` is called while that session is still running, right after the
     release, and its answer is handed back with everything else.
     """
-    holder = open_session(prefix, env_extra, DROPPED)
+    holder = Session(prefix, env_extra, DROPPED)
     try:
         session = holder.session
         session.write("/cat file_a.txt\r")
@@ -422,7 +336,7 @@ def run_dead_display_case(display):
 
 
 def main():
-    for name, path in (("bin/joule", h.JOULE_BIN), ("bin/stub_model", h.STUB_BIN), ("bin/joule-daemon", DAEMON_BIN)):
+    for name, path in (("bin/joule", h.JOULE_BIN), ("bin/stub_model", h.STUB_BIN)):
         if not os.path.exists(path):
             print("verify_clipboard_pty: %s not found, run make build bin/stub_model first" % name, file=sys.stderr)
             sys.exit(1)
@@ -435,7 +349,7 @@ def main():
               file=sys.stderr)
         sys.exit(1)
 
-    print("clipboard harness: %s sessions on %s" % (session_mode(), sys.platform))
+    print("clipboard harness on %s" % sys.platform)
     faulthandler.dump_traceback_later(WATCHDOG_SECONDS, exit=True)
     start = time.time()
     xvfb = None
