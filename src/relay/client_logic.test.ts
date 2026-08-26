@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -74,26 +74,88 @@ test("nonEmptyLines drops blank lines and preserves order", () => {
   expect(lines[2] == "c");
 });
 
-test("webUrlFor joins the base url and the pairing code", () => {
-  expect(webUrlFor("https://joule.sh/w/", "ABC123") == "https://joule.sh/w/ABC123");
+test("webUrlFor hands the pairing code to the page as a query", () => {
+  expect(webUrlFor("https://joule.sh/terminal/sessions", "ABC123") == "https://joule.sh/terminal/sessions?code=ABC123");
+  expect(webUrlFor("https://joule.sh/terminal/sessions?x=1", "ABC123") == "https://joule.sh/terminal/sessions?x=1&code=ABC123");
+  expect(webUrlFor("", "ABC123") == "");
 });
 
-test("resolveRelayConfig falls back to defaults when nothing is set", () => {
-  let cfg = resolveRelayConfig("", "", "", "", "");
-  expect(cfg.host == "127.0.0.1");
-  expect(cfg.httpPort == 8090);
-  expect(cfg.wsPort == 8091);
-  expect(cfg.webBaseUrl == "https://joule.sh/w/");
+test("splitEndpoint reads host and port out of a url", () => {
+  let a = splitEndpoint("http://relay.example.com:8790");
+  expect(a.ok);
+  expect(a.host == "relay.example.com");
+  expect(a.port == 8790);
+
+  let b = splitEndpoint("ws://100.89.7.80:8791/anything");
+  expect(b.ok);
+  expect(b.host == "100.89.7.80");
+  expect(b.port == 8791);
+});
+
+test("splitEndpoint takes the port the scheme implies when none is written", () => {
+  let a = splitEndpoint("https://relay.example.com");
+  expect(a.ok);
+  expect(a.port == 443);
+  let b = splitEndpoint("ws://relay.example.com");
+  expect(b.ok);
+  expect(b.port == 80);
+});
+
+test("splitEndpoint refuses what it cannot turn into an address", () => {
+  expect(!splitEndpoint("").ok);
+  expect(!splitEndpoint("relay.example.com").ok);
+  expect(!splitEndpoint("http://:8790").ok);
+});
+
+test("resolveRelayConfig is unconfigured, not defaulted, when the server said nothing", () => {
+  let cfg = resolveRelayConfig("", "", "", "");
+  expect(!cfg.configured);
+  expect(cfg.host == "");
+  expect(cfg.webBaseUrl == "");
   expect(cfg.tmpDir == "/tmp");
 });
 
-test("resolveRelayConfig honors every field when set", () => {
-  let cfg = resolveRelayConfig("relay.example.com", "9090", "9091", "https://example.com/w/", "/var/tmp");
+test("resolveRelayConfig needs all three of http, ws and web to be configured", () => {
+  expect(!resolveRelayConfig("http://h:1", "ws://h:2", "", "").configured);
+  expect(!resolveRelayConfig("http://h:1", "", "https://c/terminal/sessions", "").configured);
+  expect(!resolveRelayConfig("", "ws://h:2", "https://c/terminal/sessions", "").configured);
+});
+
+test("resolveRelayConfig takes every field from the urls it is given", () => {
+  let cfg = resolveRelayConfig("http://relay.example.com:9090", "ws://relay.example.com:9091", "https://console.example.com/terminal/sessions", "/var/tmp");
+  expect(cfg.configured);
   expect(cfg.host == "relay.example.com");
   expect(cfg.httpPort == 9090);
   expect(cfg.wsPort == 9091);
-  expect(cfg.webBaseUrl == "https://example.com/w/");
+  expect(cfg.webBaseUrl == "https://console.example.com/terminal/sessions");
   expect(cfg.tmpDir == "/var/tmp");
+});
+
+test("shareProblem names the server when there is no credential to share under", () => {
+  let cfg = resolveRelayConfig("http://h:1", "ws://h:2", "https://c/terminal/sessions", "");
+  let said = shareProblem("https://console.example.com", "", cfg);
+  expect(said.indexOf("https://console.example.com") >= 0);
+  expect(said.indexOf("/login") >= 0);
+});
+
+test("shareProblem says the server never advertised a relay, and how to say it by hand", () => {
+  let cfg = resolveRelayConfig("", "", "", "");
+  let said = shareProblem("https://console.example.com", "jl_secret", cfg);
+  expect(said.indexOf("did not say where its relay is") >= 0);
+  expect(said.indexOf("JOULE_RELAY_URL") >= 0);
+});
+
+test("shareProblem is silent once a credential and a relay are both known", () => {
+  let cfg = resolveRelayConfig("http://h:1", "ws://h:2", "https://c/terminal/sessions", "");
+  expect(shareProblem("https://console.example.com", "jl_secret", cfg) == "");
+});
+
+test("every line a share failure prints fits a narrow terminal, which clips rather than wraps", () => {
+  let unconfigured = shareProblem("https://console.example.com", "jl_secret", resolveRelayConfig("", "", "", ""));
+  let unsigned = shareProblem("https://console.example.com", "", resolveRelayConfig("", "", "", ""));
+  for (const line of (unconfigured + "\n" + unsigned).split("\n")) {
+    expect(line.length <= 80);
+  }
 });
 
 test("a connection lost and repaired inside the quiet window says nothing at all", () => {

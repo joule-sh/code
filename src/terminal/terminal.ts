@@ -22,7 +22,7 @@ import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfRe
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { RelayClient } from "../relay/client.ts";
-import { loadRelayConfig } from "../relay/client_logic.ts";
+import { configureRelayFromDisk } from "../relay/setup.ts";
 import { RelayInputBridge } from "./relay_bridge.ts";
 import { TurnStatusTracker, appendFrame, drawScreen, runRelayTick } from "./screen.ts";
 import { TaskManager } from "../tasks/manager.ts";
@@ -164,8 +164,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     moveActiveApprovalSelection: (delta: int, count: int) => tasks.moveActiveApprovalSelection(delta, count),
   };
 
-  let relayCfg = loadRelayConfig();
-  let relay = new RelayClient(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir);
+  let relay = new RelayClient("", 0, 0, "", "");
   let bridge = new RelayInputBridge();
   relayBox.set(relay, session, bridge);
 
@@ -175,9 +174,10 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       return;
     }
+    configureRelayFromDisk(relay, argv);
     let result = relay.connect(workspaceRoot, displayModel(live.cfg));
     if (!result.ok) {
-      sb.append("\ncould not attach to the relay: " + result.error);
+      sb.append("\n" + result.error);
       drawScreen(sb, input, gate.mode, rk);
       return;
     }

@@ -68,6 +68,24 @@ test("a 200 with a credential and account is read into the stored fields", () =>
   expect(r.credential.server == "https://joule.sh");
 });
 
+test("signing in is where the client learns where that server's relay is", () => {
+  let body = "{\"credential\":{\"id\":\"key_1\",\"secret\":\"jl_verysecret\"},\"account\":{\"id\":\"acct_1\",\"email\":\"a@b.c\"},\"relay\":{\"url\":\"http://100.89.7.80:8790\",\"ws\":\"ws://100.89.7.80:8791\",\"web\":\"http://100.89.7.80:8090/terminal/sessions\"}}";
+  let r = parseExchange("http://100.89.7.80:8090", 200, body, 1000);
+  expect(r.outcome == EX_OK);
+  expect(r.credential.relayUrl == "http://100.89.7.80:8790");
+  expect(r.credential.relayWsUrl == "ws://100.89.7.80:8791");
+  expect(r.credential.webUrl == "http://100.89.7.80:8090/terminal/sessions");
+});
+
+test("a server that advertises no relay leaves the fields empty rather than guessing joule.sh", () => {
+  let body = "{\"credential\":{\"id\":\"key_1\",\"secret\":\"jl_verysecret\"},\"account\":{\"id\":\"acct_1\",\"email\":\"a@b.c\"}}";
+  let r = parseExchange("http://100.89.7.80:8090", 200, body, 1000);
+  expect(r.outcome == EX_OK);
+  expect(r.credential.relayUrl == "");
+  expect(r.credential.relayWsUrl == "");
+  expect(r.credential.webUrl == "");
+});
+
 test("a 200 whose body has no credential is treated as not a Joule server", () => {
   let r = parseExchange("https://example.com", 200, "{\"ok\":true}", 0);
   expect(r.outcome == EX_NOT_JOULE);

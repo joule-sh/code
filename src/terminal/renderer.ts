@@ -239,7 +239,7 @@ export function renderFrame(frameJson: string, prevKind: string): string {
   if (kind == SHARE_FAILED) {
     let f = decodeShareFailed(frameJson);
     if (f == null) { return ""; }
-    return "\ncould not attach to the relay: " + f.error;
+    return "\n" + f.error;
   }
 
   return "";

@@ -13,12 +13,14 @@ export const SOURCE_NONE: string = "none";
 export type Credential = {
   server: string, secret: string, accountId: string, accountEmail: string,
   keyId: string, keyPrefix: string, scopes: string, savedAt: string,
+  relayUrl: string, relayWsUrl: string, webUrl: string,
 };
 
 export function emptyCredential(): Credential {
   let c: Credential = {
     server: "", secret: "", accountId: "", accountEmail: "",
     keyId: "", keyPrefix: "", scopes: "", savedAt: "",
+    relayUrl: "", relayWsUrl: "", webUrl: "",
   };
   return c;
 }
@@ -48,6 +50,9 @@ export function parseCredentialLine(line: string): Credential {
     keyPrefix: jsonStringMemberAt(text, 0, "keyPrefix"),
     scopes: jsonStringMemberAt(text, 0, "scopes"),
     savedAt: jsonStringMemberAt(text, 0, "savedAt"),
+    relayUrl: jsonStringMemberAt(text, 0, "relayUrl"),
+    relayWsUrl: jsonStringMemberAt(text, 0, "relayWsUrl"),
+    webUrl: jsonStringMemberAt(text, 0, "webUrl"),
   };
   return c;
 }

@@ -86,16 +86,16 @@ export function typedServerAddress(text: string): string {
 
 export function chosenServerNote(origin: ServerOrigin, base: string): string {
   if (serverPinned(origin.source)) {
-    return "\n" + wrap(DIM, "the credential is kept for " + base + ", but joule still talks to "
-      + origin.base + " here, because " + serverSourceLabel(origin.source) + " sets it.");
+    return "\n" + wrap(DIM, base + " is now the server on disk, which is the one the daemon "
+      + "reads. " + serverSourceLabel(origin.source) + " still outranks it in this terminal.");
   }
   return "\n" + wrap(DIM, "joule now uses " + base + ", written to " + configFilePath()
     + ". /login " + DEFAULT_SERVER + " goes back.");
 }
 
 function keepServer(sb: Scrollback, origin: ServerOrigin, base: string): void {
-  if (base == origin.base) { return; }
-  if (!serverPinned(origin.source)) { rememberServer(base); }
+  rememberServer(base);
+  if (base == origin.base && !serverPinned(origin.source)) { return; }
   sb.append(chosenServerNote(origin, base));
 }
 

@@ -252,15 +252,19 @@ def main():
             s.write("\x03")
             s.wait_for("sign-in stopped", timeout=10.0)
 
+            with open(config_path, "w") as f:
+                json.dump({"baseUrl": "http://127.0.0.1:9", "model": "stub", "apiKey": "stub-key", "server": "", "updateCheck": ""}, f)
+
             mark = len(s.raw)
             s.write("/login " + fake + "\r")
             s.wait_for("code> ", timeout=10.0, from_index=mark)
             s.write("ABC234\r")
             s.wait_for("signed in to " + fake, timeout=15.0, from_index=mark)
             note = harness.strip_sgr(harness.text(s.raw[mark:]))
-            ok("credential is kept for " + fake in note, "signing in under a pinned server still stores the credential")
+            ok(fake + " is now the server on disk" in note, "signing in under a pinned server still stores the credential")
+            ok("daemon" in note, "and says why it is written even though the env var outranks it here")
             ok("joule now uses" not in note, "it does not claim a switch the env var would override")
-            ok(config_of(home_dir).get("server", "") == fake, "the config file is left as it was, not rewritten by a pinned run")
+            ok(config_of(home_dir).get("server", "") == fake, "the server signed in to is on disk, which is where the daemon reads it")
 
             mark = len(s.raw)
             s.write("/logout " + fake + "\r")

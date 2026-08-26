@@ -144,9 +144,10 @@ test("choosing a server says it is now the one joule uses, and where that is wri
   expect(note.indexOf(DEFAULT_SERVER) >= 0);
 });
 
-test("signing in elsewhere while a flag or env var pins the server keeps the credential but claims nothing more", () => {
+test("signing in while a flag or env var pins the server still writes the server the daemon reads", () => {
   let note = chosenServerNote(originOf("https://joule.sh", SERVER_FROM_ENV), "https://joule.internal");
-  expect(note.indexOf("credential is kept for https://joule.internal") >= 0);
+  expect(note.indexOf("https://joule.internal is now the server on disk") >= 0);
+  expect(note.indexOf("daemon") >= 0);
   expect(note.indexOf(SERVER_ENV) >= 0);
   expect(note.indexOf("joule now uses") < 0);
 });

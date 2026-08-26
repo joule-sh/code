@@ -1,4 +1,5 @@
 import { connect } from "./miniws.mjs";
+import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
@@ -96,20 +97,26 @@ async function main() {
     stdio: ["ignore", fs.openSync(relayLog, "w"), fs.openSync(relayLog, "a")],
   });
 
+  const homeDir = signedInHome({
+    prefix: "joule-share-bridge-home",
+    server: "http://joule-share-bridge.invalid",
+    secret: "e2e-share-bridge-secret",
+    relayUrl: `http://127.0.0.1:${relayHttpPort}`,
+    relayWsUrl: `ws://127.0.0.1:${relayWsPort}`,
+  });
+
   const daemonLog = path.join(workspace, "daemon.log");
   const daemon = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
     cwd: workspace,
-    env: {
+    env: withoutInheritedConfig({
       ...process.env,
+      HOME: homeDir,
       JOULE_DAEMON_PORT: String(daemonPort),
       JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
       JOULE_CODE_MODEL: "stub-model",
       JOULE_CODE_API_KEY: "test-key",
-      JOULE_RELAY_HOST: "127.0.0.1",
-      JOULE_RELAY_HTTP_PORT: String(relayHttpPort),
-      JOULE_RELAY_WS_PORT: String(relayWsPort),
       TMPDIR: workspace,
-    },
+    }),
     stdio: ["ignore", fs.openSync(daemonLog, "w"), fs.openSync(daemonLog, "a")],
   });
 
@@ -201,7 +208,7 @@ async function main() {
     daemon.kill();
     relay.kill();
     stub.kill();
-    if (!process.env.DEBUG_KEEP) fs.rmSync(workspace, { recursive: true, force: true }); else console.error("workspace kept at " + workspace);
+    if (!process.env.DEBUG_KEEP) { fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(homeDir, { recursive: true, force: true }); } else console.error("workspace kept at " + workspace + ", HOME kept at " + homeDir);
   }
 
   if (failures > 0) {

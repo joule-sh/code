@@ -1,6 +1,5 @@
-import { loadConfig, loadServerBase } from "../providers/config.ts";
+import { loadConfig } from "../providers/config.ts";
 import { displayModel } from "../providers/platform.ts";
-import { loadCredential } from "../auth/credentials.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
 import { Gate, MODE_AUTO_EDIT } from "../approval/gate.ts";
@@ -17,7 +16,6 @@ import { wireForegroundRunner } from "../tools/run_foreground.ts";
 import { TaskRunner } from "../tasks/types.ts";
 import { SessionWorker } from "./session_worker.ts";
 import { RelayUplink } from "./relay_uplink.ts";
-import { loadRelayConfig } from "../relay/client_logic.ts";
 import { appendBroadcast, startBroadcastLog } from "./broadcast.ts";
 import { logDaemon, describeFrame } from "./daemon_log.ts";
 import { runDaemonWebSocket } from "./connection.ts";
@@ -117,10 +115,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 
   let worker = new SessionWorker(runtimeDir, session, gate, live, tasks);
 
-  let serverBase = loadServerBase(argv);
-  let credentialSecret = loadCredential(serverBase).secret;
-  let relayCfg = loadRelayConfig();
-  let uplink = new RelayUplink(relayCfg.host, relayCfg.httpPort, relayCfg.wsPort, relayCfg.webBaseUrl, relayCfg.tmpDir, runtimeDir, credentialSecret);
+  let uplink = new RelayUplink(runtimeDir, argv);
   worker.setRelayUplink(uplink.asShareController());
 
   gate.setOnPoll(() => { worker.pollForApproval(); });

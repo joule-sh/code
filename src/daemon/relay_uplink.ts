@@ -2,6 +2,7 @@ import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { RelayClient } from "../relay/client.ts";
 import { isDownstreamAllowed, webUrlFor } from "../relay/client_logic.ts";
+import { configureRelayFromDisk } from "../relay/setup.ts";
 import { RelayInputBridge, dispatchInboundFrame } from "../terminal/relay_bridge.ts";
 import { frameType } from "../protocol/frames.ts";
 import { MailboxReader } from "../tasks/mailbox.ts";
@@ -11,11 +12,12 @@ import { ShareController, ShareResult } from "./share_controller.ts";
 export class RelayUplink {
   relay: RelayClient;
   reader: MailboxReader;
+  argv: string[];
 
-  constructor(host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string, runtimeDir: string, credentialSecret: string) {
-    this.relay = new RelayClient(host, httpPort, wsPort, webBaseUrl, tmpDir);
-    this.relay.credentialSecret = credentialSecret;
+  constructor(runtimeDir: string, argv: string[]) {
+    this.relay = new RelayClient("", 0, 0, "", "");
     this.reader = newBroadcastReader(runtimeDir);
+    this.argv = argv;
   }
 
   ensureStarted(workspaceRoot: string, model: string): ShareResult {
@@ -23,6 +25,7 @@ export class RelayUplink {
       let already: ShareResult = { ok: true, code: this.relay.code, url: webUrlFor(this.relay.webBaseUrl, this.relay.code), error: "" };
       return already;
     }
+    configureRelayFromDisk(this.relay, this.argv);
     let result = this.relay.connect(workspaceRoot, model);
     if (!result.ok) {
       let failed: ShareResult = { ok: false, code: "", url: "", error: result.error };
