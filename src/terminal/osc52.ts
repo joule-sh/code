@@ -33,8 +33,3 @@ export function clipboardPayload(text: string): string {
 export function osc52Sequence(text: string): string {
   return ESC + "]52;c;" + base64Encode(clipboardPayload(text)) + BEL;
 }
-
-export function writeClipboard(text: string): void {
-  if (text == "") { return; }
-  process.stdout().write(osc52Sequence(text));
-}

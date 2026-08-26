@@ -1,4 +1,10 @@
-import { MouseReporting, mouseReportingOn, mouseSettingWord, mouseStateText, runMouseCommand, MOUSE_ON, MOUSE_OFF } from "./mouse_reporting.ts";
+import { MouseReporting, mouseOnText, mouseReportingOn, mouseSettingWord, mouseStateText, runMouseCommand, MOUSE_ON, MOUSE_OFF } from "./mouse_reporting.ts";
+import { CopyPlan, currentPlan, planText } from "./clipboard.ts";
+
+function plan(remote: bool, tool: string): CopyPlan {
+  let made: CopyPlan = { remote: remote, tool: tool };
+  return made;
+}
 import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, HIDE_CURSOR, SHOW_CURSOR, ENABLE_MOUSE_REPORTING, DISABLE_MOUSE_REPORTING } from "../vendor/tty/tty.ts";
 
 test("mouse reporting is on out of the box, so the wheel scrolls and a drag selects", () => {
@@ -64,13 +70,26 @@ test("the state text says what each state costs and what it buys", () => {
   expect(mouseStateText(false).indexOf("PageUp/PageDown") >= 0);
 });
 
-test("the on state is honest that a terminal may refuse the copy, and names the way out", () => {
-  expect(mouseStateText(true).indexOf("OSC 52") >= 0);
-  expect(mouseStateText(true).indexOf("refused") >= 0);
-  expect(mouseStateText(true).indexOf("/mouse off") >= 0);
+test("the on state names the mechanism this machine will really use, not one it might not have", () => {
+  expect(mouseStateText(true) == mouseOnText(planText(currentPlan())));
+  expect(mouseOnText("copy runs pbcopy here").indexOf("copy runs pbcopy here") >= 0);
+  expect(mouseOnText("copy runs pbcopy here").indexOf("OSC 52") < 0);
+});
+
+test("a terminal that has to be asked is named as such, so nobody is told a copy happened", () => {
+  let ssh = planText(plan(true, ""));
+  expect(ssh.indexOf("OSC 52") >= 0);
+  expect(ssh.indexOf("may refuse") >= 0);
+  expect(planText(plan(false, "wl-copy")).indexOf("wl-copy") >= 0);
 });
 
 test("every line of each state text fits an 80 column terminal, so none is clipped", () => {
+  for (const line of mouseOnText(planText(plan(false, "wl-copy"))).split("\n")) {
+    expect(line.length <= 80);
+  }
+  for (const line of mouseOnText(planText(plan(true, ""))).split("\n")) {
+    expect(line.length <= 80);
+  }
   for (const line of mouseStateText(true).split("\n")) {
     expect(line.length <= 80);
   }

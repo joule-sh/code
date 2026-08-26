@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness windows-harness windows-daemon-harness relay-reconnect-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -131,6 +131,14 @@ e2e: build bin/stub_model
 
 terminal-harness: build bin/stub_model
 	python3 scripts/terminal_structural_harness.py
+
+# Reads the system clipboard back after a mouse selection, rather than
+# asserting that an escape sequence was emitted - emitting it is what already
+# worked while nothing reached a clipboard (#282). Needs a display and a
+# clipboard command: on Linux the script starts its own Xvfb and uses xclip,
+# on macOS the runner's own session and pbcopy.
+clipboard-harness: build bin/stub_model
+	python3 scripts/verify_clipboard_pty.py
 
 layout-harness: build bin/stub_model
 	python3 scripts/verify_layout.py
