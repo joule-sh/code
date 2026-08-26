@@ -185,3 +185,50 @@ way a signed-in machine does, and additionally asserts that the printed
 address is the console page, that no joule.sh address survives a
 self-hosted share, and that a daemon holding no credential says so and
 puts nothing in the relay.
+
+## Update, #279 follow-up: an unowned session is refused where it is asked for
+
+The #134 update said a verify failure "degrades to unowned, it never blocks
+sharing", and that is still exactly what the **relay** does. `POST /sessions`
+with a secret the console will not vouch for still creates the session and
+still answers 200. Nothing about the relay's permissiveness changes here.
+
+What was missing is that it never said so. The create answer carried
+`sessionId`, `secret`, `code` and `expiresAt` and nothing about whose session
+it was, so a client that had offered a credential could not tell an owned
+session from an unowned one. It printed a URL either way, and the console page
+that URL points at listed nothing, because there was nothing of that account's
+to list.
+
+That is not hypothetical. A relay serving one console was handed a credential
+minted by another; the console it asked answered 401, the session was created
+owned by nobody, and the share looked like a success from the terminal. The
+same shape follows from a revoked key or a console that is down.
+
+So the create answer now carries two more fields:
+
+    accountStatus  ""  no credential was offered
+                   ok  the console vouched for it
+             rejected  the console does not know it
+          unreachable  the console could not be asked
+
+    verifiedBy     the console the relay actually asked, empty when
+                   no credential was offered
+
+Naming the console is the point. The failure a person actually hits is a relay
+pointed somewhere other than where they signed in, and no message that omits
+that address can tell them so.
+
+A client that offered a credential and did not get `ok` back refuses the share
+and says which console was asked and what it said. A client that offered none
+is unaffected, and neither is the relay's own page, which pairs unowned
+sessions by code and always could. The relay decides nothing new; it just stops
+being the only party that knows.
+
+Verified in `make console-association-harness`: the create command the relay
+records is asserted to carry the account id and email, rather than inferring it
+from `/sessions/mine` being non-empty; and a second relay, wired to a console
+that does not know the credential, is asserted to produce `share.failed`
+naming that console, with nothing left in the relay. Both harnesses that share
+a credential now run a console stub for the relay to ask, because one that has
+no console to ask attributes nothing.

@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -150,9 +150,34 @@ test("shareProblem is silent once a credential and a relay are both known", () =
   expect(shareProblem("https://console.example.com", "jl_secret", cfg) == "");
 });
 
+test("a relay that could not attribute the session names the console it asked", () => {
+  let said = attributionProblem("rejected", "http://100.89.7.80:8090");
+  expect(said.indexOf("http://100.89.7.80:8090") >= 0);
+  expect(said.indexOf("would not attribute") >= 0);
+  expect(said.indexOf("different console") >= 0);
+  expect(said.indexOf("/login") >= 0);
+});
+
+test("a console the relay could not reach is said to be unreachable, not a rejection", () => {
+  let said = attributionProblem("unreachable", "http://100.89.7.80:8090");
+  expect(said.indexOf("could not reach the console") >= 0);
+  expect(said.indexOf("revoked") < 0);
+});
+
+test("a relay too old to answer with an account status is named as that, not treated as owned", () => {
+  expect(attributionProblem("", "").indexOf("too old") >= 0);
+});
+
+test("an attributed session is no problem at all", () => {
+  expect(attributionProblem("ok", "http://100.89.7.80:8090") == "");
+});
+
 test("every line a share failure prints fits a narrow terminal, which clips rather than wraps", () => {
   let unconfigured = shareProblem("https://console.example.com", "jl_secret", resolveRelayConfig("", "", "", ""));
   let unsigned = shareProblem("https://console.example.com", "", resolveRelayConfig("", "", "", ""));
+  let rejected = attributionProblem("rejected", "http://100.89.7.80:8090");
+  let unreachable = attributionProblem("unreachable", "http://100.89.7.80:8090");
+  let stale = attributionProblem("", "");
   for (const line of (unconfigured + "\n" + unsigned).split("\n")) {
     expect(line.length <= 80);
   }

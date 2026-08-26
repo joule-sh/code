@@ -1,5 +1,6 @@
 import { frameSeq, INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
 import { envOr } from "../vendor/platform/platform.ts";
+import { VERIFY_OK, VERIFY_UNREACHABLE } from "./account_verify.ts";
 
 export const OUTBOUND_BUFFER_CAP: int = 500;
 export const BACKOFF_START_MS: i64 = 500;
@@ -156,6 +157,27 @@ export function loadRelayConfig(credRelayUrl: string, credRelayWsUrl: string, cr
   let webUrl = envOr(WEB_URL_ENV, "");
   if (webUrl == "") { webUrl = credWebUrl; }
   return resolveRelayConfig(relayUrl, relayWsUrl, webUrl, envOr("TMPDIR", ""));
+}
+
+export function attributionProblem(status: string, verifiedBy: string): string {
+  if (status == VERIFY_OK) { return ""; }
+  if (status == "") {
+    return "this relay is too old to say whose session this is\n"
+      + "  it answered without an account status, so the share would\n"
+      + "  belong to nobody and no console could ever list it";
+  }
+  if (status == VERIFY_UNREACHABLE) {
+    return "the relay could not reach the console to check your account\n"
+      + "  it tried\n"
+      + "    " + verifiedBy + "\n"
+      + "  nothing answered, so this session would belong to nobody";
+  }
+  return "the relay would not attribute this session to your account\n"
+    + "  it asked this console about your credential\n"
+    + "    " + verifiedBy + "\n"
+    + "  and was told it does not know it. If that is not where you\n"
+    + "  signed in, that relay serves a different console. If it is,\n"
+    + "  the credential was revoked - run /login to replace it.";
 }
 
 export function shareProblem(server: string, credentialSecret: string, cfg: RelayConfig): string {

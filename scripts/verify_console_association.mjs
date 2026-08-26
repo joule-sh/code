@@ -1,5 +1,6 @@
 import { connect } from "./miniws.mjs";
 import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
+import { startConsoleStub } from "./lib/console_stub.mjs";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
@@ -70,36 +71,6 @@ async function fetchJson(url, opts) {
   return { status: resp.status, ok: resp.ok, json: parsed };
 }
 
-// A stand-in for the console's /terminal/verify: knows exactly one real
-// credential secret, everything else is refused. This is the seam
-// account_verify.ts's relay side calls out to - a real console is not
-// needed to prove the relay does this correctly.
-function startConsoleStub(knownSecret, account) {
-  return new Promise((resolve) => {
-    const srv = http.createServer((req, res) => {
-      if (req.method !== "POST" || req.url !== "/terminal/verify") {
-        res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "not found" }));
-        return;
-      }
-      let body = "";
-      req.on("data", (c) => { body += c; });
-      req.on("end", () => {
-        let parsed = null;
-        try { parsed = JSON.parse(body); } catch { parsed = null; }
-        if (parsed && parsed.secret === knownSecret) {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ account }));
-          return;
-        }
-        res.writeHead(401, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "revoked" }));
-      });
-    });
-    srv.listen(0, "127.0.0.1", () => resolve(srv));
-  });
-}
-
 async function main() {
   const workspace = scratchDir("joule-console-assoc-");
   fs.writeFileSync(path.join(workspace, "README.md"), "# demo\n\nNo health route yet.\n");
@@ -145,6 +116,7 @@ async function main() {
       JOULE_RELAY_WS_PORT: String(relayWsPort),
       JOULE_RELAY_WS_BROWSER_PORT: String(relayWsBrowserPort),
       JOULE_RELAY_CONSOLE_URL: `http://127.0.0.1:${consolePort}`,
+      TMPDIR: workspace,
     },
     stdio: ["ignore", fs.openSync(relayLog, "w"), fs.openSync(relayLog, "a")],
   });
@@ -199,6 +171,21 @@ async function main() {
       "share.started names the console page that watches a terminal, carrying the code, got " + started.url);
     ok(started.url.indexOf("joule.sh") < 0,
       "no built-in joule.sh address survives into a self-hosted share, got " + started.url);
+
+    // The create command the relay actually recorded, which is the one thing
+    // that decides whether this session belongs to anybody. Asserting on
+    // /sessions/mine alone let an empty accountId pass as a listing that was
+    // simply empty for other reasons - joule-sh/code#279 follow-up.
+    const commandsLog = path.join(workspace, `joule-relay-runtime-${relayHttpPort}`, "commands.log");
+    const creates = fs.readFileSync(commandsLog, "utf8")
+      .split("\n")
+      .filter((line) => line.indexOf('"kind":"create"') >= 0);
+    ok(creates.length === 1, "the relay recorded exactly one create, got " + creates.length);
+    const created = JSON.parse(creates[0].slice(creates[0].indexOf("{")));
+    ok(created.accountId === account.id,
+      "the create the relay recorded carries the account, got " + JSON.stringify(created.accountId));
+    ok(created.accountEmail === account.email,
+      "and the account's email, got " + JSON.stringify(created.accountEmail));
 
     // Association: the relay verified the credential against the console
     // stub and now lists the session for that account, and only that one.
@@ -261,6 +248,78 @@ async function main() {
 
     const readmeAfter = fs.readFileSync(path.join(workspace, "README.md"), "utf8");
     ok(readmeAfter.includes("Added a health check note."), "the approved tool's effect landed on the real workspace filesystem, driven by the associated-and-paired browser");
+
+    // The defect this whole ticket came back for: a relay pointed at a
+    // DIFFERENT console than the terminal signed in to. The credential is
+    // real, the client sends it, and the relay's console says "not mine" -
+    // so the session is created owned by nobody and the console list stays
+    // empty. That must be a refusal that names the console, not a success.
+    const strangerStub = await startConsoleStub("a-secret-this-console-issued", { id: "acct-elsewhere", email: "e@example.com" });
+    const strangerPort = strangerStub.address().port;
+    const strangerRelayHttp = await freePort();
+    const strangerRelayWs = await freePort();
+    const strangerRelayBrowser = await freePort();
+    const strangerRelayLog = path.join(workspace, "stranger-relay.log");
+    const strangerRelay = spawn(path.join(REPO_ROOT, "bin", "relay"), [], {
+      env: {
+        ...process.env,
+        JOULE_RELAY_HTTP_PORT: String(strangerRelayHttp),
+        JOULE_RELAY_WS_PORT: String(strangerRelayWs),
+        JOULE_RELAY_WS_BROWSER_PORT: String(strangerRelayBrowser),
+        JOULE_RELAY_CONSOLE_URL: `http://127.0.0.1:${strangerPort}`,
+        TMPDIR: workspace,
+      },
+      stdio: ["ignore", fs.openSync(strangerRelayLog, "w"), fs.openSync(strangerRelayLog, "a")],
+    });
+    const strangerHome = signedInHome({
+      prefix: "joule-console-assoc-stranger",
+      server,
+      secret: credentialSecret,
+      relayUrl: `http://127.0.0.1:${strangerRelayHttp}`,
+      relayWsUrl: `ws://127.0.0.1:${strangerRelayWs}`,
+      webUrl: watchPage,
+    });
+    const strangerDaemonPort = await freePort();
+    const strangerDaemon = spawn(path.join(REPO_ROOT, "bin", "joule-daemon"), [], {
+      cwd: workspace,
+      env: withoutInheritedConfig({
+        ...process.env,
+        HOME: strangerHome,
+        JOULE_DAEMON_PORT: String(strangerDaemonPort),
+        JOULE_CODE_BASE_URL: `http://127.0.0.1:${stubPort}`,
+        JOULE_CODE_MODEL: "stub-model",
+        JOULE_CODE_API_KEY: "test-key",
+        TMPDIR: workspace,
+      }),
+      stdio: ["ignore", fs.openSync(path.join(workspace, "stranger-daemon.log"), "w"), fs.openSync(path.join(workspace, "stranger-daemon.log"), "a")],
+    });
+    try {
+      ok(await waitForPort(strangerRelayHttp, 5000), "a relay serving a different console came up");
+      ok(await waitForPort(strangerDaemonPort, 5000), "a daemon pointed at that relay came up");
+      const sConn = await connect("127.0.0.1", strangerDaemonPort, "/attach/e2e-stranger/ws", {});
+      const sFrames = [];
+      sConn.onMessage((text) => { try { sFrames.push(JSON.parse(text)); } catch { /* ignore */ } });
+      sConn.send(JSON.stringify({ v: 1, seq: 0, type: "resume", since: -1 }));
+      await sleep(200);
+      sConn.send(JSON.stringify({ v: 1, seq: 0, type: "share.request" }));
+      const answered = await collectUntil(sFrames, (f) => f.type === "share.started" || f.type === "share.failed", 8000, "an answer to share.request against a relay serving another console");
+      ok(answered.type === "share.failed",
+        "a relay whose console does not know the credential is a refusal, not an anonymous share");
+      const why = answered.error ?? "";
+      ok(why.indexOf(`http://127.0.0.1:${strangerPort}`) >= 0,
+        "the refusal names the console the relay actually asked, got " + JSON.stringify(why));
+      ok(why.split("\n").every((line) => line.length <= 80),
+        "every line of it fits 80 columns");
+      const strangerMine = await fetchJson(`http://127.0.0.1:${strangerRelayHttp}/sessions/mine`, {
+        headers: { "x-user": account.id },
+      });
+      ok(strangerMine.json.sessions.length === 0, "and nothing of this account's is listed on that relay");
+    } finally {
+      strangerDaemon.kill();
+      strangerRelay.kill();
+      strangerStub.close();
+      if (!process.env.DEBUG_KEEP) { fs.rmSync(strangerHome, { recursive: true, force: true }); }
+    }
 
     // A daemon that never found a credential must say so, not share into the
     // relay anonymously: an anonymous session is one no console can ever list,
