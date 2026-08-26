@@ -1,5 +1,6 @@
 import { connect } from "./miniws.mjs";
 import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
+import { startConsoleStub } from "./lib/console_stub.mjs";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
@@ -86,6 +87,12 @@ async function main() {
     stdio: "inherit",
   });
 
+  const bridgeSecret = "e2e-share-bridge-secret";
+  // Without a console to ask, the relay attributes nothing and the client
+  // now refuses to share into a session nobody could ever list.
+  const consoleStub = await startConsoleStub(bridgeSecret, { id: "acct-share-bridge", email: "b@example.com" });
+  const consolePort = consoleStub.address().port;
+
   const relayLog = path.join(workspace, "relay.log");
   const relay = spawn(path.join(REPO_ROOT, "bin", "relay"), [], {
     env: {
@@ -93,6 +100,7 @@ async function main() {
       JOULE_RELAY_HTTP_PORT: String(relayHttpPort),
       JOULE_RELAY_WS_PORT: String(relayWsPort),
       JOULE_RELAY_WS_BROWSER_PORT: String(relayWsBrowserPort),
+      JOULE_RELAY_CONSOLE_URL: `http://127.0.0.1:${consolePort}`,
     },
     stdio: ["ignore", fs.openSync(relayLog, "w"), fs.openSync(relayLog, "a")],
   });
@@ -100,7 +108,7 @@ async function main() {
   const homeDir = signedInHome({
     prefix: "joule-share-bridge-home",
     server: "http://joule-share-bridge.invalid",
-    secret: "e2e-share-bridge-secret",
+    secret: bridgeSecret,
     relayUrl: `http://127.0.0.1:${relayHttpPort}`,
     relayWsUrl: `ws://127.0.0.1:${relayWsPort}`,
   });
@@ -208,6 +216,7 @@ async function main() {
     daemon.kill();
     relay.kill();
     stub.kill();
+    consoleStub.close();
     if (!process.env.DEBUG_KEEP) { fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(homeDir, { recursive: true, force: true }); } else console.error("workspace kept at " + workspace + ", HOME kept at " + homeDir);
   }
 

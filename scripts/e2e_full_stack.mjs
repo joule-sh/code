@@ -1,5 +1,6 @@
 import { connect } from "./miniws.mjs";
 import { signedInHome, withoutInheritedConfig } from "./lib/signed_in_home.mjs";
+import { startConsoleStub } from "./lib/console_stub.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
@@ -227,10 +228,15 @@ async function runScenario(name, approve) {
   };
 
   const workDir = scratchDir("joule-e2e-");
+  const fullStackSecret = "e2e-full-stack-secret";
+  // A console for the relay to ask, or the share is attributed to nobody
+  // and the client refuses it - joule-sh/code#279.
+  const consoleStub = await startConsoleStub(fullStackSecret, { id: "acct-e2e-full", email: "f@example.com" });
+  const consolePort = consoleStub.address().port;
   const homeDir = signedInHome({
     prefix: "joule-e2e-home",
     server: "http://joule-e2e.invalid",
-    secret: "e2e-full-stack-secret",
+    secret: fullStackSecret,
     relayUrl: `http://127.0.0.1:${ports.http}`,
     relayWsUrl: `ws://127.0.0.1:${ports.ws}`,
   });
@@ -258,6 +264,7 @@ async function runScenario(name, approve) {
         JOULE_RELAY_HTTP_PORT: String(ports.http),
         JOULE_RELAY_WS_PORT: String(ports.ws),
         JOULE_RELAY_WS_BROWSER_PORT: String(ports.wsBrowser),
+        JOULE_RELAY_CONSOLE_URL: `http://127.0.0.1:${consolePort}`,
       },
     });
     if (!(await waitForPort(ports.http, 5000))) throw new Error(name + ": relay http port did not start");
@@ -357,6 +364,7 @@ async function runScenario(name, approve) {
     killTree(term);
     killTree(relay);
     killTree(stub);
+    consoleStub.close();
     await reapPort(ports.http, "the relay", name);
     await reapPort(ports.ws, "the relay", name);
     await reapPort(ports.wsBrowser, "the relay", name);

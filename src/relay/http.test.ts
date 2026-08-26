@@ -1,11 +1,13 @@
 import { RelayOwner } from "./relay_owner.ts";
 import { StoreCaller } from "./relay_rpc.ts";
 import { makeHttpHandler, RelayHttpRequest, AccountVerifier } from "./http.ts";
+
+const CONSOLE: string = "https://console.example.com";
 import { AccountVerifyResult, VERIFY_OK, VERIFY_REJECTED } from "./account_verify.ts";
 
 const WS_BROWSER_PORT: int = 8092;
 
-type CreatedSession = { sessionId: string, secret: string, code: string, expiresAt: i64 };
+type CreatedSession = { sessionId: string, secret: string, code: string, expiresAt: i64, accountStatus: string, verifiedBy: string };
 type MineSessionWire = { sessionId: string, workspace: string, model: string, createdAt: i64, lastActivityAt: i64, paired: bool };
 type MineResponse = { sessions: MineSessionWire[] };
 
@@ -42,7 +44,7 @@ function getRequest(path: string): RelayHttpRequest {
 
 test("GET / serves a self-contained html page", () => {
   let owner = new RelayOwner(freshRuntimeDir("web-page"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let resp = handler(getRequest("/"));
   expect(resp.status == 200);
   expect(resp.headers.get("content-type") == "text/html; charset=utf-8");
@@ -52,21 +54,21 @@ test("GET / serves a self-contained html page", () => {
 
 test("GET / bakes the configured browser websocket port into the page", () => {
   let owner = new RelayOwner(freshRuntimeDir("web-page-port"));
-  let handler = makeHttpHandler(directCaller(owner), 9999, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), 9999, neverCalled(), CONSOLE);
   let resp = handler(getRequest("/"));
   expect(resp.body.indexOf("wsPort: 9999") >= 0);
 });
 
 test("an unknown path is still a 404, the web route did not swallow routing", () => {
   let owner = new RelayOwner(freshRuntimeDir("unknown-path"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let resp = handler(getRequest("/nope"));
   expect(resp.status == 404);
 });
 
 test("POST /sessions and POST /pair still work alongside the new GET / route", () => {
   let owner = new RelayOwner(freshRuntimeDir("sessions-and-pair"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let createReq: RelayHttpRequest = { method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\"}", headers: new Map<string, string>() };
   let createResp = handler(createReq);
   expect(createResp.status == 200);
@@ -81,7 +83,7 @@ test("POST /sessions and POST /pair still work alongside the new GET / route", (
 
 test("POST /pair with a wrong code is refused with 400", () => {
   let owner = new RelayOwner(freshRuntimeDir("pair-wrong-code"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let headers = new Map<string, string>();
   headers.set("x-user", "u1");
   let pairReq: RelayHttpRequest = { method: "POST", path: "/pair", body: "{\"code\":\"ZZZZZZ\"}", headers: headers };
@@ -91,7 +93,7 @@ test("POST /pair with a wrong code is refused with 400", () => {
 
 test("POST /sessions with no credentialSecret never calls the verifier, and the session is unowned", () => {
   let owner = new RelayOwner(freshRuntimeDir("sessions-no-cred"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let createReq: RelayHttpRequest = { method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\"}", headers: new Map<string, string>() };
   let createResp = handler(createReq);
   expect(createResp.status == 200);
@@ -105,7 +107,7 @@ test("POST /sessions with no credentialSecret never calls the verifier, and the 
 
 test("POST /sessions with a credentialSecret that verifies associates the session, visible only to that account", () => {
   let owner = new RelayOwner(freshRuntimeDir("sessions-owned"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"), CONSOLE);
   let createReq: RelayHttpRequest = { method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\",\"credentialSecret\":\"real-secret\"}", headers: new Map<string, string>() };
   let createResp = handler(createReq);
   expect(createResp.status == 200);
@@ -125,9 +127,36 @@ test("POST /sessions with a credentialSecret that verifies associates the sessio
   expect(notMineParsed.sessions.length == 0);
 });
 
+test("a create that verifies says so, and names the console it asked, so a client can tell an owned session from an unowned one", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sessions-status-ok"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"), CONSOLE);
+  let createResp = handler({ method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\",\"credentialSecret\":\"real-secret\"}", headers: new Map<string, string>() });
+  expect(createResp.status == 200);
+  expect(createResp.body.indexOf("\"accountStatus\":\"ok\"") >= 0);
+  expect(createResp.body.indexOf(CONSOLE) >= 0);
+});
+
+test("a create whose credential the console does not know says rejected and names that console, rather than looking like a success", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sessions-status-rejected"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"), CONSOLE);
+  let createResp = handler({ method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\",\"credentialSecret\":\"issued-by-a-different-console\"}", headers: new Map<string, string>() });
+  expect(createResp.status == 200);
+  expect(createResp.body.indexOf("\"accountStatus\":\"rejected\"") >= 0);
+  expect(createResp.body.indexOf(CONSOLE) >= 0);
+});
+
+test("a create that offered no credential at all claims no account status and names no console", () => {
+  let owner = new RelayOwner(freshRuntimeDir("sessions-status-none"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
+  let createResp = handler({ method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\"}", headers: new Map<string, string>() });
+  expect(createResp.status == 200);
+  expect(createResp.body.indexOf("\"accountStatus\":\"\"") >= 0);
+  expect(createResp.body.indexOf(CONSOLE) < 0);
+});
+
 test("POST /sessions with a credentialSecret that fails verification still creates the session, just unowned", () => {
   let owner = new RelayOwner(freshRuntimeDir("sessions-rejected-cred"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"), CONSOLE);
   let createReq: RelayHttpRequest = { method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\",\"credentialSecret\":\"stale-or-revoked\"}", headers: new Map<string, string>() };
   let createResp = handler(createReq);
   expect(createResp.status == 200);
@@ -141,14 +170,14 @@ test("POST /sessions with a credentialSecret that fails verification still creat
 
 test("GET /sessions/mine without x-user is refused with 401", () => {
   let owner = new RelayOwner(freshRuntimeDir("mine-no-user"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled());
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, neverCalled(), CONSOLE);
   let resp = handler({ method: "GET", path: "/sessions/mine", body: "", headers: new Map<string, string>() });
   expect(resp.status == 401);
 });
 
 test("GET /sessions/mine never leaks a code or a secret onto the wire", () => {
   let owner = new RelayOwner(freshRuntimeDir("mine-no-leak"));
-  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"));
+  let handler = makeHttpHandler(directCaller(owner), WS_BROWSER_PORT, stubVerifier("real-secret", "acct-1", "a@example.com"), CONSOLE);
   let createReq: RelayHttpRequest = { method: "POST", path: "/sessions", body: "{\"workspace\":\"/repo\",\"model\":\"gpt\",\"credentialSecret\":\"real-secret\"}", headers: new Map<string, string>() };
   let createResp = handler(createReq);
   let created = JSON.parse<CreatedSession>(createResp.body);

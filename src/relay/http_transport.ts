@@ -118,7 +118,7 @@ function writeResponse(socket: Socket, resp: RelayHttpResponse): void {
   socket.close();
 }
 
-export function socketHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier): (socket: Socket) => void {
+export function socketHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier, consoleBase: string): (socket: Socket) => void {
   return (socket: Socket) => {
     let parsed = readRequest(socket);
     if (!parsed.ok) {
@@ -129,7 +129,7 @@ export function socketHandler(caller: StoreCaller, wsBrowserPort: int, verifyAcc
       }
       return;
     }
-    let handler = makeHttpHandler(caller, wsBrowserPort, verifyAccount);
+    let handler = makeHttpHandler(caller, wsBrowserPort, verifyAccount, consoleBase);
     let resp = handler(parsed.req);
     writeResponse(socket, resp);
   };

@@ -49,7 +49,7 @@ function accountVerifier(): AccountVerifier {
 }
 
 function runHttpListener(): int {
-  net.createServer(HTTP_PORT, socketHandler(remoteStoreCaller(runtimeDir), WS_BROWSER_PORT, accountVerifier()));
+  net.createServer(HTTP_PORT, socketHandler(remoteStoreCaller(runtimeDir), WS_BROWSER_PORT, accountVerifier(), CONSOLE_URL));
   return 0;
 }
 

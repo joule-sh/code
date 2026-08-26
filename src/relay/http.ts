@@ -10,7 +10,7 @@ export type RelayHttpResponse = { status: int, body: string, ok: bool, headers: 
 export type AccountVerifier = (secret: string) => AccountVerifyResult;
 
 type CreateSessionRequest = { workspace: string, model: string };
-type CreateSessionResponse = { sessionId: string, secret: string, code: string, expiresAt: i64 };
+type CreateSessionResponse = { sessionId: string, secret: string, code: string, expiresAt: i64, accountStatus: string, verifiedBy: string };
 type PairRequest = { code: string };
 type PairResponse = { sessionId: string };
 type ErrorResponse = { error: string };
@@ -57,7 +57,7 @@ function resolveAccount(verifyAccount: AccountVerifier, body: string): AccountVe
   return verifyAccount(secret);
 }
 
-function handleCreateSession(caller: StoreCaller, verifyAccount: AccountVerifier, req: RelayHttpRequest, now: i64): RelayHttpResponse {
+function handleCreateSession(caller: StoreCaller, verifyAccount: AccountVerifier, consoleBase: string, req: RelayHttpRequest, now: i64): RelayHttpResponse {
   let createReq = parseCreateSession(req.body);
   if (createReq == null) {
     return errorResponse(400, "malformed request body");
@@ -76,6 +76,7 @@ function handleCreateSession(caller: StoreCaller, verifyAccount: AccountVerifier
   }
   let resp: CreateSessionResponse = {
     sessionId: created.sessionId, secret: created.secret, code: created.code, expiresAt: created.expiresAt,
+    accountStatus: account.status, verifiedBy: account.status == "" ? "" : consoleBase,
   };
   return jsonResponse(200, JSON.stringify(resp));
 }
@@ -140,7 +141,7 @@ function handleWebPage(wsBrowserPort: int): RelayHttpResponse {
   return htmlResponse(200, renderWebPage(wsBrowserPort));
 }
 
-export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier): (req: RelayHttpRequest) => RelayHttpResponse {
+export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int, verifyAccount: AccountVerifier, consoleBase: string): (req: RelayHttpRequest) => RelayHttpResponse {
   return (req: RelayHttpRequest) => {
     let now: i64 = Date.now();
     if (req.method == "GET" && req.path == WEB_PAGE_PATH) {
@@ -150,7 +151,7 @@ export function makeHttpHandler(caller: StoreCaller, wsBrowserPort: int, verifyA
       return handleFramesAsset();
     }
     if (req.method == "POST" && req.path == "/sessions") {
-      return handleCreateSession(caller, verifyAccount, req, now);
+      return handleCreateSession(caller, verifyAccount, consoleBase, req, now);
     }
     if (req.method == "POST" && req.path == "/pair") {
       return handlePair(caller, req, now);

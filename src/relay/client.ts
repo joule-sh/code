@@ -1,13 +1,13 @@
 import { LEVEL_WARN, encodeNotice, noticeFrame, frameType } from "../protocol/frames.ts";
 import { Connection, sendText, closeConnection } from "../vendor/websocket/client.ts";
 import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
-import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
+import { OUTBOUND_BUFFER_CAP, BACKOFF_START_MS, nextBackoffMs, shouldSayUnreachable, maxSeqSeen, pushBounded, isDownstreamAllowed, parseMailboxLine, nonEmptyLines, mailboxPathFor, webUrlFor, attributionProblem, TAG_FRAME, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
 import { configureWorker, currentSocket, receiveLoop } from "./client_worker.ts";
 
 export type ConnectResult = { ok: bool, code: string, url: string, error: string };
 
 type CreateSessionRequest = { workspace: string, model: string, credentialSecret: string };
-type SessionCreated = { sessionId: string, secret: string, code: string, expiresAt: i64 };
 
 export class RelayClient {
   host: string;
@@ -106,16 +106,25 @@ export class RelayClient {
       return failed;
     }
 
-    let parsed: SessionCreated | null = null;
-    try { parsed = JSON.parse<SessionCreated>(resp.body); } catch { parsed = null; }
-    if (parsed == null) {
+    let sessionId = jsonStringMemberAt(resp.body, 0, "sessionId");
+    let sessionSecret = jsonStringMemberAt(resp.body, 0, "secret");
+    let pairingCode = jsonStringMemberAt(resp.body, 0, "code");
+    if (sessionId == "" || sessionSecret == "" || pairingCode == "") {
       let bad: ConnectResult = { ok: false, code: "", url: "", error: "malformed response from relay" };
       return bad;
     }
 
-    this.sessionId = parsed.sessionId;
-    this.secret = parsed.secret;
-    this.code = parsed.code;
+    if (this.credentialSecret != "") {
+      let unowned = attributionProblem(jsonStringMemberAt(resp.body, 0, "accountStatus"), jsonStringMemberAt(resp.body, 0, "verifiedBy"));
+      if (unowned != "") {
+        let anonymous: ConnectResult = { ok: false, code: "", url: "", error: unowned };
+        return anonymous;
+      }
+    }
+
+    this.sessionId = sessionId;
+    this.secret = sessionSecret;
+    this.code = pairingCode;
     this.attaching = true;
     this.socketReady = false;
     this.connecting = true;
