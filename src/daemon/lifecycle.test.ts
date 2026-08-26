@@ -61,6 +61,20 @@ test("the POSIX spawn command asks for nothing a POSIX shell does not have, so i
   expect(ran.status == 0);
 });
 
+test("the POSIX spawn command redirects the subshell, not just the daemon, so the caller's pipe closes at once", () => {
+  let cmd = posixDaemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", false, "/opt/joule-code/bin/joule-daemon");
+  expect(cmd.startsWith("(cd /tmp/some-workspace &&"));
+  expect(cmd.indexOf(") >/tmp/some.log 2>&1 </dev/null &") >= 0);
+  expect(cmd.indexOf("joule-daemon >") < 0);
+});
+
+test("a spawn shaped like that one returns to its caller instead of waiting out the background job", () => {
+  let started = Date.now();
+  let ran = child_process.spawnSync("/bin/sh", ["-c", "(cd /tmp && nohup sleep 5) >/dev/null 2>&1 </dev/null &"]);
+  expect(ran.status == 0);
+  expect(Date.now() - started < 3000);
+});
+
 test("the POSIX spawn command carries a resume flag through as an env var when asked", () => {
   let cmd = posixDaemonSpawnCommand("/tmp/some-workspace", 9100, "/tmp/some.log", true, "/opt/joule-code/bin/joule-daemon");
   expect(cmd.indexOf("JOULE_DAEMON_RESUME=1") >= 0);

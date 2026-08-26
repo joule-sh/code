@@ -150,6 +150,12 @@ export class DaemonClient {
     this.mailboxSeen = read.seen;
   }
 
+  retryNow(): void {
+    if (this.socketReady || this.connecting || this.detachRequested) { return; }
+    this.backoffMs = BACKOFF_START_MS;
+    this.nextRetryAt = Date.now();
+  }
+
   maybeReconnect(): void {
     if (!this.attaching || this.socketReady || this.connecting || this.detachRequested) { return; }
     if (this.nextRetryAt == 0) { return; }

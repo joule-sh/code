@@ -90,7 +90,7 @@ export function defaultDaemonBinPath(): string {
 export function posixDaemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   let resumeEnv = "";
   if (resumeFlag) { resumeEnv = "JOULE_DAEMON_RESUME=1 "; }
-  return "cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + " >" + logPath + " 2>&1 &";
+  return "(cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + ") >" + logPath + " 2>&1 </dev/null &";
 }
 
 export function windowsDaemonStartCommand(workspaceRoot: string, logPath: string, daemonBinPath: string): string {
