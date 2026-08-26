@@ -52,6 +52,21 @@ jobs:
       - run: python3 --version
       - run: make terminal-harness
 
+  model-platform-harness:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: python3 --version
+      - run: make model-platform-harness
+
   # Reads the clipboard back after a drag instead of trusting an escape
   # sequence (#282). Needs a display and a clipboard command; the harness
   # starts and stops its own Xvfb, and both runners take jobs, so the check

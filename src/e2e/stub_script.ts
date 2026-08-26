@@ -18,6 +18,9 @@ const SKILLS_RUN_COMMAND: string = "sh .claude/skills/deploy/deploy.sh";
 const TRANSCRIPT_SCRIPT: string = "transcript";
 const TRANSCRIPT_READ_PATH: string = "server.js";
 const TRANSCRIPT_RUN_COMMAND: string = "sh noisy.sh";
+const WRAP_SCRIPT: string = "wrap";
+export const WRAP_PROSE: string = "I read the server and the handler it registers, and the only thing missing is a health route, so I will add one now and then run the whole test suite to be sure nothing else moved while I was in there.";
+export const WRAP_RUN_COMMAND: string = "npm run build --silent && npm test -- --reporter=verbose --runInBand tests/health.spec.js tests/routes.spec.js";
 
 function joinComma(parts: string[]): string {
   let out = "";
@@ -134,6 +137,15 @@ function transcriptRunStepBody(): string {
     + DONE_LINE;
 }
 
+function wrapStepBody(): string {
+  let args = toolCallArgs([strField("command", WRAP_RUN_COMMAND)]);
+  let fragment = toolCallFragmentJson(0, "call_run_wrap", "run", args);
+  return textDeltaChunk(WRAP_PROSE)
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
 function skillsRunStepBody(): string {
   let args = toolCallArgs([strField("command", SKILLS_RUN_COMMAND)]);
   let fragment = toolCallFragmentJson(0, "call_run_1", "run", args);
@@ -146,6 +158,10 @@ function skillsRunStepBody(): string {
 export function scriptedResponseBodyFor(script: string, step: int): string {
   if (script == SKILLS_SCRIPT) {
     if (step <= 0) { return skillsRunStepBody(); }
+    return finalStepBody();
+  }
+  if (script == WRAP_SCRIPT) {
+    if (step <= 0) { return wrapStepBody(); }
     return finalStepBody();
   }
   if (script != TRANSCRIPT_SCRIPT) { return scriptedResponseBody(step); }
@@ -216,4 +232,17 @@ test("the skills script proposes running the script a skill carries, so it meets
 test("an unnamed script is the one every other harness drives", () => {
   expect(scriptedResponseBodyFor("", 0) == readStepBody());
   expect(scriptedResponseBodyFor("", 1) == runStepBody());
+});
+
+test("wrapStepBody carries prose and a command that both outrun an 80 column terminal", () => {
+  expect(WRAP_PROSE.length > 80);
+  expect(WRAP_RUN_COMMAND.length > 80);
+  let body = wrapStepBody();
+  expect(body.indexOf("\"name\":\"run\"") >= 0);
+  expect(body.indexOf("data: [DONE]") >= 0);
+});
+
+test("the wrap script answers its first step with the long prose and its next with the close", () => {
+  expect(scriptedResponseBodyFor("wrap", 0) == wrapStepBody());
+  expect(scriptedResponseBodyFor("wrap", 1) == finalStepBody());
 });

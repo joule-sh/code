@@ -30,7 +30,8 @@ export function offerPlanDecision(pending: PendingPlanDecision, gate: Gate, sess
   if (endFrame == null || endFrame.reason != REASON_DONE) { return; }
   if (gate.mode != MODE_PLAN) { return; }
   if (!lastAssistantTextNonEmpty(session)) { return; }
-  sb.append("\n" + styleBanner(PLAN_OFFER_BANNER) + planDecisionOptionsBlock(PLAN_DECISION_ACCEPT));
+  sb.append("\n" + styleBanner(PLAN_OFFER_BANNER));
+  sb.appendFixed(planDecisionOptionsBlock(PLAN_DECISION_ACCEPT));
   pending.open();
   pending.setOptionRows(sb.lineCount() - PLAN_DECISION_OPTION_COUNT);
 }

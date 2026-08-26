@@ -4,8 +4,8 @@ import { Session } from "../session/session.ts";
 import { Gate } from "../approval/gate.ts";
 import { TurnTracker } from "../providers/live.ts";
 import { RelayInputBridge, pollRelay } from "./relay_bridge.ts";
-import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END } from "../protocol/frames.ts";
-import { renderFrame } from "./renderer.ts";
+import { frameType, decodeToolCall, TOOL_CALL, TOOL_RESULT, TEXT_DELTA, TURN_START, TURN_END, APPROVAL_REQUEST } from "../protocol/frames.ts";
+import { renderFrame, approvalOptionsFor } from "./renderer.ts";
 import { styleFrame, styleScrollIndicator } from "./style.ts";
 import { StatusInfo, NO_TURN, buildStatusLine } from "./layout.ts";
 import { buildQuantaIndicator } from "./quanta.ts";
@@ -115,6 +115,7 @@ export function appendFrame(sb: Scrollback, rk: TurnStatusTracker, frameJson: st
       sb.appendBlock(flushed);
     }
     appendStyled(sb, kind, styleFrame(kind, rendered));
+    if (kind == APPROVAL_REQUEST) { sb.appendFixed(approvalOptionsFor(frameJson)); }
   }
   rk.recordFrame(frameJson);
 }
@@ -124,6 +125,7 @@ export function drawScreen(sb: Scrollback, input: InputLine, mode: string, rk: T
   let r = rows(STDIN);
   if (c <= 0) { c = 80; }
   if (r <= 1) { r = 24; }
+  sb.setWidth(c);
 
   let promptRows = promptRowCount(r);
   let panelDrawsRule = !usesBox(r);

@@ -10,7 +10,7 @@ import { isNavigationKey, handleNavigationKey } from "./attach_keys.ts";
 import { TurnWatchdog } from "./attach_watchdog.ts";
 import { MODE_AUTO_EDIT, MODE_PLAN } from "./attach_slots.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
-import { buildWelcomeBox } from "./layout.ts";
+import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { resolveResume, hasContinueFlag } from "./resume.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
@@ -23,6 +23,7 @@ import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { displayModel } from "../providers/platform.ts";
 import { ServerOrigin } from "../auth/server.ts";
 import { PendingUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
 import { pollUpdateInstall } from "./update_install_poll.ts";
@@ -58,7 +59,7 @@ export function runDaemonJoule(argv: string[]): DaemonAttempt {
   if (!result.client.socketReady) {
     return declined(declineNotes(result.notes, workspaceRoot));
   }
-  runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, false);
+  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, false);
   return attached();
 }
 
@@ -86,7 +87,7 @@ export function runAttach(argv: string[]): void {
     process.exit(1);
     return;
   }
-  runClientLoop(argv, workspaceRoot, cfg.model, serverBase, result, wantsResume, true);
+  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, true);
 }
 
 function resumeNoteFor(argv: string[], workspaceRoot: string, result: AttachResult, wantsResume: bool): string {
@@ -117,6 +118,7 @@ class ClientState {
 function runClientLoop(argv: string[], workspaceRoot: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
   let client = result.client;
   let sb = new Scrollback();
+  sb.setWidth(terminalWidth());
   let input = new InputLine();
   let history = new InputHistory();
   let rk = new TurnStatusTracker();
@@ -349,6 +351,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     }
 
     if (line.trim() == "/stop-daemon") {
+      sb.append("\n" + stylePrompt("> ") + line);
       client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
       sb.append("\nasked the daemon to stop");
       drawScreen(sb, input, approvalLog.mode, rk);
@@ -364,6 +367,8 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       sendInput(line);
       continue;
     }
+
+    sb.append("\n" + stylePrompt("> ") + line);
 
     if (cmd.kind == CMD_HELP) { sb.append("\n" + attachHelpText()); drawScreen(sb, input, approvalLog.mode, rk); continue; }
     if (cmd.kind == CMD_SKILLS) { let skillInput = runSkillCommand(workspaceRoot, cmd.arg, sb); drawScreen(sb, input, approvalLog.mode, rk); if (skillInput != "") { sendInput(skillInput); } continue; }

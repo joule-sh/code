@@ -146,6 +146,9 @@ layout-harness: build bin/stub_model
 onboarding-harness: build bin/stub_model
 	python3 scripts/verify_onboarding.py
 
+model-platform-harness: build bin/stub_model
+	python3 scripts/verify_model_platform_pty.py
+
 skills-harness: build bin/stub_model
 	python3 scripts/verify_skills_pty.py
 
