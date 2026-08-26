@@ -337,6 +337,7 @@ def drag_and_release(prefix, env_extra, probe):
         state = h.strip_sgr(h.last_redraw_block(h.text(bytes(session.raw))))
 
         session.write("\x04")
+        session.settle(0.3, 3.0)
         session.wait_exit(5.0)
         return {"released": released, "screen": screen, "expected": expected, "state": state, "probed": probed}
     finally:
@@ -352,6 +353,7 @@ def with_display(display, extra):
 
 def run_local_case(display):
     """A local session with a clipboard command: the clipboard holds the text."""
+    print("case: local session, clipboard command present")
     set_clipboard(display, SENTINEL)
     r = drag_and_release("joule-clipboard-local-", with_display(display, {}), lambda: get_clipboard(display))
 
@@ -370,6 +372,7 @@ def run_local_case(display):
 
 def run_tool_gone_case(display, bare_path):
     """A display, but no clipboard command anywhere on PATH."""
+    print("case: no clipboard command on PATH")
     set_clipboard(display, SENTINEL)
     r = drag_and_release("joule-clipboard-notool-", with_display(display, {"PATH": bare_path}),
                          lambda: get_clipboard(display))
@@ -387,6 +390,7 @@ def run_tool_gone_case(display, bare_path):
 def run_remote_case(display):
     """SSH_CONNECTION set with a working clipboard command present: this
     machine's clipboard is the wrong one to write, so it is left alone."""
+    print("case: remote session over ssh")
     set_clipboard(display, SENTINEL)
     env = with_display(display, {"SSH_CONNECTION": "10.0.0.1 52000 10.0.0.2 22", "SSH_TTY": "/dev/pts/9"})
     r = drag_and_release("joule-clipboard-remote-", env, lambda: get_clipboard(display))
@@ -404,6 +408,7 @@ def run_remote_case(display):
 def run_dead_display_case(display):
     """A clipboard command that is installed and fails when it runs: no
     mechanism worked, and the screen has to say so rather than report a copy."""
+    print("case: clipboard command present and failing")
     set_clipboard(display, SENTINEL)
     r = drag_and_release("joule-clipboard-dead-", {"DISPLAY": DEAD_DISPLAY}, lambda: get_clipboard(display))
 

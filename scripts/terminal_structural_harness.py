@@ -244,25 +244,35 @@ class PtySession:
 
     def close(self):
         if self.reaped:
-            try:
-                os.close(self.master_fd)
-            except OSError:
-                pass
+            self._close_master()
             return
         try:
             os.kill(self.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         if not self.wait_exit(2.0):
+            # Close the master before the kill, and bound the wait after it.
+            # A child that is blocked writing into a pty nobody is reading is
+            # not in a state a signal alone gets it out of everywhere, and the
+            # blocking waitpid this used to do then never returned - a harness
+            # that hangs in its own teardown reports nothing about what it had
+            # already found (#282).
+            self._close_master()
             try:
                 os.kill(self.pid, signal.SIGKILL)
-                os.waitpid(self.pid, 0)
-            except (ProcessLookupError, ChildProcessError):
+            except ProcessLookupError:
                 pass
+            self.wait_exit(5.0)
+        self._close_master()
+
+    def _close_master(self):
+        if self.master_fd < 0:
+            return
         try:
             os.close(self.master_fd)
         except OSError:
             pass
+        self.master_fd = -1
 
 
 def text(raw_bytes):
