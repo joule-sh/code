@@ -24,6 +24,15 @@ export function chunkedSseResponse(body: string): string {
   return statusLine + headers + chunk + terminator;
 }
 
+export function badRequestResponse(message: string): string {
+  let body = "{\"error\":{\"message\":" + JSON.stringify(message) + ",\"type\":\"invalid_request_error\"}}";
+  return "HTTP/1.1 400 Bad Request\r\n"
+    + "content-type: application/json\r\n"
+    + "content-length: " + `${body.length}` + "\r\n"
+    + "connection: close\r\n\r\n"
+    + body;
+}
+
 export type StubRequest = { ok: bool, body: string };
 
 function contentLengthOf(headLines: string[]): int {
@@ -73,6 +82,12 @@ export function readStubRequest(socket: Socket): StubRequest {
   let ok: StubRequest = { ok: true, body: body };
   return ok;
 }
+
+test("badRequestResponse carries the refusal where jsonErrorText reads it", () => {
+  let out = badRequestResponse("no good");
+  expect(out.indexOf("HTTP/1.1 400 Bad Request") == 0);
+  expect(out.indexOf("\"message\":\"no good\"") > 0);
+});
 
 test("toHex converts small and multi-digit lengths", () => {
   expect(toHex(0) == "0");

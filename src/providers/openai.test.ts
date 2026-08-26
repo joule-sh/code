@@ -165,11 +165,44 @@ test("an assistant message with tool calls serializes tool_calls, not content on
 });
 
 test("a tool result message serializes its tool_call_id", () => {
-  let messages: Message[] = [{ role: "tool", text: "file contents", toolCallId: "c1", toolCalls: [] }];
+  let messages: Message[] = [
+    { role: "assistant", text: "", toolCallId: "", toolCalls: [{ callId: "c1", tool: "read", args: "{}" }] },
+    { role: "tool", text: "file contents", toolCallId: "c1", toolCalls: [] },
+  ];
   let body = requestBody("gpt-4o", messages, []);
 
   expect(body.indexOf("\"tool_call_id\":\"c1\"") >= 0);
   expect(body.indexOf("\"role\":\"tool\"") >= 0);
+});
+
+test("a request never carries an unanswered tool_calls message, whatever the caller hands over", () => {
+  let messages: Message[] = [
+    { role: "user", text: "check it", toolCallId: "", toolCalls: [] },
+    { role: "assistant", text: "verifying", toolCallId: "", toolCalls: [{ callId: "c1", tool: "run", args: "{}" }] },
+  ];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("\"tool_call_id\":\"c1\"") >= 0);
+  expect(body.indexOf("did not complete") > 0);
+});
+
+test("a note that landed inside a tool block is moved past it rather than sent where it was", () => {
+  let messages: Message[] = [
+    { role: "assistant", text: "", toolCallId: "", toolCalls: [{ callId: "c1", tool: "run", args: "{}" }] },
+    { role: "user", text: "background task bgrun-1 finished", toolCallId: "", toolCalls: [] },
+    { role: "tool", text: "run: exit 0", toolCallId: "c1", toolCalls: [] },
+  ];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("bgrun-1") > body.indexOf("\"tool_call_id\":\"c1\""));
+});
+
+test("a tool message answering nothing is left out of the request entirely", () => {
+  let messages: Message[] = [{ role: "tool", text: "file contents", toolCallId: "ghost", toolCalls: [] }];
+  let body = requestBody("gpt-4o", messages, []);
+
+  expect(body.indexOf("ghost") < 0);
+  expect(body.indexOf("\"messages\":[]") > 0);
 });
 
 test("a system message serializes as a plain role/content pair, first in the array", () => {

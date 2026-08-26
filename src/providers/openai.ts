@@ -2,6 +2,7 @@ import { jsonChoiceText, jsonChoiceString, jsonErrorText, jsonHasError } from "h
 import { jsonObjectOf, jsonArrayOf, JsonField } from "https://lumen-lang.org/package/std-contrib/jsonrpc/rpc.ts";
 import { toolCallFragments, ToolCallAssembler } from "./toolcalls.ts";
 import { Message, ProviderReply, ToolCallReq } from "../session/types.ts";
+import { repairHistory } from "../session/history_guard.ts";
 
 export type ProviderConfig = { baseUrl: string, model: string, apiKey: string };
 
@@ -62,7 +63,7 @@ function toolJson(t: ToolSchema): string {
 
 export function requestBody(model: string, messages: Message[], tools: ToolSchema[]): string {
   let msgParts: string[] = [];
-  for (const m of messages) {
+  for (const m of repairHistory(messages)) {
     msgParts.push(messageJson(m));
   }
   let toolParts: string[] = [];

@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION, TURN_START, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, TURN_END, ERROR, REASON_DONE, REASON_CANCELLED, REASON_ERROR, TurnStartFrame, TextDeltaFrame, ToolCallFrame, ToolResultFrame, TurnEndFrame, ErrorFrame, encodeTurnStart, encodeTextDelta, encodeToolCall, encodeToolResult, encodeTurnEnd, encodeError } from "../protocol/frames.ts";
-import { ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL, ROLE_SYSTEM, Message, Provider, ToolRegistry, ApprovalGate, Subscriber } from "./types.ts";
+import { ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL, ROLE_SYSTEM, Message, ToolCallReq, ToolResult, Provider, ToolRegistry, ApprovalGate, Subscriber } from "./types.ts";
+import { UNREPORTED_TEXT, namedCalls, closingToolMessage, repairHistory } from "./history_guard.ts";
 
 const MAX_STEPS: int = 8;
 
@@ -13,6 +14,8 @@ export class Session {
   approval: ApprovalGate;
   subscribers: Subscriber[];
   history: Message[];
+  deferred: Message[];
+  answering: bool;
   nextSeq: int;
   nextTurn: int;
   cancelledTurnId: string;
@@ -26,6 +29,8 @@ export class Session {
     this.subscribers = [];
     this.history = [];
     this.history.push({ role: ROLE_SYSTEM, text: SYSTEM_PROMPT, toolCallId: "", toolCalls: [] });
+    this.deferred = [];
+    this.answering = false;
     this.nextSeq = 1;
     this.nextTurn = 1;
     this.cancelledTurnId = "";
@@ -51,9 +56,29 @@ export class Session {
     this.cancelledTurnId = turnId;
   }
 
+  appendMessage(m: Message): void {
+    if (this.answering) {
+      this.deferred.push(m);
+      return;
+    }
+    this.history.push(m);
+  }
+
+  flushDeferred(): void {
+    for (const m of this.deferred) {
+      this.history.push(m);
+    }
+    this.deferred = [];
+  }
+
   injectSystemContext(text: string): void {
     if (text == "") { return; }
-    this.history.push({ role: ROLE_SYSTEM, text: text, toolCallId: "", toolCalls: [] });
+    this.appendMessage({ role: ROLE_SYSTEM, text: text, toolCallId: "", toolCalls: [] });
+  }
+
+  note(text: string): void {
+    if (text == "") { return; }
+    this.appendMessage({ role: ROLE_USER, text: text, toolCallId: "", toolCalls: [] });
   }
 
   emitDelta(turnId: string, chunk: string): void {
@@ -61,9 +86,57 @@ export class Session {
     this.emit(encodeTextDelta(frame));
   }
 
+  emitToolCall(turnId: string, call: ToolCallReq): void {
+    let frame: ToolCallFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TOOL_CALL, turnId: turnId, callId: call.callId, tool: call.tool, args: call.args };
+    this.emit(encodeToolCall(frame));
+  }
+
+  emitToolResult(turnId: string, callId: string, r: ToolResult): void {
+    let frame: ToolResultFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TOOL_RESULT, turnId: turnId, callId: callId, ok: r.ok, output: r.output, truncated: r.truncated };
+    this.emit(encodeToolResult(frame));
+  }
+
+  runOneCall(turnId: string, call: ToolCallReq): void {
+    let decision = this.approval.check(call.callId, call.tool, call.tool, call.args);
+    if (!decision.allow) {
+      this.history.push({ role: ROLE_TOOL, text: call.tool + ": denied", toolCallId: call.callId, toolCalls: [] });
+      return;
+    }
+
+    this.emitToolCall(turnId, call);
+
+    let result = this.tools.run(call.tool, call.args);
+    this.emitToolResult(turnId, call.callId, result);
+    this.history.push({ role: ROLE_TOOL, text: call.tool + ": " + result.output, toolCallId: call.callId, toolCalls: [] });
+  }
+
+  closeRemainingCalls(turnId: string, calls: ToolCallReq[], from: int): void {
+    let i = from;
+    while (i < calls.length) {
+      this.emitToolCall(turnId, calls[i]);
+      this.emitToolResult(turnId, calls[i].callId, { ok: false, output: UNREPORTED_TEXT, truncated: false });
+      this.history.push(closingToolMessage(calls[i].callId, calls[i].tool));
+      i = i + 1;
+    }
+  }
+
+  answerCalls(turnId: string, calls: ToolCallReq[]): void {
+    this.answering = true;
+    let done = 0;
+    while (done < calls.length) {
+      if (this.cancelledTurnId == turnId) { break; }
+      this.runOneCall(turnId, calls[done]);
+      done = done + 1;
+    }
+    this.closeRemainingCalls(turnId, calls, done);
+    this.answering = false;
+    this.flushDeferred();
+  }
+
   submit(text: string): string {
     let turnId = "t" + `${this.nextTurn}`;
     this.nextTurn = this.nextTurn + 1;
+    this.history = repairHistory(this.history);
     this.history.push({ role: ROLE_USER, text: text, toolCallId: "", toolCalls: [] });
 
     let startFrame: TurnStartFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TURN_START, turnId: turnId, prompt: text };
@@ -87,12 +160,6 @@ export class Session {
 
       let reply = this.provider.ask(this.history, (chunk: string) => { this.emitDelta(turnId, chunk); });
 
-      if (this.cancelledTurnId == turnId) {
-        endReason = REASON_CANCELLED;
-        finished = true;
-        continue;
-      }
-
       if (reply.failed) {
         endReason = REASON_ERROR;
         let errFrame: ErrorFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: ERROR, code: reply.errorCode, message: reply.errorMessage };
@@ -101,32 +168,18 @@ export class Session {
         continue;
       }
 
-      if (reply.text != "" || reply.calls.length > 0) {
-        this.history.push({ role: ROLE_ASSISTANT, text: reply.text, toolCallId: "", toolCalls: reply.calls });
-      }
-
       if (reply.calls.length == 0) {
+        if (reply.text != "") {
+          this.history.push({ role: ROLE_ASSISTANT, text: reply.text, toolCallId: "", toolCalls: [] });
+        }
+        if (this.cancelledTurnId == turnId) { endReason = REASON_CANCELLED; }
         finished = true;
         continue;
       }
 
-      for (const call of reply.calls) {
-        let decision = this.approval.check(call.callId, call.tool, call.tool, call.args);
-        if (!decision.allow) {
-          this.history.push({ role: ROLE_TOOL, text: call.tool + ": denied", toolCallId: call.callId, toolCalls: [] });
-          continue;
-        }
-
-        let callFrame: ToolCallFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TOOL_CALL, turnId: turnId, callId: call.callId, tool: call.tool, args: call.args };
-        this.emit(encodeToolCall(callFrame));
-
-        let result = this.tools.run(call.tool, call.args);
-
-        let resultFrame: ToolResultFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: TOOL_RESULT, turnId: turnId, callId: call.callId, ok: result.ok, output: result.output, truncated: result.truncated };
-        this.emit(encodeToolResult(resultFrame));
-
-        this.history.push({ role: ROLE_TOOL, text: call.tool + ": " + result.output, toolCallId: call.callId, toolCalls: [] });
-      }
+      let calls = namedCalls(reply.calls, this.history.length);
+      this.history.push({ role: ROLE_ASSISTANT, text: reply.text, toolCallId: "", toolCalls: calls });
+      this.answerCalls(turnId, calls);
 
       step = step + 1;
     }

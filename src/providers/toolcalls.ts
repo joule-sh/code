@@ -3,7 +3,7 @@ import { ToolCallReq } from "../session/types.ts";
 
 export type ToolCallFragment = { index: int, id: string, name: string, argsChunk: string };
 
-function skipSpace(s: string, i: int): int {
+export function jsonSkipSpace(s: string, i: int): int {
   let j = i;
   while (j < s.length) {
     let c = s.charAt(j);
@@ -13,8 +13,8 @@ function skipSpace(s: string, i: int): int {
   return j;
 }
 
-function skipValue(s: string, i: int): int {
-  let j = skipSpace(s, i);
+export function jsonSkipValue(s: string, i: int): int {
+  let j = jsonSkipSpace(s, i);
   if (j >= s.length) { return j; }
   let c = s.charAt(j);
   if (c == "{" || c == "[") {
@@ -56,6 +56,30 @@ function skipValue(s: string, i: int): int {
   return j;
 }
 
+export function jsonQuotedAt(s: string, at: int): string {
+  let j = jsonSkipSpace(s, at);
+  if (j >= s.length || s.charAt(j) != "\"") { return ""; }
+  j = j + 1;
+  let out = "";
+  while (j < s.length) {
+    let ch = s.charAt(j);
+    if (ch == "\"") { return out; }
+    if (ch == "\\") {
+      let esc = s.charAt(j + 1);
+      if (esc == "n") { out = out + "\n"; }
+      else if (esc == "t") { out = out + "\t"; }
+      else if (esc == "r") { out = out + "\r"; }
+      else if (esc == "u") { out = out + "?"; j = j + 4; }
+      else { out = out + esc; }
+      j = j + 2;
+      continue;
+    }
+    out = out + ch;
+    j = j + 1;
+  }
+  return out;
+}
+
 export function toolCallFragments(doc: string): ToolCallFragment[] {
   let out: ToolCallFragment[] = [];
   let choice = jsonFirstChoice(doc);
@@ -64,11 +88,11 @@ export function toolCallFragments(doc: string): ToolCallFragment[] {
   if (deltaAt < 0) { return out; }
   let arrAt = jsonMemberStart(doc, deltaAt, "tool_calls");
   if (arrAt < 0) { return out; }
-  let j = skipSpace(doc, arrAt);
+  let j = jsonSkipSpace(doc, arrAt);
   if (j >= doc.length || doc.charAt(j) != "[") { return out; }
   j = j + 1;
   while (j < doc.length) {
-    j = skipSpace(doc, j);
+    j = jsonSkipSpace(doc, j);
     if (j >= doc.length || doc.charAt(j) == "]") { break; }
     let elemStart = j;
     let idx = jsonIntMemberAt(doc, elemStart, "index");
@@ -81,8 +105,8 @@ export function toolCallFragments(doc: string): ToolCallFragment[] {
       args = jsonStringMemberAt(doc, fnAt, "arguments");
     }
     out.push({ index: idx, id: id, name: name, argsChunk: args });
-    j = skipValue(doc, elemStart);
-    j = skipSpace(doc, j);
+    j = jsonSkipValue(doc, elemStart);
+    j = jsonSkipSpace(doc, j);
     if (j < doc.length && doc.charAt(j) == ",") { j = j + 1; }
   }
   return out;
@@ -132,8 +156,8 @@ export class ToolCallAssembler {
     this.seenFlags = ensureLenBool(this.seenFlags, frag.index);
 
     this.seenFlags = setAtBool(this.seenFlags, frag.index, true);
-    if (frag.id != "") { this.ids = setAtStr(this.ids, frag.index, frag.id); }
-    if (frag.name != "") { this.names = setAtStr(this.names, frag.index, frag.name); }
+    if (frag.id != "") { this.ids = setAtStr(this.ids, frag.index, "" + frag.id); }
+    if (frag.name != "") { this.names = setAtStr(this.names, frag.index, "" + frag.name); }
     let combined = this.args[frag.index] + frag.argsChunk;
     this.args = setAtStr(this.args, frag.index, combined);
   }
