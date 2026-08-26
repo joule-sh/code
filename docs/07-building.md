@@ -34,7 +34,9 @@ Intel build fails without it.
 ## Reproducing a release build
 
 The release archives link that library statically on both platforms, so an
-installed release carries it. macOS uses Homebrew's `libgc.a`. Linux names a
+installed release carries it, and there is no library to install alongside
+it: a macOS binary needs nothing beyond the system's own libSystem, and a
+Linux one needs nothing at all. macOS uses Homebrew's `libgc.a`. Linux names a
 target instead, which links musl and a collector the compiler builds for that
 target, leaving a binary with nothing to resolve. To reproduce what a Linux
 release ships:
