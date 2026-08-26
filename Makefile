@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -196,6 +196,9 @@ share-bridge-harness: build bin/stub_model
 
 console-association-harness: build bin/stub_model
 	node scripts/verify_console_association.mjs
+
+owner-admission-harness: build bin/stub_model
+	node scripts/verify_owner_admission.mjs
 
 # Polls the relay's account listing right through a session's life - created,
 # paired, driven, browser gone, terminal still connected - rather than once

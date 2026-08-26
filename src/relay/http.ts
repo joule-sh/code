@@ -51,7 +51,7 @@ function parsePair(body: string): PairRequest | null {
 function resolveAccount(verifyAccount: AccountVerifier, body: string): AccountVerifyResult {
   let secret = rawFieldValue(body, "credentialSecret");
   if (secret == "") {
-    let none: AccountVerifyResult = { status: "", accountId: "", accountEmail: "" };
+    let none: AccountVerifyResult = { status: "", accountId: "", accountEmail: "", relayUser: "" };
     return none;
   }
   return verifyAccount(secret);
@@ -68,7 +68,8 @@ function handleCreateSession(caller: StoreCaller, verifyAccount: AccountVerifier
   let account = resolveAccount(verifyAccount, req.body);
   let accountId = account.status == VERIFY_OK ? account.accountId : "";
   let accountEmail = account.status == VERIFY_OK ? account.accountEmail : "";
-  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: createReq.workspace, model: createReq.model, now: now, accountId: accountId, accountEmail: accountEmail };
+  let ownerUser = accountId == "" ? "" : account.relayUser;
+  let cmd: CreateCommand = { kind: CMD_CREATE, workspace: createReq.workspace, model: createReq.model, now: now, accountId: accountId, accountEmail: accountEmail, ownerUser: ownerUser };
   let resultJson = caller(encodeCreateCommand(cmd));
   let created = decodeCreateResult(resultJson);
   if (created == null) {

@@ -47,7 +47,7 @@ export class RelayOwner {
     let sessionId = generateSessionId();
     let secret = generateSecret();
     let code = generateCode();
-    let created = this.store.create(sessionId, secret, createCmd.workspace, createCmd.model, code, createCmd.now, createCmd.accountId, createCmd.accountEmail);
+    let created = this.store.create(sessionId, secret, createCmd.workspace, createCmd.model, code, createCmd.now, createCmd.accountId, createCmd.accountEmail, createCmd.ownerUser);
     fs.mkdirSync(sessionDir(this.runtimeDir, sessionId), true);
     let result: CreateResult = { sessionId: created.sessionId, secret: created.secret, code: created.code, expiresAt: created.codeExpiresAt };
     return encodeCreateResult(result);
@@ -73,7 +73,9 @@ export class RelayOwner {
       ok = this.store.authorizeTerminal(connectCmd.sessionId, connectCmd.credential);
       if (!ok) { refusal = "unauthorized"; }
     } else if (connectCmd.role == ROLE_BROWSER_CMD) {
-      if (rec.pairedUserId == "") {
+      if (this.store.ownerAdmits(connectCmd.sessionId, connectCmd.credential)) {
+        ok = true;
+      } else if (rec.pairedUserId == "") {
         refusal = "not_paired";
       } else if (rec.pairedUserId != connectCmd.credential) {
         refusal = "wrong_user";
