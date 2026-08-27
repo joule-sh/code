@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -193,6 +193,25 @@ two-client-harness: build bin/stub_model
 
 share-bridge-harness: build bin/stub_model
 	node scripts/verify_share_bridge.mjs
+
+# The one thing #311 was about: a shared turn reaching the relay while it is
+# still running. It asserts on when frames arrive rather than that they do -
+# the uplink delivered every frame of a turn eventually, in one batch after
+# turn.end, so a check that only counted arrivals passed the whole time the
+# feature was unusable. The model streams on a delay so the turn takes tens of
+# seconds, and the approval is answered from the browser and nowhere else,
+# because an approval that arrives after the turn it blocked cannot be
+# answered at all.
+share-liveness-harness: build bin/stub_model
+	node scripts/verify_share_liveness.mjs
+
+# The terminal front end's own share, read off a browser socket rather than
+# off the screen (#312). It runs the binary on a pty with no daemon binary
+# beside it, which is what makes src/code.ts fall back to that front end, and
+# then asks a paired browser what the hello actually carried and whether a
+# /mode typed at the terminal moved it.
+terminal-share-mode-harness: build bin/stub_model
+	node scripts/verify_terminal_share_mode.mjs
 
 console-association-harness: build bin/stub_model
 	node scripts/verify_console_association.mjs

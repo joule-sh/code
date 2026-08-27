@@ -13,15 +13,40 @@ export function toHex(n: int): string {
   return out;
 }
 
-export function chunkedSseResponse(body: string): string {
-  let statusLine = "HTTP/1.1 200 OK\r\n";
-  let headers = "content-type: text/event-stream\r\n"
+export function sseHead(): string {
+  return "HTTP/1.1 200 OK\r\n"
+    + "content-type: text/event-stream\r\n"
     + "transfer-encoding: chunked\r\n"
     + "cache-control: no-cache\r\n"
     + "connection: close\r\n\r\n";
-  let chunk = toHex(body.length) + "\r\n" + body + "\r\n";
-  let terminator = "0\r\n\r\n";
-  return statusLine + headers + chunk + terminator;
+}
+
+export function sseChunk(payload: string): string {
+  return toHex(payload.length) + "\r\n" + payload + "\r\n";
+}
+
+export function sseTerminator(): string {
+  return "0\r\n\r\n";
+}
+
+export function sseEvents(body: string): string[] {
+  let out: string[] = [];
+  let rest = body;
+  while (rest.length > 0) {
+    let at = rest.indexOf("\n\n");
+    if (at < 0) {
+      out.push(rest);
+      rest = "";
+    } else {
+      out.push(rest.slice(0, at + 2));
+      rest = rest.slice(at + 2, rest.length);
+    }
+  }
+  return out;
+}
+
+export function chunkedSseResponse(body: string): string {
+  return sseHead() + sseChunk(body) + sseTerminator();
 }
 
 export function badRequestResponse(message: string): string {
@@ -102,4 +127,24 @@ test("chunkedSseResponse frames the body as one chunk plus a terminator", () => 
   expect(out.indexOf("transfer-encoding: chunked") >= 0);
   expect(out.indexOf("a\r\ndata: hi\n\n\r\n") >= 0);
   expect(out.indexOf("0\r\n\r\n") >= 0);
+});
+
+test("sseEvents splits a scripted body into the events it is made of", () => {
+  let body = "data: one\n\ndata: two\n\ndata: [DONE]\n\n";
+  let events = sseEvents(body);
+  expect(events.length == 3);
+  expect(events[0] == "data: one\n\n");
+  expect(events[2] == "data: [DONE]\n\n");
+  expect(events.join("") == body);
+});
+
+test("a body written event by event carries the same payloads as one written whole", () => {
+  let body = "data: one\n\ndata: two\n\n";
+  let piecewise = sseHead();
+  for (const e of sseEvents(body)) { piecewise = piecewise + sseChunk(e); }
+  piecewise = piecewise + sseTerminator();
+  expect(piecewise.indexOf("transfer-encoding: chunked") >= 0);
+  expect(piecewise.indexOf("data: one") >= 0);
+  expect(piecewise.indexOf("data: two") >= 0);
+  expect(piecewise.indexOf("0\r\n\r\n") > 0);
 });

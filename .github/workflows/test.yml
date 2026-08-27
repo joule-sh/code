@@ -349,6 +349,25 @@ jobs:
       - run: python3 --version
       - run: make two-client-harness
 
+  # #311: a shared turn has to reach the relay while it is running. Both of
+  # these drive a real relay and a real browser socket, and both assert on
+  # timing or on a value read off the wire rather than on a frame count.
+  share-liveness:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: node --version && python3 --version
+      - run: make share-liveness-harness
+      - run: make terminal-share-mode-harness
+
   ws-peer-lifecycle:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
