@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    # Linux and Windows track the newest lumen; v0.7.3 is the first release
+    # Linux and Windows track the newest lumen; v0.7.4 is the first release
     # exposing HttpStream.write(), which the relay client needs for a
     # TLS-terminated websocket (spec 494). macOS stays on v0.7.1 because
     # v0.7.2 stopped accepting `--link -L<dir>`, which is how the macOS steps
@@ -24,7 +24,7 @@ jobs:
           - target: x86_64-linux
             runs_on: [self-hosted, diff]
             lumen_dist: lumen-x86_64-linux
-            lumen_version: v0.7.3
+            lumen_version: v0.7.4
             exe: ""
           - target: aarch64-macos
             runs_on: macos-14
@@ -39,7 +39,7 @@ jobs:
           - target: x86_64-windows
             runs_on: windows-latest
             lumen_dist: lumen-x86_64-windows
-            lumen_version: v0.7.3
+            lumen_version: v0.7.4
             exe: ".exe"
     runs-on: ${{ matrix.runs_on }}
     # Every step here is written for a POSIX shell, and the Windows runner's
