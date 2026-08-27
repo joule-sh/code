@@ -1,8 +1,8 @@
-# Joule Code — Always-on agents
+# Joule Code: Always-on agents
 
 The editor panel: an agentic coding session in a side panel, driven by the
 `joule` you already run in a terminal. The agent reads and edits the files in
-your workspace, runs commands and makes commits **on your own machine** - the
+your workspace, runs commands and makes commits **on your own machine**. The
 panel is a front end to a local daemon, not a hosted service and not a second
 agent.
 
@@ -19,8 +19,8 @@ curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
 That installs `joule` for x86_64 Linux, Apple Silicon macOS and Intel macOS.
-On Windows the way in is npm - `npm install -g @joule-sh/code` - or the
-`code-x86_64-windows.zip` a release publishes. The extension needs **joule
+On Windows, install from npm with `npm install -g @joule-sh/code`, or take
+the `code-x86_64-windows.zip` a release publishes. The extension needs **joule
 0.13.0 or newer**. If `joule` is not on `PATH`, point
 [`joule.path`](#settings) at it.
 
@@ -39,9 +39,9 @@ on the remote side, next to the `joule` and the files that are there.
 ## What the panel does
 
 **It opens on a first-run screen** when nothing is configured yet: one
-sentence on what joule is, and the three ways it can reach a model - a joule
-account, your own provider key, or a self-hosted joule server - each as its
-own button. A missing `joule`, a `joule` too old to drive, and a configuration
+sentence on what joule is, and the three ways it can reach a model, each as
+its own button: a joule account, your own provider key, or a self-hosted
+joule server. A missing `joule`, a `joule` too old to drive, and a configuration
 that cannot start a session all land here with a sentence about what to do.
 
 **An API key is never typed into the panel.** The provider-key route opens
