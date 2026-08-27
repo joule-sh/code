@@ -158,6 +158,14 @@ test("resolveRelayConfig still carries a bare host and port advert unchanged", (
   expect(cfg.wsPort == 8791);
 });
 
+test("resolveRelayConfig flags a wss:// terminal advert as needing TLS, a ws:// one as not", () => {
+  let tls = resolveRelayConfig("https://joule.sh/relay", "wss://joule.sh:8791", "https://joule.sh/terminal/sessions", "");
+  expect(tls.wsNeedsTls);
+  expect(tls.wsUrl == "wss://joule.sh:8791");
+  let plain = resolveRelayConfig("http://h:1", "ws://h:2", "https://c/terminal/sessions", "");
+  expect(!plain.wsNeedsTls);
+});
+
 test("an advert that is not a url leaves the client unconfigured rather than guessed at", () => {
   expect(!resolveRelayConfig("joule.sh/relay", "ws://h:2", "https://c/terminal/sessions", "").configured);
   expect(!resolveRelayConfig("/relay", "ws://h:2", "https://c/terminal/sessions", "").configured);
@@ -180,6 +188,13 @@ test("shareProblem says the server never advertised a relay, and how to say it b
 test("shareProblem is silent once a credential and a relay are both known", () => {
   let cfg = resolveRelayConfig("http://h:1", "ws://h:2", "https://c/terminal/sessions", "");
   expect(shareProblem("https://console.example.com", "jl_secret", cfg) == "");
+});
+
+test("shareProblem refuses up front when the terminal socket needs TLS this build cannot speak", () => {
+  let cfg = resolveRelayConfig("https://joule.sh/relay", "wss://joule.sh/relay-terminal", "https://joule.sh/terminal/sessions", "");
+  let said = shareProblem("https://joule.sh", "jl_secret", cfg);
+  expect(said.indexOf("wss://joule.sh/relay-terminal") >= 0);
+  expect(said.indexOf("TLS") >= 0);
 });
 
 test("a relay that could not attribute the session names the console it asked", () => {
