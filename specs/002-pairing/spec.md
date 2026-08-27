@@ -412,3 +412,43 @@ terminal conversation on account and workspace, never on session id, so a
 re-made session carrying the same verified account and the same workspace lands
 in the conversation that was already there, with its history. The create the
 relay records after a restart is asserted to carry both.
+
+## Update, #317: the relay address is a URL, and it is used as one
+
+A production relay is not a bare host and port. It sits behind the shared
+gateway on a path, as `https://joule.sh/relay`, the way every other service on
+that host is fronted. The console already said so: `relayAdvert` returns a full
+URL string.
+
+The client did not keep it. It split the advert into a host and a port and
+built the pairing call back out of those, defaulting the scheme to `http`. So
+`https://joule.sh/relay` was asked as `http://joule.sh:443/sessions` - the path
+gone and the scheme lost, with the port surviving only as the default that same
+scheme had implied. The edge answered `400 The plain HTTP request was sent to
+HTTPS port`, which is the whole of what production `/share` did.
+
+**The advertised string is the address.** It is trimmed of trailing slashes
+once, where the config is resolved, and `/sessions` is joined to it there and
+nowhere else, so no call site can produce `//sessions` or drop a prefix. A
+bare `http://100.89.7.80:8790` normalises to itself, which is why staging goes
+on working unchanged while production moves.
+
+**Nothing is guessed.** An advert that is not a URL leaves the client
+unconfigured rather than pointed somewhere plausible, and `/share` refuses by
+name, as it already did for a console that advertised nothing at all. The
+development overrides keep the shape they had - `JOULE_RELAY_URL`,
+`JOULE_RELAY_WS_URL` and `JOULE_WEB_BASE_URL` are URLs already, so honouring
+the advert cost them nothing.
+
+Verified in `make relay-path-advert-harness`
+(`scripts/verify_relay_path_advert.mjs`): a real relay behind a reverse proxy
+that serves it under `/relay` and answers 404 to everything else, advertised
+at that URL, driven to a session created, a socket connected and a turn
+streamed to a paired browser that approves a tool. It asserts on the request
+line the proxy received - exactly `POST /relay/sessions` - rather than on the
+share succeeding, because a check that only asks whether the share worked
+passes against a bare host and port and proves nothing (#280). The trailing
+slash and the bare host-and-port advert are driven the same way. CI runs it on
+the host build and against the binaries linux-release publishes, because the
+address is now a string parsed out of a credential file and held for the life
+of a share, which is the shape of #292.

@@ -138,18 +138,27 @@ export function splitEndpoint(url: string): Endpoint {
   return out;
 }
 
-export type RelayConfig = { host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string, configured: bool };
+export function relayBaseUrl(raw: string): string {
+  let text = raw.trim();
+  let end = text.length;
+  while (end > 0 && text.charAt(end - 1) == "/") { end = end - 1; }
+  if (end == 0) { return ""; }
+  return "" + text.slice(0, end);
+}
+
+export type RelayConfig = { host: string, httpBaseUrl: string, wsPort: int, webBaseUrl: string, tmpDir: string, configured: bool };
 
 export function resolveRelayConfig(rawRelayUrl: string, rawRelayWsUrl: string, rawWebUrl: string, rawTmpDir: string): RelayConfig {
   let httpAt = splitEndpoint(rawRelayUrl);
   let wsAt = splitEndpoint(rawRelayWsUrl);
+  let httpBaseUrl = relayBaseUrl(rawRelayUrl);
   let webBaseUrl = rawWebUrl.trim();
   let tmpDir = rawTmpDir;
   if (tmpDir == "") { tmpDir = "/tmp"; }
   let cfg: RelayConfig = {
-    host: httpAt.host, httpPort: httpAt.port, wsPort: wsAt.port,
+    host: httpAt.host, httpBaseUrl: httpBaseUrl, wsPort: wsAt.port,
     webBaseUrl: webBaseUrl, tmpDir: tmpDir,
-    configured: httpAt.ok && wsAt.ok && webBaseUrl != "",
+    configured: httpAt.ok && httpBaseUrl != "" && wsAt.ok && webBaseUrl != "",
   };
   return cfg;
 }

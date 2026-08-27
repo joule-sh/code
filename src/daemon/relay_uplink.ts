@@ -31,7 +31,7 @@ export class RelayUplink {
   argv: string[];
 
   constructor(runtimeDir: string, argv: string[]) {
-    this.relay = new RelayClient("", 0, 0, "", "");
+    this.relay = new RelayClient("", "", 0, "", "");
     this.reader = newBroadcastReader(runtimeDir);
     this.argv = argv;
   }
