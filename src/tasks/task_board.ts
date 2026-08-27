@@ -1,6 +1,5 @@
 import { PROTOCOL_VERSION, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, REASON_DONE, REASON_CANCELLED, REASON_ERROR, TextDeltaFrame, ToolCallFrame, ToolResultFrame, ApprovalRequestFrame, TurnEndFrame, ErrorFrame, encodeTextDelta, encodeToolCall, encodeToolResult, encodeApprovalRequest, encodeTurnEnd, encodeError } from "../protocol/frames.ts";
 import { Session } from "../session/session.ts";
-import { ROLE_USER } from "../session/types.ts";
 import { appendMailbox } from "./mailbox.ts";
 import { BackgroundRunTask, SubagentTask, PendingAgentApproval } from "./state.ts";
 import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, decodeSubagentApprovalPayload, decodeSubagentErrorPayload } from "./subagent_protocol.ts";
@@ -205,7 +204,7 @@ export class TaskBoard {
           session.emit(encodeToolResult(rf));
           let ef: TurnEndFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TURN_END, turnId: backgroundTurnId(t.id), reason: REASON_DONE };
           session.emit(encodeTurnEnd(ef));
-          session.history.push({ role: ROLE_USER, text: "[background task " + t.id + " (" + t.command + ") finished: " + summary + " - call task_status with id \"" + t.id + "\" for its recent output]", toolCallId: "", toolCalls: [] });
+          session.note("[background task " + t.id + " (" + t.command + ") finished: " + summary + " - call task_status with id \"" + t.id + "\" for its recent output]");
         }
       }
     }
@@ -275,7 +274,7 @@ export class TaskBoard {
   }
 
   reportAgentResult(session: Session, t: SubagentTask): void {
-    session.history.push({ role: ROLE_USER, text: "[subagent " + t.id + " report - task: " + t.taskText + "]\n" + t.finalNote, toolCallId: "", toolCalls: [] });
+    session.note("[subagent " + t.id + " report - task: " + t.taskText + "]\n" + t.finalNote);
   }
 
   poll(session: Session): void {

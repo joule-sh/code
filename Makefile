@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -288,6 +288,15 @@ relay-reconnect-harness: bin/relay
 # never has to honour.
 relay-reshare-harness: build bin/stub_model
 	node scripts/verify_relay_reshare.mjs
+
+# A dangling tool_call is a session-killer, not a lost turn: the provider
+# refuses the history and joule keeps sending it, so every later turn in that
+# workspace dies too (#305). Each scenario drives a real daemon into the shape
+# a different way and then asserts the NEXT turn still succeeds. The stub model
+# refuses an invalid history the way DeepSeek does, so this cannot pass on a
+# product that is broken and a fake that shrugs (#280).
+dangling-toolcall-harness: build bin/stub_model
+	node scripts/verify_dangling_toolcall.mjs
 
 ws-peer-lifecycle-harness: build bin/stub_model
 	node scripts/verify_ws_peer_lifecycle.mjs

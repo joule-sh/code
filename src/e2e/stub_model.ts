@@ -1,5 +1,6 @@
 import { scriptedResponseBodyFor } from "./stub_script.ts";
-import { chunkedSseResponse, readStubRequest } from "./stub_http.ts";
+import { chunkedSseResponse, badRequestResponse, readStubRequest } from "./stub_http.ts";
+import { requestContractProblem } from "./stub_contract.ts";
 import { appendFile, envOr } from "../vendor/platform/platform.ts";
 
 function envInt(name: string, fallback: int): int {
@@ -25,6 +26,13 @@ function handleConnection(socket: Socket): void {
     return;
   }
   logRequest(parsed.body);
+  let problem = requestContractProblem(parsed.body);
+  if (problem != "") {
+    logRequest("<<<CONTRACT REFUSED>>> " + problem);
+    socket.write(badRequestResponse(problem));
+    socket.close();
+    return;
+  }
   let step = requestCount;
   requestCount = requestCount + 1;
   socket.write(chunkedSseResponse(scriptedResponseBodyFor(SCRIPT, step)));
