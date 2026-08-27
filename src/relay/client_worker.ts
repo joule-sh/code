@@ -1,7 +1,8 @@
-import { connectWebSocket, receive, sendText, sendClose, Connection } from "../vendor/websocket/client.ts";
+import { connectWebSocket, receive, sendText, sendClose, Connection, Transport } from "../vendor/websocket/client.ts";
+import { connectWebSocketTls } from "../vendor/websocket/tls_client.ts";
 import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
 import { PROTOCOL_VERSION, RESUME, ResumeFrame, encodeResume } from "../protocol/frames.ts";
-import { encodeMailboxFrame, encodeMailboxControl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
+import { encodeMailboxFrame, encodeMailboxControl, httpsBaseUrl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "./client_logic.ts";
 import { appendFile } from "../vendor/platform/platform.ts";
 
 export const STOP_POLL_MS: int = 10;
@@ -9,17 +10,21 @@ export const STOP_WAIT_TICKS: int = 60;
 
 let g_host: string = "";
 let g_wsPort: int = 0;
+let g_wsNeedsTls: bool = false;
+let g_wsUrl: string = "";
 let g_sessionId: string = "";
 let g_secret: string = "";
 let g_since: int = -1;
 let g_mailboxPath: string = "";
-let g_socket: Socket[] = [];
+let g_socket: Transport[] = [];
 let g_generation: int = 0;
 let g_live: int = 0;
 
-export function configureWorker(host: string, wsPort: int, sessionId: string, secret: string, since: int, mailboxPath: string): void {
+export function configureWorker(host: string, wsPort: int, wsNeedsTls: bool, wsUrl: string, sessionId: string, secret: string, since: int, mailboxPath: string): void {
   g_host = host;
   g_wsPort = wsPort;
+  g_wsNeedsTls = wsNeedsTls;
+  g_wsUrl = wsUrl;
   g_sessionId = sessionId;
   g_secret = secret;
   g_since = since;
@@ -28,7 +33,7 @@ export function configureWorker(host: string, wsPort: int, sessionId: string, se
   g_live = g_live + 1;
 }
 
-export function currentSocket(): Socket[] {
+export function currentSocket(): Transport[] {
   return g_socket;
 }
 
@@ -57,10 +62,17 @@ function appendMailbox(line: string): void {
   try { appendFile(g_mailboxPath, line + "\n"); } catch { }
 }
 
+function dial(path: string): Connection {
+  if (g_wsNeedsTls) {
+    return connectWebSocketTls(httpsBaseUrl(g_wsUrl), path, terminalHeaders(g_secret));
+  }
+  return connectWebSocket(g_host, g_wsPort, path, terminalHeaders(g_secret));
+}
+
 export function receiveLoop(): int {
   let mine = g_generation;
   let path = "/sessions/" + g_sessionId + "/ws";
-  let conn = connectWebSocket(g_host, g_wsPort, path, terminalHeaders(g_secret));
+  let conn = dial(path);
   if (!conn.ok) {
     appendMailbox(encodeMailboxControl(TAG_CONNECT_FAILED, conn.error));
     g_live = g_live - 1;

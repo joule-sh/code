@@ -146,6 +146,14 @@ export function relayBaseUrl(raw: string): string {
   return "" + text.slice(0, end);
 }
 
+export function httpsBaseUrl(wsUrl: string): string {
+  let t = wsUrl.trim();
+  let lower = t.toLowerCase();
+  if (lower.startsWith("wss://")) { return "https://" + t.slice(6, t.length); }
+  if (lower.startsWith("ws://")) { return "http://" + t.slice(5, t.length); }
+  return t;
+}
+
 export type RelayConfig = { host: string, httpBaseUrl: string, wsPort: int, wsUrl: string, wsNeedsTls: bool, webBaseUrl: string, tmpDir: string, configured: bool };
 
 export function resolveRelayConfig(rawRelayUrl: string, rawRelayWsUrl: string, rawWebUrl: string, rawTmpDir: string): RelayConfig {
@@ -211,8 +219,9 @@ export function shareProblem(server: string, credentialSecret: string, cfg: Rela
     return "the relay's terminal socket needs TLS\n"
       + "  it advertised\n"
       + "    " + cfg.wsUrl + "\n"
-      + "  and this build can only open a plain TCP socket, so a share\n"
-      + "  would create a session and never attach its terminal to it\n"
+      + "  and this build cannot yet read what comes back over that\n"
+      + "  socket, so a share would create a session and never attach\n"
+      + "  its terminal to it\n"
       + "  ask whoever runs that relay to advertise a plain ws:// address\n"
       + "  for the terminal socket, with TLS terminated in front of it";
   }

@@ -2,8 +2,32 @@ import { Step, STEP_WAIT, STEP_MESSAGE, STEP_PONG, STEP_CLOSE, STEP_FAIL, drain 
 import { Frame, Assembly, OP_TEXT, OP_BINARY, OP_CLOSE, OP_PING, OP_PONG, CLOSE_NORMAL, encodeFrame, decodeFrame, encodeClose, newAssembly, addFrame } from "./frame.ts";
 import { Accepted, newKey, upgradeRequest, readAccept } from "./handshake.ts";
 
+export type Transport = {
+  write: (chunk: string) => void,
+  read: () => string,
+  close: () => void,
+};
+
+export function socketTransport(sock: Socket): Transport {
+  let t: Transport = {
+    write: (chunk: string) => sock.write(chunk),
+    read: () => sock.read(),
+    close: () => sock.close(),
+  };
+  return t;
+}
+
+export function httpStreamTransport(stream: HttpStream): Transport {
+  let t: Transport = {
+    write: (chunk: string) => stream.write(chunk),
+    read: () => stream.read(),
+    close: () => stream.close(),
+  };
+  return t;
+}
+
 export type Connection = {
-  socket: Socket,
+  socket: Transport,
   ok: bool,
   buffer: string,
   open: bool,
@@ -32,12 +56,12 @@ export function connectWebSocket(host: string, port: int, path: string, extraHea
     let answer = readAccept(buffer, key);
     if (answer.error != "") {
       socket.close();
-      let refused: Connection = { socket: socket, ok: false, buffer: "", open: false, error: answer.error };
+      let refused: Connection = { socket: socketTransport(socket), ok: false, buffer: "", open: false, error: answer.error };
       return refused;
     }
     if (answer.ok) {
       let out: Connection = {
-        socket: socket, ok: true,
+        socket: socketTransport(socket), ok: true,
         buffer: buffer.slice(answer.consumed, buffer.length),
         open: true, error: "",
       };
@@ -46,13 +70,13 @@ export function connectWebSocket(host: string, port: int, path: string, extraHea
     let chunk = socket.read();
     if (chunk == "") {
       socket.close();
-      let dead: Connection = { socket: socket, ok: false, buffer: "", open: false,
+      let dead: Connection = { socket: socketTransport(socket), ok: false, buffer: "", open: false,
         error: "the server closed during the handshake" };
       return dead;
     }
     buffer = buffer + chunk;
   }
-  let never: Connection = { socket: socket, ok: false, buffer: "", open: false, error: "unreachable" };
+  let never: Connection = { socket: socketTransport(socket), ok: false, buffer: "", open: false, error: "unreachable" };
   return never;
 }
 
@@ -150,4 +174,3 @@ export function sendClose(conn: Connection, code: int, reason: string): void {
   if (!conn.open) { return; }
   conn.socket.write(encodeClose(code, reason, true, maskKey()));
 }
-
