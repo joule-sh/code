@@ -1,7 +1,7 @@
 {
   "name": "joule-editor",
   "displayName": "Joule",
-  "description": "An agentic coding session in a side panel, driven by the joule daemon on your own machine.",
+  "description": "Joule Code — Always-on agents. An agentic coding session in a side panel, driven by the joule daemon on your own machine.",
   "version": "0.0.0",
   "publisher": "joule-sh",
   "license": "MIT",

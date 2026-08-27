@@ -1,4 +1,4 @@
-# joule
+# Joule Code — Always-on agents
 
 An AI coding agent that runs in your terminal and can be driven from a browser.
 

@@ -1,9 +1,10 @@
-# Joule for the editor
+# Joule Code — Always-on agents
 
-An agentic coding session in a side panel, driven by the `joule` you already
-run in a terminal. The agent reads and edits the files in your workspace, runs
-commands and makes commits **on your own machine** - the panel is a front end
-to a local daemon, not a hosted service and not a second agent.
+The editor panel: an agentic coding session in a side panel, driven by the
+`joule` you already run in a terminal. The agent reads and edits the files in
+your workspace, runs commands and makes commits **on your own machine** - the
+panel is a front end to a local daemon, not a hosted service and not a second
+agent.
 
 A terminal and this panel can drive the same session at the same time. Change
 the model or the approval mode in either one and the other moves with it,
@@ -36,11 +37,10 @@ CI. An npm install is found without any setting being pointed at it: npm
 writes a `joule.cmd` on `PATH` rather than a `joule.exe`, and the panel
 resolves and runs that the way a terminal would.
 
-**WSL and Remote-SSH still work, and are still worth choosing if your files
-live there.** The extension declares itself a workspace extension, so opening
-a folder through WSL, Remote-SSH or a dev container runs it on the remote
-side, next to the `joule` and the files that are there. What changed is that
-a native Windows folder no longer needs that.
+**WSL and Remote-SSH work, and are worth choosing if your files live there.**
+The extension declares itself a workspace extension, so opening a folder
+through WSL, Remote-SSH or a dev container runs it on the remote side, next to
+the `joule` and the files that are there.
 
 ## What the panel does
 
@@ -48,8 +48,7 @@ a native Windows folder no longer needs that.
 sentence on what joule is, and the three ways it can reach a model - a joule
 account, your own provider key, or a self-hosted joule server - each as its
 own button. A missing `joule`, a `joule` too old to drive, and a configuration
-that cannot start a session all land here with a sentence about what to do,
-rather than a red error somewhere in the corner.
+that cannot start a session all land here with a sentence about what to do.
 
 **An API key is never typed into the panel.** The provider-key route opens
 `~/.config/joule-code/config.json` in the editor and says so. The extension
@@ -112,14 +111,14 @@ started and stopped through it.
 
 ## Versions, and what happens when they disagree
 
-The extension and the CLI are cut from the same tag, so a `0.18.0` extension
-and a `0.18.0` binary are the pair that was tested together. Attaching runs
-`joule --version` first and refuses to go further when the binary is missing,
-is not a joule, or is older than 0.13.0 - the release that first shipped the
-daemon and attach socket this panel talks to. A mismatch is one sentence in
-the panel rather than a session that dies on the first frame it does not
-recognise. A binary built from a checkout reports `dev` and is taken at its
-word.
+The extension and the CLI are cut from the same tag, so an extension and a
+binary carrying the same version are the pair that was tested together.
+Attaching runs `joule --version` first and refuses to go further when the
+binary is missing, is not a joule, or is older than 0.13.0 - the floor
+`MINIMUM_BINARY_VERSION` in [`src/binary.js`](src/binary.js) holds, and the
+release this panel first shipped in. A mismatch is one sentence in the panel
+rather than a session that dies on the first frame it does not recognise. A
+binary built from a checkout reports `dev` and is taken at its word.
 
 ## Installing without the marketplace
 
