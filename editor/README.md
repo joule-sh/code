@@ -7,8 +7,7 @@ panel is a front end to a local daemon, not a hosted service and not a second
 agent.
 
 A terminal and this panel can drive the same session at the same time. Change
-the model or the approval mode in either one and the other moves with it,
-because both are talking to the same daemon over the same protocol.
+the model or the approval mode in either one and the other moves with it.
 
 ## Before you install: this needs the joule CLI
 
@@ -30,17 +29,12 @@ reads one, and never forwards one.
 
 ## Windows
 
-**The panel drives a Windows joule the same way it drives a Linux one.** It
-starts a daemon, attaches to it, runs turns through it and stops it, and a
-real editor window doing exactly that on Windows is part of this project's
-CI. An npm install is found without any setting being pointed at it: npm
-writes a `joule.cmd` on `PATH` rather than a `joule.exe`, and the panel
-resolves and runs that the way a terminal would.
+**The panel drives a Windows joule the same way it drives a Linux one.** An
+npm install is found without any setting being pointed at it.
 
 **WSL and Remote-SSH work, and are worth choosing if your files live there.**
-The extension declares itself a workspace extension, so opening a folder
-through WSL, Remote-SSH or a dev container runs it on the remote side, next to
-the `joule` and the files that are there.
+Opening a folder through WSL, Remote-SSH or a dev container runs the extension
+on the remote side, next to the `joule` and the files that are there.
 
 ## What the panel does
 
@@ -114,11 +108,10 @@ started and stopped through it.
 The extension and the CLI are cut from the same tag, so an extension and a
 binary carrying the same version are the pair that was tested together.
 Attaching runs `joule --version` first and refuses to go further when the
-binary is missing, is not a joule, or is older than 0.13.0 - the floor
-`MINIMUM_BINARY_VERSION` in [`src/binary.js`](src/binary.js) holds, and the
-release this panel first shipped in. A mismatch is one sentence in the panel
-rather than a session that dies on the first frame it does not recognise. A
-binary built from a checkout reports `dev` and is taken at its word.
+binary is missing, is not a joule, or is older than **0.13.0**, the oldest
+release this panel can drive. You get one sentence in the panel saying so,
+rather than a session that fails part-way through. A binary built from a
+checkout reports `dev` and is taken at its word.
 
 ## Installing without the marketplace
 
@@ -132,13 +125,10 @@ code --install-extension joule-editor-<version>.vsix
 
 or the Extensions view, through _Install from VSIX_.
 
-## Source, issues, and how it works
+## Source and issues
 
-The extension is plain JavaScript with no dependencies and no build step, in
+The extension lives in
 [`editor/`](https://github.com/joule-sh/code/tree/main/editor) of the
 [joule-sh/code](https://github.com/joule-sh/code) repository, MIT licensed.
 
-- [Report a bug or ask for something](https://github.com/joule-sh/code/issues)
-- [How the panel is built, and why](https://github.com/joule-sh/code/blob/main/docs/04-editor.md) -
-  workspace-to-daemon mapping, trust level, where tools run, lifecycle, and
-  what is reused from the terminal client rather than rewritten
+[Report a bug or ask for something](https://github.com/joule-sh/code/issues)
