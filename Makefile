@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness relay-tls-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -305,6 +305,16 @@ relay-reconnect-harness: bin/relay
 # nothing (#280). The bare shape is driven too, since staging advertises one.
 relay-path-advert-harness: build bin/stub_model
 	node scripts/verify_relay_path_advert.mjs
+
+# #319: a terminal socket advertised as wss:// cannot be dialled by this
+# client - net.connect is plaintext, and Lumen has no TLS-capable socket
+# primitive to reach for instead. Retrying that against a real edge just
+# spends the outage budget on something no retry ever fixes, so this is
+# refused up front (client_logic.ts's shareProblem) rather than left to the
+# generic outage/give-up path. Driven under a real pty on the built binary,
+# because the fix is what the terminal prints and when, not a return value.
+relay-tls-advert-harness: build bin/stub_model
+	python3 scripts/verify_relay_tls_advert_pty.py
 
 # A relay restart, driven the way one happens: the process is killed, a
 # replacement comes up on the same ports, and nobody touches the terminal.

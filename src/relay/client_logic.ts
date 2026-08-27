@@ -146,7 +146,7 @@ export function relayBaseUrl(raw: string): string {
   return "" + text.slice(0, end);
 }
 
-export type RelayConfig = { host: string, httpBaseUrl: string, wsPort: int, webBaseUrl: string, tmpDir: string, configured: bool };
+export type RelayConfig = { host: string, httpBaseUrl: string, wsPort: int, wsUrl: string, wsNeedsTls: bool, webBaseUrl: string, tmpDir: string, configured: bool };
 
 export function resolveRelayConfig(rawRelayUrl: string, rawRelayWsUrl: string, rawWebUrl: string, rawTmpDir: string): RelayConfig {
   let httpAt = splitEndpoint(rawRelayUrl);
@@ -155,8 +155,10 @@ export function resolveRelayConfig(rawRelayUrl: string, rawRelayWsUrl: string, r
   let webBaseUrl = rawWebUrl.trim();
   let tmpDir = rawTmpDir;
   if (tmpDir == "") { tmpDir = "/tmp"; }
+  let wsUrl = rawRelayWsUrl.trim();
   let cfg: RelayConfig = {
     host: httpAt.host, httpBaseUrl: httpBaseUrl, wsPort: wsAt.port,
+    wsUrl: wsUrl, wsNeedsTls: wsUrl.toLowerCase().startsWith("wss://"),
     webBaseUrl: webBaseUrl, tmpDir: tmpDir,
     configured: httpAt.ok && httpBaseUrl != "" && wsAt.ok && webBaseUrl != "",
   };
@@ -204,6 +206,15 @@ export function shareProblem(server: string, credentialSecret: string, cfg: Rela
     return server + " did not say where its relay is\n"
       + "  sign in again with /login to pick that up, or set\n"
       + "  " + RELAY_URL_ENV + ", " + RELAY_WS_URL_ENV + " and " + WEB_URL_ENV + ".";
+  }
+  if (cfg.wsNeedsTls) {
+    return "the relay's terminal socket needs TLS\n"
+      + "  it advertised\n"
+      + "    " + cfg.wsUrl + "\n"
+      + "  and this build can only open a plain TCP socket, so a share\n"
+      + "  would create a session and never attach its terminal to it\n"
+      + "  ask whoever runs that relay to advertise a plain ws:// address\n"
+      + "  for the terminal socket, with TLS terminated in front of it";
   }
   return "";
 }
