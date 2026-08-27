@@ -15,13 +15,19 @@ The extension does not carry an agent. It starts and attaches to a `joule`
 daemon, so the binary has to be on the machine the workspace is on:
 
 ```sh
+npm install -g @joule-sh/code
+```
+
+That covers all four platforms, Windows included. A script does the same on
+x86_64 Linux, Apple Silicon macOS and Intel macOS, and needs no Node:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
-That installs `joule` for x86_64 Linux, Apple Silicon macOS and Intel macOS.
-On Windows, install from npm with `npm install -g @joule-sh/code`, or take
-the `code-x86_64-windows.zip` a release publishes. The extension needs **joule
-0.13.0 or newer**. If `joule` is not on `PATH`, point
+Either one offers to update itself. A release also publishes
+`code-x86_64-windows.zip` if you would rather have neither. The extension needs
+**joule 0.13.0 or newer**. If `joule` is not on `PATH`, point
 [`joule.path`](#settings) at it.
 
 Credentials stay with the CLI. The panel never asks for an API key, never

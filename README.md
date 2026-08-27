@@ -6,21 +6,20 @@ Pre-1.0.
 
 ## Install
 
-macOS and Linux:
+```sh
+npm i -g @joule-sh/code
+```
+
+That covers all four platforms, Windows included. On Linux and macOS a script
+does the same and needs no Node:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/joule-sh/code/main/install.sh | sh
 ```
 
-Windows, or any platform, from npm:
-
-```sh
-npm i -g @joule-sh/code
-```
-
 Both install `joule` and `relay` at the same version, and run every binary
-before reporting success. Runs as `joule`, not `code`. It offers to update
-itself; there is no update command.
+before reporting success. Runs as `joule`, not `code`. Either one offers to
+update itself; there is no update command.
 
 Prebuilt for x86_64 Linux, Apple Silicon macOS, Intel macOS and x86_64 Windows,
 and every release carries the plain archives too, including
