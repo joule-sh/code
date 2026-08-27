@@ -67,6 +67,11 @@ export class SessionWorker {
     if (activeUplink != null) { activeUplink.tick(this.session, this.gate, this.bridge); }
   }
 
+  pumpRelayUplink(): void {
+    let activeUplink = this.currentUplink();
+    if (activeUplink != null) { activeUplink.pump(); }
+  }
+
   pollForApproval(): void {
     this.drainOnce();
     this.pollRelayUplink();

@@ -125,6 +125,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   session.subscribe((frameJson: string) => {
     let undelivered = appendBroadcast(runtimeDir, frameJson);
     if (undelivered != "") { logDaemon("no attached client will see " + describeFrame(frameJson) + ": " + undelivered); }
+    worker.pumpRelayUplink();
     if (frameType(frameJson) == TURN_START) {
       let f = decodeTurnStart(frameJson);
       if (f != null) { tracker.setCurrent(f.turnId); }

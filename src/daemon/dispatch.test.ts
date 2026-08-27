@@ -57,6 +57,7 @@ function fakeUplink(): ShareController {
       let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://console.example.com/terminal/sessions?code=ABCDEF", error: "" };
       return r;
     },
+    pump: () => {},
     tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => {},
   };
 }

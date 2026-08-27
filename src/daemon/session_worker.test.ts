@@ -66,8 +66,34 @@ function fakeUplink(): ShareController {
       let r: ShareResult = { ok: true, code: "ABCDEF", url: "https://console.example.com/terminal/sessions?code=ABCDEF", error: "" };
       return r;
     },
+    pump: () => {},
     tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => {},
   };
+}
+
+class UplinkCalls {
+  pumps: int;
+  ticks: int;
+  constructor() {
+    this.pumps = 0;
+    this.ticks = 0;
+  }
+  notePump(): void {
+    this.pumps = this.pumps + 1;
+  }
+  noteTick(): void {
+    this.ticks = this.ticks + 1;
+  }
+  asController(): ShareController {
+    return {
+      ensureStarted: (workspaceRoot: string, model: string) => {
+        let r: ShareResult = { ok: true, code: "ABCDEF", url: "", error: "" };
+        return r;
+      },
+      pump: () => this.notePump(),
+      tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => this.noteTick(),
+    };
+  }
 }
 
 test("a fresh worker is not stopping", () => {
@@ -150,4 +176,35 @@ test("a share.request with no uplink set answers share.failed rather than crashi
 
   expect(cap.frames.length > 0);
   expect(frameType(cap.frames[cap.frames.length - 1]) == SHARE_FAILED);
+});
+
+test("pumpRelayUplink pushes the uplink on its own, without waiting for a tick", () => {
+  let worker = newWorker(freshRuntimeDir("pump-uplink"));
+  let calls = new UplinkCalls();
+  worker.setRelayUplink(calls.asController());
+
+  worker.pumpRelayUplink();
+  worker.pumpRelayUplink();
+
+  expect(calls.pumps == 2);
+  expect(calls.ticks == 0);
+});
+
+test("pumpRelayUplink with no uplink set does nothing rather than crashing", () => {
+  let worker = newWorker(freshRuntimeDir("pump-no-uplink"));
+  worker.pumpRelayUplink();
+  expect(worker.currentUplink() == null);
+});
+
+test("a turn's frames each push the uplink as they are emitted, not once the turn is over", () => {
+  let worker = newWorker(freshRuntimeDir("pump-per-frame"));
+  let calls = new UplinkCalls();
+  worker.setRelayUplink(calls.asController());
+  worker.session.subscribe((frameJson: string) => { worker.pumpRelayUplink(); });
+
+  let before = calls.pumps;
+  worker.session.submit("say something");
+
+  expect(calls.pumps > before + 1);
+  expect(calls.ticks == 0);
 });

@@ -6,5 +6,6 @@ export type ShareResult = { ok: bool, code: string, url: string, error: string }
 
 export type ShareController = {
   ensureStarted: (workspaceRoot: string, model: string) => ShareResult,
+  pump: () => void,
   tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => void,
 };

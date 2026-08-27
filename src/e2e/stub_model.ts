@@ -1,5 +1,5 @@
 import { scriptedResponseBodyFor } from "./stub_script.ts";
-import { chunkedSseResponse, badRequestResponse, readStubRequest } from "./stub_http.ts";
+import { chunkedSseResponse, sseHead, sseChunk, sseTerminator, sseEvents, badRequestResponse, readStubRequest } from "./stub_http.ts";
 import { requestContractProblem } from "./stub_contract.ts";
 import { appendFile, envOr } from "../vendor/platform/platform.ts";
 
@@ -11,12 +11,26 @@ function envInt(name: string, fallback: int): int {
 const PORT: int = envInt("E2E_STUB_PORT", 0);
 const LOG_PATH: string = envOr("E2E_STUB_LOG", "");
 const SCRIPT: string = envOr("E2E_STUB_SCRIPT", "");
+const CHUNK_DELAY_MS: int = envInt("E2E_STUB_CHUNK_DELAY_MS", 0);
 
 let requestCount: int = 0;
 
 function logRequest(body: string): void {
   if (LOG_PATH == "") { return; }
   appendFile(LOG_PATH, body + "\n<<<END>>>\n");
+}
+
+function writeScripted(socket: Socket, body: string): void {
+  if (CHUNK_DELAY_MS <= 0) {
+    socket.write(chunkedSseResponse(body));
+    return;
+  }
+  socket.write(sseHead());
+  for (const event of sseEvents(body)) {
+    process.sleep(CHUNK_DELAY_MS);
+    socket.write(sseChunk(event));
+  }
+  socket.write(sseTerminator());
 }
 
 function handleConnection(socket: Socket): void {
@@ -35,7 +49,7 @@ function handleConnection(socket: Socket): void {
   }
   let step = requestCount;
   requestCount = requestCount + 1;
-  socket.write(chunkedSseResponse(scriptedResponseBodyFor(SCRIPT, step)));
+  writeScripted(socket, scriptedResponseBodyFor(SCRIPT, step));
   socket.close();
 }
 

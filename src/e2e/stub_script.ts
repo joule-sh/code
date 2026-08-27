@@ -1,4 +1,5 @@
 import { isWindows } from "../vendor/platform/platform.ts";
+import { sseEvents } from "./stub_http.ts";
 
 const READ_ARG_PATH: string = "README.md";
 const POSIX_RUN_FIX_COMMAND: string = "echo 'Added a health check note.' >> README.md";
@@ -27,8 +28,14 @@ const TRANSCRIPT_SCRIPT: string = "transcript";
 const TRANSCRIPT_READ_PATH: string = "server.js";
 const TRANSCRIPT_RUN_COMMAND: string = "sh noisy.sh";
 const WRAP_SCRIPT: string = "wrap";
+const SLOW_SCRIPT: string = "slow";
+export const SLOW_DELTA_COUNT: int = 6;
 export const WRAP_PROSE: string = "I read the server and the handler it registers, and the only thing missing is a health route, so I will add one now and then run the whole test suite to be sure nothing else moved while I was in there.";
 export const WRAP_RUN_COMMAND: string = "npm run build --silent && npm test -- --reporter=verbose --runInBand tests/health.spec.js tests/routes.spec.js";
+
+function sseEventCount(body: string): int {
+  return sseEvents(body).length;
+}
 
 function joinComma(parts: string[]): string {
   let out = "";
@@ -163,6 +170,29 @@ function wrapStepBody(): string {
     + DONE_LINE;
 }
 
+function slowDeltas(prefix: string): string {
+  let out = "";
+  let i: int = 0;
+  while (i < SLOW_DELTA_COUNT) {
+    out = out + textDeltaChunk(prefix + `${i}` + " ");
+    i = i + 1;
+  }
+  return out;
+}
+
+function slowRunStepBody(): string {
+  let args = toolCallArgs([strField("command", runFixCommand())]);
+  let fragment = toolCallFragmentJson(0, "call_run_slow", "run", args);
+  return slowDeltas("thinking ")
+    + toolCallChunk(fragment)
+    + finishChunk("tool_calls")
+    + DONE_LINE;
+}
+
+function slowFinalStepBody(): string {
+  return slowDeltas("wrapping ") + finishChunk("stop") + DONE_LINE;
+}
+
 function skillsRunStepBody(): string {
   let args = toolCallArgs([strField("command", SKILLS_RUN_COMMAND)]);
   let fragment = toolCallFragmentJson(0, "call_run_1", "run", args);
@@ -181,6 +211,10 @@ export function scriptedResponseBodyFor(script: string, step: int): string {
   if (script == SKILLS_SCRIPT) {
     if (step <= 0) { return skillsRunStepBody(); }
     return finalStepBody();
+  }
+  if (script == SLOW_SCRIPT) {
+    if (step <= 0) { return slowRunStepBody(); }
+    return slowFinalStepBody();
   }
   if (script == WRAP_SCRIPT) {
     if (step <= 0) { return wrapStepBody(); }
@@ -277,4 +311,21 @@ test("wrapStepBody carries prose and a command that both outrun an 80 column ter
 test("the wrap script answers its first step with the long prose and its next with the close", () => {
   expect(scriptedResponseBodyFor("wrap", 0) == wrapStepBody());
   expect(scriptedResponseBodyFor("wrap", 1) == finalStepBody());
+});
+
+test("the slow script streams several deltas before it asks to run anything", () => {
+  let first = scriptedResponseBodyFor("slow", 0);
+  expect(sseEventCount(first) == SLOW_DELTA_COUNT + 3);
+  expect(first.indexOf("thinking 0 ") >= 0);
+  expect(first.indexOf("thinking " + `${SLOW_DELTA_COUNT - 1}` + " ") >= 0);
+  expect(first.indexOf(runFixCommand()) > first.indexOf("thinking 0 "));
+  expect(first.indexOf("\"name\":\"run\"") >= 0);
+});
+
+test("the slow script keeps streaming after the approval, then closes the turn", () => {
+  let second = scriptedResponseBodyFor("slow", 1);
+  expect(sseEventCount(second) == SLOW_DELTA_COUNT + 2);
+  expect(second.indexOf("wrapping 0 ") >= 0);
+  expect(second.indexOf("\"finish_reason\":\"stop\"") >= 0);
+  expect(second.indexOf("tool_calls") < 0);
 });

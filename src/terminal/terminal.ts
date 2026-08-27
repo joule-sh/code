@@ -8,7 +8,7 @@ import { Gate, MODE_AUTO_EDIT, MODE_PLAN } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
-import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
 import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
@@ -32,6 +32,7 @@ import { wireForegroundRunner } from "../tools/run_foreground.ts";
 import { TaskRunner, ApprovalResponder } from "../tasks/types.ts";
 import { isTaskTurnId, appendTaggedFrame, TaggedTurns, tryHandleAgentApprovalChar, tryHandleAgentApprovalArrow, tryHandleAgentApprovalEnter, cancelCommandArg } from "./tasks_bridge.ts";
 import { resolveResume, persistTurnEnd } from "./resume.ts";
+import { shareHello, announceMode, announceModel } from "./announce.ts";
 import { GateBox, RelayBox, TasksBox, screenRows, hasFlag, isValidMode, nextMode } from "./slots.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { PendingUpdateInstall, tryHandleUpdateOfferArrow, tryHandleUpdateOfferEnter, tryHandleUpdateOfferChar } from "./update_offer.ts";
@@ -183,12 +184,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       return;
     }
-    let hello: SessionHelloFrame = {
-      v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
-      sessionId: relay.sessionId, workspace: workspaceRoot, model: displayModel(live.cfg),
-      mode: session.mode, protocol: PROTOCOL_VERSION, build: VERSION,
-    };
-    relay.publish(encodeSessionHello(hello));
+    relay.publish(shareHello(session, relay.sessionId, workspaceRoot, displayModel(live.cfg), gate.mode));
     sb.append("\nattached - code " + result.code + " - " + result.url);
     drawScreen(sb, input, gate.mode, rk);
   };
@@ -280,6 +276,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (k.kind == KEY_BACKTAB) {
       gate.mode = nextMode(gate.mode);
+      announceMode(session, gate.mode);
       drawScreen(sb, input, gate.mode, rk);
       continue;
     }
@@ -375,7 +372,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
         sb.append("\nmodel: " + displayModel(live.cfg));
       } else {
         live.cfg = { baseUrl: live.cfg.baseUrl, model: wireModel(live.cfg.baseUrl, cmd.arg), apiKey: live.cfg.apiKey };
-        sb.append("\nmodel set to " + displayModel(live.cfg));
+        announceModel(session, displayModel(live.cfg));
       }
       drawScreen(sb, input, gate.mode, rk);
       continue;
@@ -387,7 +384,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       } else if (isValidMode(cmd.arg)) {
         if (cmd.arg == MODE_PLAN && gate.mode != MODE_PLAN) { enterPlanMode(planDecision, session, gate.mode); }
         gate.mode = cmd.arg;
-        sb.append("\nmode set to " + cmd.arg);
+        announceMode(session, gate.mode);
       } else {
         sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, safe-auto, full-auto, or plan)");
       }

@@ -58,15 +58,19 @@ export class RelayUplink {
     return ok;
   }
 
-  tick(session: Session, gate: Gate, bridge: RelayInputBridge): void {
-    if (this.relay.isAttached()) {
-      let entries = this.reader.drainNew();
-      for (const e of entries) {
-        if (e.tag != BROADCAST_TAG_FRAME) { continue; }
-        if (frameType(e.payload) == SESSION_HELLO) { this.relay.helloFrame = copyHello(e.payload); }
-        this.relay.publish(e.payload);
-      }
+  pump(): void {
+    if (!this.relay.isAttached()) { return; }
+    let entries = this.reader.drainNew();
+    for (const e of entries) {
+      if (e.tag != BROADCAST_TAG_FRAME) { continue; }
+      if (frameType(e.payload) == SESSION_HELLO) { this.relay.helloFrame = copyHello(e.payload); }
+      this.relay.publish(e.payload);
+    }
+  }
 
+  tick(session: Session, gate: Gate, bridge: RelayInputBridge): void {
+    this.pump();
+    if (this.relay.isAttached()) {
       let frames = this.relay.pollInbound();
       for (const f of frames) {
         if (isDownstreamAllowed(frameType(f))) { dispatchInboundFrame(session, gate, bridge, f); }
@@ -85,6 +89,7 @@ export class RelayUplink {
   asShareController(): ShareController {
     return {
       ensureStarted: (workspaceRoot: string, model: string) => this.ensureStarted(workspaceRoot, model),
+      pump: () => this.pump(),
       tick: (session: Session, gate: Gate, bridge: RelayInputBridge) => this.tick(session, gate, bridge),
     };
   }
