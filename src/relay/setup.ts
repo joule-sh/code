@@ -9,7 +9,7 @@ export function configureRelayFromDisk(relay: RelayClient, argv: string[]): void
   let cred = loadCredential(serverBase);
   let cfg = loadRelayConfig(cred.relayUrl, cred.relayWsUrl, cred.webUrl);
   relay.host = cfg.host;
-  relay.httpPort = cfg.httpPort;
+  relay.httpBaseUrl = cfg.httpBaseUrl;
   relay.wsPort = cfg.wsPort;
   relay.webBaseUrl = cfg.webBaseUrl;
   relay.tmpDir = cfg.tmpDir;

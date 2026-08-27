@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, relayBaseUrl, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -125,10 +125,42 @@ test("resolveRelayConfig takes every field from the urls it is given", () => {
   let cfg = resolveRelayConfig("http://relay.example.com:9090", "ws://relay.example.com:9091", "https://console.example.com/terminal/sessions", "/var/tmp");
   expect(cfg.configured);
   expect(cfg.host == "relay.example.com");
-  expect(cfg.httpPort == 9090);
+  expect(cfg.httpBaseUrl == "http://relay.example.com:9090");
   expect(cfg.wsPort == 9091);
   expect(cfg.webBaseUrl == "https://console.example.com/terminal/sessions");
   expect(cfg.tmpDir == "/var/tmp");
+});
+
+test("relayBaseUrl keeps a relay served on a path whole, and joins /sessions once", () => {
+  expect(relayBaseUrl("https://joule.sh/relay") == "https://joule.sh/relay");
+  expect(relayBaseUrl("https://joule.sh/relay/") == "https://joule.sh/relay");
+  expect(relayBaseUrl("  https://joule.sh/relay//  ") == "https://joule.sh/relay");
+  expect(relayBaseUrl("http://127.0.0.1:8790") == "http://127.0.0.1:8790");
+  expect(relayBaseUrl("") == "");
+  let slashes = "/" + "/" + "/";
+  expect(relayBaseUrl(slashes) == "");
+  expect(relayBaseUrl("https://joule.sh/relay") + "/sessions" == "https://joule.sh/relay/sessions");
+  expect(relayBaseUrl("https://joule.sh/relay/") + "/sessions" == "https://joule.sh/relay/sessions");
+});
+
+test("resolveRelayConfig keeps the advertised url verbatim, scheme and path and all", () => {
+  let cfg = resolveRelayConfig("https://joule.sh/relay", "wss://joule.sh:8791", "https://joule.sh/terminal/sessions", "");
+  expect(cfg.configured);
+  expect(cfg.httpBaseUrl == "https://joule.sh/relay");
+  expect(cfg.httpBaseUrl + "/sessions" == "https://joule.sh/relay/sessions");
+});
+
+test("resolveRelayConfig still carries a bare host and port advert unchanged", () => {
+  let cfg = resolveRelayConfig("http://100.89.7.80:8790", "ws://100.89.7.80:8791", "https://c/terminal/sessions", "");
+  expect(cfg.configured);
+  expect(cfg.httpBaseUrl == "http://100.89.7.80:8790");
+  expect(cfg.host == "100.89.7.80");
+  expect(cfg.wsPort == 8791);
+});
+
+test("an advert that is not a url leaves the client unconfigured rather than guessed at", () => {
+  expect(!resolveRelayConfig("joule.sh/relay", "ws://h:2", "https://c/terminal/sessions", "").configured);
+  expect(!resolveRelayConfig("/relay", "ws://h:2", "https://c/terminal/sessions", "").configured);
 });
 
 test("shareProblem names the server when there is no credential to share under", () => {

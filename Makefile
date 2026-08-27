@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -296,6 +296,15 @@ npm-package:
 
 relay-reconnect-harness: bin/relay
 	node scripts/verify_relay_reconnect.mjs
+
+# The one shape nothing drove before #317: a relay reached through a path on
+# a shared gateway rather than on a port of its own, which is what production
+# is. It serves its own relay behind a reverse proxy under /relay and asserts
+# on the request line that proxy received, because a check that only asks
+# whether the share worked passes against a bare host and port and proves
+# nothing (#280). The bare shape is driven too, since staging advertises one.
+relay-path-advert-harness: build bin/stub_model
+	node scripts/verify_relay_path_advert.mjs
 
 # A relay restart, driven the way one happens: the process is killed, a
 # replacement comes up on the same ports, and nobody touches the terminal.

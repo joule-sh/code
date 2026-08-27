@@ -167,7 +167,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     moveActiveApprovalSelection: (delta: int, count: int) => tasks.moveActiveApprovalSelection(delta, count),
   };
 
-  let relay = new RelayClient("", 0, 0, "", "");
+  let relay = new RelayClient("", "", 0, "", "");
   let bridge = new RelayInputBridge();
   relayBox.set(relay, session, bridge);
 

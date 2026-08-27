@@ -429,6 +429,21 @@ jobs:
       - run: node --version
       - run: make relay-reconnect-harness
 
+  relay-path-advert:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: node --version
+      - run: make relay-path-advert-harness
+
   relay-reshare:
     runs-on: [self-hosted, diff]
     timeout-minutes: 15
@@ -608,6 +623,12 @@ jobs:
       # its console by is another field parsed out of a create command and
       # kept, so it is another thing a released collector could lose (#296).
       - run: node scripts/verify_owner_admission.mjs
+      # And one step further out: the relay address itself is now a URL the
+      # client keeps rather than a host and a port it rebuilt, so it is a
+      # string parsed out of a credential file and held for the life of a
+      # share - the same shape as #292. A released collector is the only one
+      # that can lose it, so the path-served relay is driven here too.
+      - run: node scripts/verify_relay_path_advert.mjs
 
   # The macOS counterpart to linux-release, and the only job that sees what a
   # release actually publishes. The `macos` job above builds for the runner and

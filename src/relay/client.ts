@@ -10,7 +10,7 @@ type CreateSessionRequest = { workspace: string, model: string, credentialSecret
 
 export class RelayClient {
   host: string;
-  httpPort: int;
+  httpBaseUrl: string;
   wsPort: int;
   webBaseUrl: string;
   tmpDir: string;
@@ -47,9 +47,9 @@ export class RelayClient {
   inboundQueue: string[];
   diagnostics: string[];
 
-  constructor(host: string, httpPort: int, wsPort: int, webBaseUrl: string, tmpDir: string) {
+  constructor(host: string, httpBaseUrl: string, wsPort: int, webBaseUrl: string, tmpDir: string) {
     this.host = host;
-    this.httpPort = httpPort;
+    this.httpBaseUrl = httpBaseUrl;
     this.wsPort = wsPort;
     this.webBaseUrl = webBaseUrl;
     this.tmpDir = tmpDir;
@@ -85,7 +85,7 @@ export class RelayClient {
   }
 
   whereHttp(): string {
-    return "http://" + this.host + ":" + `${this.httpPort}`;
+    return this.httpBaseUrl;
   }
 
   reachFailure(where: string, status: int, body: string): string {
