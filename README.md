@@ -1,4 +1,4 @@
-# joule
+# Joule Code: Always-on agents
 
 An AI coding agent that runs in your terminal and can be driven from a browser.
 
@@ -52,7 +52,7 @@ Install `joule` first; [editor/README.md](editor/README.md) has the settings.
 ## Share it to a browser
 
 `/share` prints a URL and a six-character code. The session appears in the
-console as a conversation you can read and reply in from any browser - nothing
+console as a conversation you can read and reply in from any browser. Nothing
 runs in the browser. A console signed in to the account that shared it needs no
 code.
 
