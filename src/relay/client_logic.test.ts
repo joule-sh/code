@@ -190,11 +190,11 @@ test("shareProblem is silent once a credential and a relay are both known", () =
   expect(shareProblem("https://console.example.com", "jl_secret", cfg) == "");
 });
 
-test("shareProblem refuses up front when the terminal socket needs TLS this build cannot read back from", () => {
+test("shareProblem lets a wss:// terminal socket through, and says it needs TLS", () => {
   let cfg = resolveRelayConfig("https://joule.sh/relay", "wss://joule.sh/relay-terminal", "https://joule.sh/terminal/sessions", "");
-  let said = shareProblem("https://joule.sh", "jl_secret", cfg);
-  expect(said.indexOf("wss://joule.sh/relay-terminal") >= 0);
-  expect(said.indexOf("TLS") >= 0);
+  expect(shareProblem("https://joule.sh", "jl_secret", cfg) == "");
+  expect(cfg.wsNeedsTls);
+  expect(cfg.wsUrl == "wss://joule.sh/relay-terminal");
 });
 
 test("httpsBaseUrl carries a wss:// advert to its https:// twin, ws:// to http://", () => {

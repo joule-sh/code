@@ -215,16 +215,13 @@ export function shareProblem(server: string, credentialSecret: string, cfg: Rela
       + "  sign in again with /login to pick that up, or set\n"
       + "  " + RELAY_URL_ENV + ", " + RELAY_WS_URL_ENV + " and " + WEB_URL_ENV + ".";
   }
-  if (cfg.wsNeedsTls) {
-    return "the relay's terminal socket needs TLS\n"
-      + "  it advertised\n"
-      + "    " + cfg.wsUrl + "\n"
-      + "  and this build cannot yet read what comes back over that\n"
-      + "  socket, so a share would create a session and never attach\n"
-      + "  its terminal to it\n"
-      + "  ask whoever runs that relay to advertise a plain ws:// address\n"
-      + "  for the terminal socket, with TLS terminated in front of it";
-  }
+  // A wss:// terminal socket used to be refused here (#321): the worker
+  // could only open a plain TCP socket, so a share would have created a
+  // session and never attached a terminal to it, and saying so up front beat
+  // two minutes of retries. The worker now completes the upgrade through
+  // http.stream's TLS connection and reads frames back off it, so there is
+  // nothing left to refuse - cfg.wsNeedsTls picks a transport, not an
+  // outcome.
   return "";
 }
 
