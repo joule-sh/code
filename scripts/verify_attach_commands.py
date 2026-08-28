@@ -75,7 +75,7 @@ def main():
         ok(True, "attach TUI connected to the daemon over a real pty")
 
         session.write("/mode\r")
-        session.wait_for("mode: auto-edit", timeout=5.0)
+        session.wait_for("mode: safe-auto", timeout=5.0)
         ok(True, "/mode with no argument shows the daemon's current mode")
 
         session.write("/mode full-auto\r")

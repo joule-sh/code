@@ -4,7 +4,7 @@ import { displayModel, qualifiedModel, wireModel } from "../providers/platform.t
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
-import { Gate, MODE_AUTO_EDIT, MODE_PLAN } from "../approval/gate.ts";
+import { Gate, MODE_SAFE_AUTO, MODE_PLAN } from "../approval/gate.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
@@ -16,7 +16,8 @@ import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText, skillsStartupNote, runSkillCommand } from "./skills_ui.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArrow, tryHandleModelPickEnter, tryHandleModelPickChar } from "./model_picker.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { noteApprovalBlock } from "./approval_settled.ts";
@@ -80,6 +81,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let pendingApproval = new PendingApproval();
   let signin = new SignIn();
   let planDecision = new PendingPlanDecision();
+  let modelPick = new PendingModelPick();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
   let tasksBox = new TasksBox();
@@ -135,7 +137,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     }
   };
 
-  let gate = new Gate(MODE_AUTO_EDIT, 120000, workspaceRoot, onApprovalRequest, onApprovalPoll);
+  let gate = new Gate(MODE_SAFE_AUTO, 120000, workspaceRoot, onApprovalRequest, onApprovalPoll);
   gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(live.sessionSlot, tracker.current, callId, summary, args));
   gateBox.set(gate);
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
@@ -268,6 +270,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       }
       if (tryHandleUpdateOfferChar(updateOffer, updateInstall, VERSION, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionChar(planDecision, gate, session, bridge, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandleModelPickChar(modelPick, input.buf == "")) { continue; }
       input.push(k.char);
       history.cancelNavigation();
       drawScreen(sb, input, gate.mode, rk);
@@ -295,6 +298,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       }
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandleModelPickArrow(modelPick, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(-1);
         drawScreen(sb, input, gate.mode, rk);
@@ -312,6 +316,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       }
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandleModelPickArrow(modelPick, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(1);
         drawScreen(sb, input, gate.mode, rk);
@@ -343,6 +348,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (tryHandleUpdateOfferEnter(updateOffer, updateInstall, VERSION, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
     if (tryHandlePlanDecisionEnter(planDecision, gate, session, bridge, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
+    if (tryHandleModelPickEnter(modelPick, live, session, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
 
     let line = input.takeAndClear();
     drawScreen(sb, input, gate.mode, rk);
@@ -369,7 +375,10 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
     if (cmd.kind == CMD_MODEL) {
       if (cmd.arg == "") {
-        sb.append("\nmodel: " + displayModel(live.cfg));
+        sb.append("\n" + styleBanner("listing models from " + live.cfg.baseUrl + " ..."));
+        drawScreen(sb, input, gate.mode, rk);
+        let ids = fetchModelIds(live.cfg);
+        openModelPick(modelPick, sb, buildModelEntries(live.cfg, ids));
       } else {
         live.cfg = { baseUrl: live.cfg.baseUrl, model: wireModel(live.cfg.baseUrl, cmd.arg), apiKey: live.cfg.apiKey };
         announceModel(session, displayModel(live.cfg));

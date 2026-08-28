@@ -8,7 +8,7 @@ import { isTaskTurnId, appendTaggedFrame, TaggedTurns } from "./tasks_bridge.ts"
 import { PlanOfferTracker, maybeOfferPlanDecision, tryHandlePlanDecisionArrow, tryHandlePlanDecisionEnter, tryHandlePlanDecisionChar } from "./attach_plan.ts";
 import { isNavigationKey, handleNavigationKey } from "./attach_keys.ts";
 import { TurnWatchdog } from "./attach_watchdog.ts";
-import { MODE_AUTO_EDIT, MODE_PLAN } from "./attach_slots.ts";
+import { MODE_SAFE_AUTO, MODE_PLAN } from "./attach_slots.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { resolveResume, hasContinueFlag } from "./resume.ts";
@@ -131,7 +131,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let tagged = new TaggedTurns();
   let notifier = startUpdateNotifier();
 
-  let approvalLog = new ApprovalLog(attachedMode(result.pending, MODE_AUTO_EDIT));
+  let approvalLog = new ApprovalLog(attachedMode(result.pending, MODE_SAFE_AUTO));
   let state = new ClientState(attachedModel(result.pending, initialModel));
   let watchdog = new TurnWatchdog(result.port);
   let echoes = new LocalPrompts();

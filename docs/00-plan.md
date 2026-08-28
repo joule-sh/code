@@ -439,7 +439,8 @@ not assumed:**
    one.
 2. The demo gates a `run` tool call, not `edit`/`write`. `approval/gate.ts`'s
    `needsAsking` only asks for `edit`/`write` when the mode is not `auto-edit`
-   (the terminal's actual startup default) - in `auto-edit` mode, an edit or a
+   (`safe-auto` is the terminal's startup default now, and it auto-approves
+   edits the same way) - in `auto-edit` mode, an edit or a
    write is auto-approved by design, and only `run` ever reaches the gate.
    The scripted model proposes a `run` command that appends to the seeded
    file, which is the one call in this codebase that can actually produce an
