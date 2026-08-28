@@ -1,4 +1,5 @@
-import { loadConfig } from "../providers/config.ts";
+import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { loadCredential } from "../auth/credentials.ts";
 import { displayModel } from "../providers/platform.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
@@ -73,12 +74,19 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
     return;
   }
 
+  let server = loadServerOrigin(argv);
+  let credential = loadCredential(server.base);
+  let platformScopes = "";
   let registry = new ToolsRegistry(workspaceRoot);
+  if (credential.secret != "") {
+    registry.setPlatformAccess(server.base, credential);
+    platformScopes = credential.scopes;
+  }
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
 
   let tracker = new TurnTracker();
   let watch = new CancelWatch();
-  let live = new LiveProvider(cfg, allToolSchemas(), watch, STDIN_FD, tracker);
+  let live = new LiveProvider(cfg, allToolSchemas(platformScopes), watch, STDIN_FD, tracker);
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => live.ask(h, d) };
 
   let sessionBox = new SessionBox();

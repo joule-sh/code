@@ -1,4 +1,5 @@
 import { ToolSchema } from "../providers/openai.ts";
+import { platformToolSchemas } from "./platform_tools.ts";
 
 export const READ_SCHEMA: ToolSchema = {
   name: "read",
@@ -58,8 +59,17 @@ export function allFileToolSchemas(): ToolSchema[] {
   return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA];
 }
 
-export function allToolSchemas(): ToolSchema[] {
-  return [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA, TASK_STATUS_SCHEMA, SKILL_SCHEMA];
+// The tools every session gets regardless of sign-in state, plus - if
+// `platformScopes` is non-empty - whichever Platform products its key
+// covers. Called with "" (the default: no signed-in credential, or one whose
+// secret is empty) this is exactly the old fixed list, so a signed-out
+// session is unaffected.
+export function allToolSchemas(platformScopes: string): ToolSchema[] {
+  let out: ToolSchema[] = [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA, TASK_STATUS_SCHEMA, SKILL_SCHEMA];
+  if (platformScopes != "") {
+    for (const s of platformToolSchemas(platformScopes)) { out.push(s); }
+  }
+  return out;
 }
 
 export function subagentToolSchemas(): ToolSchema[] {

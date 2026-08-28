@@ -1,5 +1,6 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { loadCredential } from "../auth/credentials.ts";
 import { displayModel, qualifiedModel, wireModel } from "../providers/platform.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -60,11 +61,17 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };
   }
   let server = loadServerOrigin(argv);
+  let credential = loadCredential(server.base);
   let workspaceRoot = currentWorkspaceRoot();
   let resume = resolveResume(argv, workspaceRoot);
   let updateNotifier = startUpdateNotifier(); let updateOffer = new PendingUpdateOffer(); let updateInstall = new PendingUpdateInstall();
 
+  let platformScopes = "";
   let registry = new ToolsRegistry(workspaceRoot);
+  if (credential.secret != "") {
+    registry.setPlatformAccess(server.base, credential);
+    platformScopes = credential.scopes;
+  }
   let tools: ToolRegistry = { run: (t: string, a: string) => registry.dispatch(t, a) };
 
   let sb = new Scrollback();
@@ -76,7 +83,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   let tracker = new TurnTracker();
   let watch = new CancelWatch();
-  let live = new LiveProvider(cfg, allToolSchemas(), watch, STDIN, tracker);
+  let live = new LiveProvider(cfg, allToolSchemas(platformScopes), watch, STDIN, tracker);
   let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => live.ask(h, d) };
 
   let pendingApproval = new PendingApproval();

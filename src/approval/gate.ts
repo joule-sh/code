@@ -14,8 +14,11 @@ export const REPLY_ALWAYS: string = "always";
 
 const DEFAULT_POLL_MS: int = 100;
 
+// web_search and web_retrieve join the read tools: like read/list/grep they
+// change nothing, and the query goes only to the console the user already
+// signed in to with /login - the same account, not a third party.
 function isReadTool(tool: string): bool {
-  return tool == "read" || tool == "list" || tool == "grep" || tool == "skill";
+  return tool == "read" || tool == "list" || tool == "grep" || tool == "skill" || tool == "web_search" || tool == "web_retrieve";
 }
 
 export class Gate {
