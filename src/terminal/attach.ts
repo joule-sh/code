@@ -1,6 +1,7 @@
 import { isatty, rawEnable, rawDisable, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVAL_REQUEST, TURN_START, TURN_END, TEXT_DELTA, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, frameType, frameTurnId, encodeInput, encodeCancel, encodeApprovalReply, decodeSessionHello, decodeApprovalRequest, decodeTurnStart, decodeModeChanged, decodeModelChanged, decodeDaemonStopping, decodeTextDelta, encodeModeSet, encodeModelSet, encodeTasksRequest, encodeDaemonStop, encodeShareRequest } from "../protocol/frames.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingQuitDecision, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { openQuitDecision, repaintQuitDecision, backgroundKeptNotes } from "./quit_decision.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
 import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal, beginApprovalBlockLocal } from "./attach_approval.ts";
@@ -14,7 +15,7 @@ import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { resolveResume, hasContinueFlag } from "./resume.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
-import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel } from "../daemon/attach_lifecycle.ts";
+import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel, sawStopping } from "../daemon/attach_lifecycle.ts";
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
@@ -34,6 +35,29 @@ import { applyMouseState } from "./mouse_select.ts";
 
 const STDIN: int = 0;
 const POLL_MS: int = 100;
+
+// How long "quit and end the session" waits for the daemon to acknowledge the
+// stop before giving up on hearing it. `joule --stop` waits five seconds, but
+// that is a command whose whole job is stopping; here someone is walking away
+// from a terminal, so a short wait that still catches the common idle case
+// beats holding the screen. An unacknowledged stop still reached the daemon -
+// the note says so, and points at `joule --stop`.
+const QUIT_STOP_ACK_TICKS: int = 20;
+
+// "Quit and end the session" has to actually reach the daemon: publish the
+// stop, then hold the socket open long enough for the DAEMON_STOPPING that
+// answers it, the same handshake `joule --stop` does.
+function stopDaemonAndWait(client: DaemonClient): bool {
+  client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
+  let acked = false;
+  let i = 0;
+  while (i < QUIT_STOP_ACK_TICKS && !acked) {
+    acked = sawStopping(client.pollInbound());
+    if (!acked) { process.sleep(POLL_MS); }
+    i = i + 1;
+  }
+  return acked;
+}
 
 export function runStop(argv: string[]): void {
   runAttachStop(currentWorkspaceRoot());
@@ -127,6 +151,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let updateOffer = new PendingUpdateOffer();
   let updateInstall = new PendingUpdateInstall();
   let planPending = new PendingPlanDecision();
+  let quitDecision = new PendingQuitDecision();
   let planTracker = new PlanOfferTracker();
   let tagged = new TaggedTurns();
   let notifier = startUpdateNotifier();
@@ -224,6 +249,8 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   }
 
   let running = true;
+  let keepInBackground = false;
+  let stopRequested = false;
   if (result.pending.length > 0) {
     let stoppedAlready = processFrames(result.pending, true);
     drawScreen(sb, input, approvalLog.mode, rk);
@@ -256,6 +283,29 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       continue;
     }
 
+    // While the Ctrl-C prompt is open it owns the keyboard: arrows move the
+    // choice, a number or its initial picks one, and a second Ctrl-C/Ctrl-D is
+    // a fast "quit". Anything else is swallowed so it cannot leak to the input.
+    if (quitDecision.isPending()) {
+      if (k.kind == KEY_ARROW_UP) { if (quitDecision.moveSelection(-1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
+      if (k.kind == KEY_ARROW_DOWN) { if (quitDecision.moveSelection(1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
+      let choice = -1;
+      if (k.kind == KEY_ENTER) { choice = quitDecision.selected; }
+      else if (k.kind == KEY_CHAR) { choice = quitDecisionOptionForChar(k.char); }
+      else if (k.kind == KEY_CTRL_C || k.kind == KEY_CTRL_D || k.kind == KEY_EOF) { choice = QUIT_DECISION_QUIT; }
+      if (choice < 0) { continue; }
+      quitDecision.close();
+      if (choice == QUIT_DECISION_STAY) {
+        sb.append("\n" + styleBanner("staying in this session"));
+        drawScreen(sb, input, approvalLog.mode, rk);
+        continue;
+      }
+      keepInBackground = (choice == QUIT_DECISION_KEEP);
+      stopRequested = (choice == QUIT_DECISION_QUIT);
+      running = false;
+      continue;
+    }
+
     if (k.kind == KEY_CTRL_D || k.kind == KEY_EOF) { running = false; continue; }
 
     if (k.kind == KEY_CTRL_C) {
@@ -269,7 +319,10 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
         input.clear();
         drawScreen(sb, input, approvalLog.mode, rk);
       } else {
-        running = false;
+        // The session lives in the daemon, not here, so leaving is a real
+        // choice: walk away and it keeps running, or say so and it stops.
+        openQuitDecision(quitDecision, sb);
+        drawScreen(sb, input, approvalLog.mode, rk);
       }
       continue;
     }
@@ -430,10 +483,22 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     drawScreen(sb, input, approvalLog.mode, rk);
   }
 
+  let stopAcked = false;
+  if (stopRequested) { stopAcked = stopDaemonAndWait(client); }
   client.detach();
   leaveScreen(mouse);
   rawDisable(STDIN);
 
+  if (keepInBackground) {
+    for (const n of backgroundKeptNotes(result.port)) { console.log(n); }
+  }
+  if (stopRequested) {
+    if (stopAcked) {
+      console.log("joule: the background session has stopped.");
+    } else {
+      console.log("joule: asked the background session to stop - it may be finishing an in-flight turn; check with joule --stop if it lingers.");
+    }
+  }
   if (state.stopReason != "") {
     console.log("joule: the daemon stopped (" + state.stopReason + ")");
   }

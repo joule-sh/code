@@ -1,5 +1,6 @@
 import { PendingQuitDecision, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, QUIT_DECISION_OPTION_COUNT } from "./input_state.ts";
 import { quitDecisionOptionLabel, quitDecisionOptionRow } from "./renderer.ts";
+import { backgroundKeptNotes } from "./quit_decision.ts";
 
 test("the quit prompt offers exactly three answers", () => {
   expect(QUIT_DECISION_OPTION_COUNT == 3);
@@ -49,6 +50,13 @@ test("closing the prompt clears its pending state and its option rows", () => {
   p.close();
   expect(!p.isPending());
   expect(!p.hasOptionRows());
+});
+
+test("keeping a session says where it went and how to end it", () => {
+  let notes = backgroundKeptNotes(41234);
+  expect(notes.length == 2);
+  expect(notes[0].indexOf("127.0.0.1:41234") >= 0);
+  expect(notes[1].indexOf("joule --stop") >= 0);
 });
 
 test("only the highlighted answer row carries the cursor marker", () => {

@@ -576,6 +576,21 @@ already the design's point. `joule --stop` (equivalent to the existing
 `joule attach --stop`) is how anyone asks a workspace's daemon to actually
 stop, and now works from the default entry point too, not just `attach`.
 
+**`ctrl-c` at an idle prompt now asks rather than assumes.** The default
+above - quit here, keep running there - is exactly the thing nobody could
+see, so a `ctrl-c` on an empty input line opens a three-answer prompt:
+keep it running in the background (detach, and say on the way out which
+port it is on and that `joule --stop` ends it), quit and end the session
+(publish `daemon.stop` and wait for the `daemon.stopping` that answers it,
+the same handshake `joule --stop` does, so quitting really does stop the
+daemon), or stay here. A second `ctrl-c` is a fast quit. `ctrl-d` and
+`/exit` are unchanged: they detach and leave the daemon running, which is
+what someone who typed them already expected. The standalone terminal -
+the path taken when no daemon could be reached - answers the same prompt
+by flushing its history and handing itself to a daemon it spawns with
+`JOULE_DAEMON_RESUME=1`, so "keep it running" means the same thing on
+both paths.
+
 ### `--continue`, across a daemon's lifetime
 
 `--continue` still means "load this workspace's saved session" - but a

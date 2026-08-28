@@ -622,7 +622,9 @@ def read_config(home_dir):
         return json.load(f)
 
 
-def run_ctrl_c_exit_scenario():
+def start_ctrl_c_session():
+    """A bare joule on a workspace of its own - no stub model, because these
+    scenarios never run a turn, they only leave."""
     work_dir = scratch.scratch_dir("joule-terminal-harness-ctrlc-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
@@ -634,19 +636,66 @@ def run_ctrl_c_exit_scenario():
     joule_env["JOULE_CODE_MODEL"] = "stub"
     joule_env["JOULE_CODE_API_KEY"] = "stub-key"
     joule_env["TERM"] = "xterm-256color"
-    session = None
+    return work_dir, PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
+
+
+def daemon_stop_output(work_dir):
+    """What `joule --stop` says about this workspace - the product's own way of
+    asking whether a session is still running in the background."""
+    import subprocess
+    env = dict(os.environ)
+    env["HOME"] = os.path.join(work_dir, "home")
+    done = subprocess.run(
+        [JOULE_BIN, "--stop"],
+        cwd=os.path.join(work_dir, "repo"), env=env, timeout=30,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    return (done.stdout or b"").decode("utf-8", "replace")
+
+
+def run_ctrl_c_exit_scenario():
+    work_dir, session = start_ctrl_c_session()
     try:
-        session = PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
         session.wait_for(BANNER, timeout=10.0)
         pre_exit_idx = len(session.raw)
         session.write("\x03")
         session.wait_for("what should happen to this session", timeout=5.0)
         ok(True, "ctrl-c on an empty input line opens the keep-or-quit prompt instead of exiting outright")
         session.write("q")
-        exited = session.wait_exit(5.0)
+        exited = session.wait_exit(10.0)
         ok(exited, "choosing quit at the ctrl-c prompt exits cleanly")
         session._pump(0.5)
         check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", True)
+        left = daemon_stop_output(work_dir)
+        ok("no daemon is running" in left or "could not reach the daemon" in left,
+           "quitting really ended the session: nothing is left running for the workspace, got %r" % left.strip())
+    finally:
+        if session is not None:
+            session.close()
+        reap_daemon(work_dir)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def run_ctrl_c_keep_scenario():
+    """The other answer: keeping the session hands it to the background rather
+    than ending it, and says how to get back to it."""
+    work_dir, session = start_ctrl_c_session()
+    try:
+        session.wait_for(BANNER, timeout=10.0)
+        pre_exit_idx = len(session.raw)
+        session.write("\x03")
+        session.wait_for("what should happen to this session", timeout=5.0)
+        session.write("k")
+        exited = session.wait_exit(10.0)
+        ok(exited, "choosing keep at the ctrl-c prompt leaves the terminal")
+        session._pump(0.5)
+        tail = strip_sgr(text(bytes(session.raw[pre_exit_idx:])))
+        ok("running in the background" in tail, "it says the session is now running in the background, got %r" % tail[-200:])
+        ok("joule --stop" in tail, "it says how to end the session it left running")
+        check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c keep", True)
+        still = daemon_stop_output(work_dir)
+        ok("has stopped" in still or "acknowledged the request" in still,
+           "the session really was still running in the background afterwards, got %r" % still.strip())
     finally:
         if session is not None:
             session.close()
@@ -1697,6 +1746,11 @@ def main():
         failures.append(str(e))
     try:
         run_ctrl_c_exit_scenario()
+    except Failure as e:
+        print("FAIL: " + str(e), file=sys.stderr)
+        failures.append(str(e))
+    try:
+        run_ctrl_c_keep_scenario()
     except Failure as e:
         print("FAIL: " + str(e), file=sys.stderr)
         failures.append(str(e))
