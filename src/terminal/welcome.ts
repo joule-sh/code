@@ -15,6 +15,20 @@ const STATUS_ROWS: int = 1;
 const ARRIVAL_ROWS: int = 2;
 
 const WORDMARK: string = "joule";
+// The wordmark as an ANSI-shadow banner — the block letterform opencode, Qwen
+// Code and Claude Code all greet with. Six rows, forty-two columns, every row
+// the same width so the version can sit dim beside the top one. Drawn only
+// when it fits (see wordmarkBlock); a narrow or short terminal keeps the plain
+// word above.
+const WORDMARK_LOGO: string[] = [
+  "     ██╗ ██████╗ ██╗   ██╗██╗     ███████╗",
+  "     ██║██╔═══██╗██║   ██║██║     ██╔════╝",
+  "     ██║██║   ██║██║   ██║██║     █████╗  ",
+  "██   ██║██║   ██║██║   ██║██║     ██╔══╝  ",
+  "╚█████╔╝╚██████╔╝╚██████╔╝███████╗███████╗",
+  " ╚════╝  ╚═════╝  ╚═════╝ ╚══════╝╚══════╝",
+];
+const LOGO_WIDTH: int = 42;
 const SUGGESTION: string = "describe a change, or paste an error";
 const SEPARATOR: string = " · ";
 
@@ -181,6 +195,27 @@ function removeAt(list: WelcomeRow[], at: int): WelcomeRow[] {
   return out;
 }
 
+// The wordmark, as one or more violet lines with the version dim beside its
+// top row. The full banner is drawn only when it fits the width AND costs no
+// fact row — so a roomy terminal gets the logo, and a short or narrow one is
+// exactly as it was: a single `joule <version>` line.
+export function wordmarkBlock(width: int, budget: int, factCount: int): string[] {
+  let need = LOGO_WIDTH + 1 + visualWidth(VERSION);
+  if (width >= need && WORDMARK_LOGO.length + 1 + factCount <= budget) {
+    let out: string[] = [];
+    let i = 0;
+    while (i < WORDMARK_LOGO.length) {
+      let line = wrap(VIOLET, WORDMARK_LOGO[i]);
+      if (i == 0) { line = line + " " + wrap(DIM, VERSION); }
+      out.push(line);
+      i = i + 1;
+    }
+    return out;
+  }
+  let plain: string[] = [wrap(VIOLET, WORDMARK) + " " + wrap(DIM, VERSION)];
+  return plain;
+}
+
 export function welcomeRows(termRows: int): int {
   let visible = termRows - STATUS_ROWS - promptRowCount(termRows);
   let budget = visible - ARRIVAL_ROWS;
@@ -192,19 +227,23 @@ export function welcomeBlock(f: WelcomeFacts, width: int, budget: int): string {
   let w = width;
   if (w < MIN_WIDTH) { w = MIN_WIDTH; }
   let facts = factRows(f, w);
-  let header = 2;
+  // The wordmark is chosen against the full fact list, and the banner is taken
+  // only when it leaves every fact in place — so dropping below is driven by
+  // the same budget it always was, never by the height of the logo.
+  let wm = wordmarkBlock(w, budget, facts.length);
+  let header = wm.length + 1;
   while (facts.length > 1 && facts.length + header > budget) {
     let at = droppableIndex(facts);
     if (at < 0) {
-      if (header > 1) {
-        header = 1;
+      if (header > wm.length) {
+        header = wm.length;
         continue;
       }
       at = facts.length - 1;
     }
     facts = removeAt(facts, at);
   }
-  if (header > 1 && facts.length + header > budget) { header = 1; }
+  if (header > wm.length && facts.length + header > budget) { header = wm.length; }
 
   let bodies: string[] = [];
   let i = 0;
@@ -223,8 +262,12 @@ export function welcomeBlock(f: WelcomeFacts, width: int, budget: int): string {
   }
 
   let lines: string[] = [];
-  lines.push(wrap(VIOLET, WORDMARK) + " " + wrap(DIM, VERSION));
-  if (header > 1) { lines.push(""); }
+  let m = 0;
+  while (m < wm.length) {
+    lines.push(wm[m]);
+    m = m + 1;
+  }
+  if (header > wm.length) { lines.push(""); }
   let j = 0;
   while (j < bodies.length) {
     lines.push(wrap(DIM, ruleFor(j, bodies.length) + " ") + bodies[j]);

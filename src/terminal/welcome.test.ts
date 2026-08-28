@@ -128,20 +128,37 @@ test("the block carries no carriage returns and neither opens nor closes on a bl
   expect(lines[lines.length - 1] != "");
 });
 
-test("the wordmark sits on the first line with the version beside it, and is not repeated below", () => {
+test("a roomy terminal draws the block banner, with the version dim beside its top row", () => {
   let lines = plainLines(welcomeBlock(facts(), 80, TALL));
-  expect(lines[0] == "joule " + VERSION);
-  let i = 1;
-  while (i < lines.length) {
-    expect(lines[i].indexOf("joule " + VERSION) < 0);
+  // The greeting is the six-row ANSI-shadow logo, not the word spelled out.
+  expect(lines[0].indexOf("█") >= 0);
+  expect(lines[0].indexOf(VERSION) > 0);
+  expect(lines[0] != "joule " + VERSION);
+  // Six rows of it, and none wider than the terminal.
+  let i = 0;
+  while (i < 6) {
+    expect(visualWidth(lines[i]) <= 80);
     i = i + 1;
   }
 });
 
-test("the wordmark is accented and the version beside it is dim, not the other way round", () => {
+test("a narrow terminal falls back to the one-line wordmark, unchanged", () => {
+  let lines = plainLines(welcomeBlock(facts(), 45, TALL));
+  expect(lines[0] == "joule " + VERSION);
+  expect(lines[0].indexOf("█") < 0);
+});
+
+test("the banner never costs a fact: when it is drawn, every fact row is still there", () => {
+  let rows = factLines(welcomeBlock(facts(), 80, TALL));
+  expect(rows.length == 4);
+});
+
+test("the banner is accented and the version beside it is dim, not the other way round", () => {
   let first = welcomeBlock(facts(), 80, TALL).split("\n")[0];
-  expect(first.indexOf(VIOLET + "joule" + RESET) == 0);
+  expect(first.indexOf(VIOLET) == 0);
   expect(first.indexOf(DIM + VERSION + RESET) > 0);
+  let narrow = welcomeBlock(facts(), 45, TALL).split("\n")[0];
+  expect(narrow.indexOf(VIOLET + "joule" + RESET) == 0);
 });
 
 test("every value in the key-value block starts on one left edge", () => {
@@ -311,9 +328,11 @@ test("a width narrower than anything we support degrades instead of producing ne
 
 test("the caller-facing builder produces the same block, with the repo looked up for it", () => {
   let block = stripSgr(buildWelcomeBox("gpt-4", "/home/aymen/project", "auto-edit", ""));
-  expect(block.indexOf("joule " + VERSION) == 0);
+  // However the wordmark renders at the live terminal's size, the facts it
+  // was asked to show are all present.
   expect(block.indexOf("gpt-4") >= 0);
   expect(block.indexOf("auto-edit") >= 0);
+  expect(block.indexOf("/home/aymen/project") >= 0);
 });
 
 test("the row budget leaves the status bar, the prompt and the arrival line their own rows", () => {
