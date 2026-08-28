@@ -3,6 +3,10 @@ import { ToolResult } from "../session/types.ts";
 import { dispatchCoreTool, ok, fail, DEFAULT_RUN_TIMEOUT_MS } from "./dispatch.ts";
 import { TaskRunner } from "../tasks/types.ts";
 import { ForegroundRunner, formatForegroundResult } from "./run_wait.ts";
+import { dispatchPlatformTool } from "./platform_tools.ts";
+import { Credential } from "../auth/credentials.ts";
+
+export type PlatformAccess = { server: string, credential: Credential };
 
 const STDIN_FD: int = 0;
 
@@ -16,11 +20,13 @@ export class ToolsRegistry {
   root: string;
   tasksSlot: TaskRunner[];
   foregroundSlot: ForegroundRunner[];
+  platformSlot: PlatformAccess[];
 
   constructor(root: string) {
     this.root = root;
     this.tasksSlot = [];
     this.foregroundSlot = [];
+    this.platformSlot = [];
   }
 
   setTaskRunner(tasks: TaskRunner): void {
@@ -31,7 +37,16 @@ export class ToolsRegistry {
     this.foregroundSlot = [runner];
   }
 
+  setPlatformAccess(server: string, credential: Credential): void {
+    this.platformSlot = [{ server: server, credential: credential }];
+  }
+
   dispatch(tool: string, args: string): ToolResult {
+    if (tool == "web_search" || tool == "web_retrieve") {
+      if (this.platformSlot.length == 0) { return fail("not signed in to a Joule Platform account - run /login, then try again"); }
+      let access = this.platformSlot[0];
+      return dispatchPlatformTool(access.server, access.credential, tool, args);
+    }
     if (tool == "run" && jsonBoolMemberAt(args, 0, "background")) {
       if (this.tasksSlot.length == 0) { return fail("background tasks are not available in this session"); }
       let command = jsonStringMemberAt(args, 0, "command");

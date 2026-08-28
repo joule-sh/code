@@ -1,4 +1,5 @@
 import { ToolsRegistry } from "./registry.ts";
+import { Credential } from "../auth/credentials.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/registry-test-" + name;
@@ -106,6 +107,36 @@ test("run: missing timeout_ms defaults rather than running unbounded", () => {
   let r = reg.dispatch("run", "{\"command\":\"echo ok\"}");
   expect(r.ok);
   expect(r.output.indexOf("over budget") < 0);
+});
+
+test("web_search without a platform credential set fails clean rather than reaching the network", () => {
+  let root = freshRoot("web-search-signed-out");
+  let reg = new ToolsRegistry(root);
+  let r = reg.dispatch("web_search", "{\"q\":\"x\"}");
+  expect(!r.ok);
+  expect(r.output.indexOf("/login") >= 0);
+});
+
+test("web_retrieve without a platform credential set fails clean too", () => {
+  let root = freshRoot("web-retrieve-signed-out");
+  let reg = new ToolsRegistry(root);
+  let r = reg.dispatch("web_retrieve", "{\"q\":\"x\"}");
+  expect(!r.ok);
+  expect(r.output.indexOf("/login") >= 0);
+});
+
+test("setPlatformAccess holds the server and credential the dispatch will use, rather than refusing web_search up front", () => {
+  let root = freshRoot("web-search-signed-in");
+  let reg = new ToolsRegistry(root);
+  let c: Credential = {
+    server: "", secret: "jl_test_secret", accountId: "", accountEmail: "",
+    keyId: "", keyPrefix: "", scopes: "", savedAt: "",
+    relayUrl: "", relayWsUrl: "", webUrl: "",
+  };
+  reg.setPlatformAccess("https://joule.sh", c);
+  expect(reg.platformSlot.length == 1);
+  expect(reg.platformSlot[0].server == "https://joule.sh");
+  expect(reg.platformSlot[0].credential.secret == "jl_test_secret");
 });
 
 test("an unknown tool name returns a clean failure, not a crash", () => {

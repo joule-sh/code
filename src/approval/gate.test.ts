@@ -57,6 +57,14 @@ test("read-only: read tools auto, write/edit/run refused without ever asking", (
   expect(rec.requests.length == 0);
 });
 
+test("read-only: web_search and web_retrieve are read tools too - they change nothing", () => {
+  let rec = new Recorder();
+  let g = new Gate(MODE_READ_ONLY, 1000, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });
+  expect(g.check("c1", "web_search", "", "").allow);
+  expect(g.check("c2", "web_retrieve", "", "").allow);
+  expect(rec.requests.length == 0);
+});
+
 test("auto-edit: read/write/edit auto, run asks", () => {
   let rec = new Recorder();
   let g = new Gate(MODE_AUTO_EDIT, 300, "/repo", (c: string, t: string, s: string, a: string) => { rec.onRequest(c, t, s, a); }, () => { rec.onPoll(); });

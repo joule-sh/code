@@ -17,9 +17,11 @@ test("browserCommand passes the exact URL through single-quoted, so a shell meta
   expect(script.indexOf(shellQuoteSingle(url)) >= 0);
 });
 
-test("platformNote says signing in does not enable platform inference yet", () => {
+test("platformNote says signing in offers the platform's search tools, and that turns are unaffected", () => {
   let note = platformNote();
-  expect(note.indexOf("no model inference yet") >= 0);
+  expect(note.indexOf("web_search") >= 0);
+  expect(note.indexOf("web_retrieve") >= 0);
+  expect(note.indexOf("does not change what runs a turn") >= 0);
 });
 
 test("retryable lets a mistyped or unrecognized code be tried again", () => {

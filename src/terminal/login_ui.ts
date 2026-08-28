@@ -27,8 +27,8 @@ export function openBrowser(url: string): bool {
 }
 
 export function platformNote(): string {
-  return "signing in records the account. Joule exposes no model inference yet, so turns keep using "
-    + "the provider settings joule already has.";
+  return "signing in also offers web_search and web_retrieve as tools, backed by the account's Platform key. "
+    + "Turns still use the provider settings joule already has - the account does not change what runs a turn.";
 }
 
 export function retryable(outcome: string): bool {
