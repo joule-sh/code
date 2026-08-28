@@ -306,13 +306,14 @@ relay-reconnect-harness: bin/relay
 relay-path-advert-harness: build bin/stub_model
 	node scripts/verify_relay_path_advert.mjs
 
-# #319: a terminal socket advertised as wss:// cannot be dialled by this
-# client - net.connect is plaintext, and Lumen has no TLS-capable socket
-# primitive to reach for instead. Retrying that against a real edge just
-# spends the outage budget on something no retry ever fixes, so this is
-# refused up front (client_logic.ts's shareProblem) rather than left to the
-# generic outage/give-up path. Driven under a real pty on the built binary,
-# because the fix is what the terminal prints and when, not a return value.
+# #319/#323: a terminal socket advertised as wss:// is dialled, not refused.
+# #321 refused it up front, because net.connect is plaintext and there was no
+# TLS-capable read to reach for; both halves exist now, so the share goes
+# through to the relay and reports whatever happens there. The relay in this
+# harness answers nothing, so what it reports is which address it tried -
+# which is how we know the advert was taken as an address rather than as a
+# reason to stop. Driven under a real pty on the built binary, because the
+# behaviour is what the terminal prints and when, not a return value.
 relay-tls-advert-harness: build bin/stub_model
 	python3 scripts/verify_relay_tls_advert_pty.py
 

@@ -84,17 +84,21 @@ def main():
     try:
         ok(harness.wait_for_port(stub_port, 5.0), "stub model came up")
 
+        # The relay's HTTP address here answers nothing (port 9 is discard),
+        # so the share cannot get far - which is the point. What it reports
+        # tells us how far it got: naming the relay it tried means the wss://
+        # advert was taken as an address to dial, not as a reason to stop.
         started = time.time()
         session = PtySession([os.path.join(REPO_ROOT, "bin", "joule"), "--share"], env, workspace, rows=24, cols=100)
-        idx = session.wait_for("needs TLS", timeout=5.0)
+        idx = session.wait_for("cannot reach the relay", timeout=30.0)
         elapsed = time.time() - started
-        ok(True, "the share refusal appeared within %.2fs, not a silent hang" % elapsed)
-        ok(elapsed < 5.0, "the refusal was immediate, not the 5s/2min retry-then-give-up path, got %.2fs" % elapsed)
+        ok(True, "the share reported the relay it tried within %.2fs, not a silent hang" % elapsed)
 
         seen = harness.text(bytes(session.raw))
-        ok("wss://127.0.0.1:8444/relay-terminal" in seen, "the message names the exact address that needs TLS")
-        ok("ws://" in seen, "the message tells the operator what to advertise instead")
-        ok("still retrying" not in seen, "this is a refusal, not the generic outage/retry notice")
+        ok("https://127.0.0.1:9/relay" in seen, "it names the relay address it actually tried")
+        ok("needs TLS" not in seen, "a wss:// terminal socket is no longer refused up front (#321)")
+        ok("can only open a plain TCP socket" not in seen, "the old plain-TCP refusal is gone")
+        ok("advertise a plain ws://" not in seen, "it no longer asks the operator to turn TLS off")
     finally:
         if session is not None:
             session.close()
@@ -109,7 +113,7 @@ def main():
     if failures:
         print("\n%d check(s) failed" % len(failures), file=sys.stderr)
         sys.exit(1)
-    print("\nPASS: a relay advertised over wss:// is refused up front, with a clear message naming TLS and the address, instead of creating a session that can never attach its terminal")
+    print("\nPASS: a relay advertised over wss:// is dialled rather than refused - the share gets as far as the relay's own address and reports what happened there, with no trace of the plain-TCP refusal #321 put in front of it")
 
 
 if __name__ == "__main__":
