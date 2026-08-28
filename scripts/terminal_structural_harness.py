@@ -639,24 +639,43 @@ def start_ctrl_c_session():
     return work_dir, PtySession([JOULE_BIN], joule_env, repo_dir, rows=24, cols=80)
 
 
-def daemon_stop_output(work_dir):
-    """What `joule --stop` says about this workspace - the product's own way of
-    asking whether a session is still running in the background."""
-    import subprocess
-    env = dict(os.environ)
-    env["HOME"] = os.path.join(work_dir, "home")
-    done = subprocess.run(
-        [JOULE_BIN, "--stop"],
-        cwd=os.path.join(work_dir, "repo"), env=env, timeout=30,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )
-    return (done.stdout or b"").decode("utf-8", "replace")
+def daemon_port_of(work_dir):
+    """The port the daemon serving this scenario's workspace registered under
+    its own HOME - read from the record joule writes, so the check below is
+    about the daemon itself and not about what any command says.
+
+    Asking `joule --stop` instead would be a race: a daemon that is already
+    winding down still answers, and still reports as one this command stopped.
+    """
+    import glob
+    found = glob.glob(os.path.join(work_dir, "home", ".config", "joule-code", "daemon", "*.json"))
+    if not found:
+        return 0
+    with open(found[0]) as f:
+        return int(json.load(f).get("port", 0))
+
+
+def wait_port_closed(port, timeout_s):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.settimeout(0.2)
+            s.connect(("127.0.0.1", port))
+        except OSError:
+            return True
+        finally:
+            s.close()
+        time.sleep(0.1)
+    return False
 
 
 def run_ctrl_c_exit_scenario():
     work_dir, session = start_ctrl_c_session()
     try:
         session.wait_for(BANNER, timeout=10.0)
+        port = daemon_port_of(work_dir)
+        ok(port > 0, "the session this ctrl-c is about is running in a daemon, got port %r" % port)
         pre_exit_idx = len(session.raw)
         session.write("\x03")
         session.wait_for("what should happen to this session", timeout=5.0)
@@ -666,9 +685,7 @@ def run_ctrl_c_exit_scenario():
         ok(exited, "choosing quit at the ctrl-c prompt exits cleanly")
         session._pump(0.5)
         check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", True)
-        left = daemon_stop_output(work_dir)
-        ok("no daemon is running" in left or "could not reach the daemon" in left,
-           "quitting really ended the session: nothing is left running for the workspace, got %r" % left.strip())
+        ok(wait_port_closed(port, 20.0), "quitting really ended the session: the daemon on port %d stops answering" % port)
     finally:
         if session is not None:
             session.close()
@@ -682,6 +699,8 @@ def run_ctrl_c_keep_scenario():
     work_dir, session = start_ctrl_c_session()
     try:
         session.wait_for(BANNER, timeout=10.0)
+        port = daemon_port_of(work_dir)
+        ok(port > 0, "the session this ctrl-c is about is running in a daemon, got port %r" % port)
         pre_exit_idx = len(session.raw)
         session.write("\x03")
         session.wait_for("what should happen to this session", timeout=5.0)
@@ -691,11 +710,10 @@ def run_ctrl_c_keep_scenario():
         session._pump(0.5)
         tail = strip_sgr(text(bytes(session.raw[pre_exit_idx:])))
         ok("running in the background" in tail, "it says the session is now running in the background, got %r" % tail[-200:])
+        ok(("127.0.0.1:%d" % port) in tail, "it names the daemon the session was left with")
         ok("joule --stop" in tail, "it says how to end the session it left running")
         check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c keep", True)
-        still = daemon_stop_output(work_dir)
-        ok("has stopped" in still or "acknowledged the request" in still,
-           "the session really was still running in the background afterwards, got %r" % still.strip())
+        ok(not wait_port_closed(port, 2.0), "keeping it left the daemon on port %d answering, not stopped" % port)
     finally:
         if session is not None:
             session.close()
