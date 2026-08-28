@@ -687,7 +687,7 @@ jobs:
           mkdir -p "$PWD/gcstatic"
           cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
           brew unlink bdw-gc
-          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+          echo "LUMEN_FLAGS=--library-path $PWD/gcstatic" >> "$GITHUB_ENV"
       - run: make release
       - if: matrix.target == 'aarch64-macos'
         run: |

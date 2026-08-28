@@ -54,7 +54,7 @@ STUB_MODEL := bin/stub_model$(EXE)
 # Extra flags for `lumen compile`. Empty for a local build, where the Boehm
 # collector is whatever the machine already has: a normal system library on
 # Linux, Homebrew's keg on macOS (Zig only knows about Apple Silicon's prefix,
-# so a Mac build passes it as `--link -L<dir>`).
+# so a Mac build names the directory with `--library-path <dir>`).
 #
 # The release workflow fills this in on macOS, pointing at a directory holding
 # nothing but a static `libgc.a`, so a released binary carries the collector
