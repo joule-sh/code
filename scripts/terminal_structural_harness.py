@@ -640,8 +640,11 @@ def run_ctrl_c_exit_scenario():
         session.wait_for(BANNER, timeout=10.0)
         pre_exit_idx = len(session.raw)
         session.write("\x03")
+        session.wait_for("what should happen to this session", timeout=5.0)
+        ok(True, "ctrl-c on an empty input line opens the keep-or-quit prompt instead of exiting outright")
+        session.write("q")
         exited = session.wait_exit(5.0)
-        ok(exited, "joule exits cleanly on ctrl-c with an empty input line")
+        ok(exited, "choosing quit at the ctrl-c prompt exits cleanly")
         session._pump(0.5)
         check_mouse_teardown(text(bytes(session.raw)), text(bytes(session.raw[pre_exit_idx:])), "ctrl-c", True)
     finally:

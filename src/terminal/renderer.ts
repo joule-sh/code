@@ -1,7 +1,7 @@
 import { frameType, decodeTextDelta, decodeToolCall, decodeToolResult, decodeApprovalRequest, decodeTurnEnd, decodeError, decodeNotice, isWarning, NOTICE, decodeApprovalReplyResult, decodeModeChanged, decodeModelChanged, decodeTasksResponse, decodeDaemonStopping, decodeShareStarted, decodeShareFailed, ToolCallFrame, TEXT_DELTA, TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, APPROVAL_REPLY_RESULT, MODE_CHANGED, MODEL_CHANGED, TASKS_RESPONSE, DAEMON_STOPPING, SHARE_STARTED, SHARE_FAILED, REASON_CANCELLED, REASON_ERROR } from "../protocol/frames.ts";
 import { diffLines, diffCounts, renderDiffRows, DIFF_DISPLAY_MAX_ROWS } from "./diff.ts";
 import { DIM, REVERSE, RESET } from "./style.ts";
-import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT, PLAN_DECISION_REJECT, PLAN_DECISION_OPTION_COUNT } from "./input_state.ts";
+import { APPROVAL_OPTION_ALLOW, APPROVAL_OPTION_ALWAYS, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT, UPDATE_OFFER_ACCEPT_AND_STOP_CHECKING, UPDATE_OFFER_NOT_NOW, UPDATE_OFFER_OPTION_COUNT, PLAN_DECISION_REJECT, PLAN_DECISION_OPTION_COUNT, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_OPTION_COUNT } from "./input_state.ts";
 import { settledRow } from "./approval_settled.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 
@@ -125,6 +125,35 @@ export function planDecisionOptionsBlock(selected: int): string {
   while (i < PLAN_DECISION_OPTION_COUNT) {
     out = out + "
 " + planDecisionOptionRow(i, selected);
+    i = i + 1;
+  }
+  return out;
+}
+
+export function quitDecisionOptionLabel(index: int): string {
+  if (index == QUIT_DECISION_KEEP) {
+    return "1. Keep it running in the background";
+  }
+  if (index == QUIT_DECISION_QUIT) {
+    return "2. Quit and end the session";
+  }
+  return "3. Stay here";
+}
+
+export function quitDecisionOptionRow(index: int, selected: int): string {
+  let label = quitDecisionOptionLabel(index);
+  if (index == selected) {
+    return APPROVAL_OPTION_INDENT + REVERSE + APPROVAL_MARKER_ON + label + RESET;
+  }
+  return APPROVAL_OPTION_INDENT + DIM + APPROVAL_MARKER_OFF + label + RESET;
+}
+
+export function quitDecisionOptionsBlock(selected: int): string {
+  let out = "";
+  let i = 0;
+  while (i < QUIT_DECISION_OPTION_COUNT) {
+    out = out + "
+" + quitDecisionOptionRow(i, selected);
     i = i + 1;
   }
   return out;

@@ -200,11 +200,14 @@ def run_ctrl_c_restores_cursor():
 
         pre_exit = len(session.raw)
         session.write("\x03")
+        session.wait_for("what should happen to this session", timeout=5.0)
+        ok(True, "ctrl-c on an empty buffer opens the keep-or-quit prompt")
+        session.write("q")
         exited = session.wait_exit(5.0)
-        ok(exited, "ctrl-c on an empty buffer exits cleanly")
+        ok(exited, "choosing quit at the ctrl-c prompt exits cleanly")
         session._pump(0.5)
         tail = harness.text(bytes(session.raw[pre_exit:]))
-        ok(SHOW_CURSOR in tail, "the cursor is restored on a ctrl-c exit too")
+        ok(SHOW_CURSOR in tail, "the cursor is restored on a ctrl-c quit too")
     finally:
         stop(work_dir, stub_proc, session)
 
