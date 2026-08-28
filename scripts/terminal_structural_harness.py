@@ -1058,11 +1058,11 @@ def run_completion_panel_scenario():
         ok(len(rule_rows(closed)) == 0, "the horizontal rule goes away with the panel")
 
         session.write("/mode\r")
-        session.wait_for("mode: auto-edit", timeout=10.0)
+        session.wait_for("mode: safe-auto", timeout=10.0)
         session.settle(0.2, 1.5)
         ran = text(bytes(session.raw))
         ok(len(completion_rows(ran)) == 0, "submitting the completed command closes the panel")
-        ok("mode: auto-edit" in strip_sgr(last_redraw_block(ran)), "Enter with the panel open runs the command as usual")
+        ok("mode: safe-auto" in strip_sgr(last_redraw_block(ran)), "Enter with the panel open runs the command as usual")
 
         session.write("add a health note\r")
         session.wait_for(APPROVAL_MARKER, timeout=10.0)

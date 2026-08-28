@@ -410,7 +410,7 @@ async function restartTheDaemonUnderIt(panel) {
   await waitFor(() => panel.session !== null && panel.session.state === "attached", 90000,
     "the panel to attach to the daemon it started next");
   ok(daemonRecords().length === 1, "exactly one daemon is running in this folder again");
-  await checks.joinedTheSessionThatIsRunning(panel, "auto-edit", promptsBefore);
+  await checks.joinedTheSessionThatIsRunning(panel, "safe-auto", promptsBefore);
 }
 
 async function dump(panel) {

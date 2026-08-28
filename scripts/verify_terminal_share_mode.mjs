@@ -233,7 +233,7 @@ async function main() {
       "this share came from the terminal front end rather than a daemon, sessionId " + hello.sessionId);
     ok(APPROVAL_MODES.includes(hello.mode),
       "the hello's mode is a real approval mode, got " + JSON.stringify(hello.mode));
-    ok(hello.mode === "auto-edit",
+    ok(hello.mode === "safe-auto",
       "the hello carries the mode the gate is actually running, got " + JSON.stringify(hello.mode));
     ok(hello.mode !== "agent",
       "the hello does not carry the kind the Session is constructed with where the approval mode belongs");

@@ -90,13 +90,13 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         if wait_full_banner:
             session.wait_for(harness.BANNER, timeout=10.0)
         else:
-            session.wait_for("auto-edit", timeout=10.0)
+            session.wait_for("safe-auto", timeout=10.0)
         session.settle(0.2, 1.5)
 
         full = harness.text(bytes(session.raw))
 
         ok("stub-model-xyz" in full, "welcome box shows the configured model" + label_suffix)
-        ok("auto-edit" in full, "welcome box shows the current approval mode" + label_suffix)
+        ok("safe-auto" in full, "welcome box shows the current approval mode" + label_suffix)
 
         prompt_rows = prompt_rows_for(rows)
         box_fits_in_viewport = (rows - 1 - prompt_rows) >= 11
@@ -125,7 +125,7 @@ def run_case(rows, cols, label_suffix, wait_full_banner):
         status_rows_1 = [c for (_, c) in rows1 if "mode:" in harness.strip_sgr(c)]
         ok(len(status_rows_1) == 1, "exactly one status-bar row is present right after startup" + label_suffix)
         ok(any("/help" in harness.strip_sgr(c) for (_, c) in rows1 if "mode:" in harness.strip_sgr(c)), "the status bar shows the help hint at startup" + label_suffix)
-        ok(any("auto-edit" in harness.strip_sgr(c) for (_, c) in rows1 if "mode:" in harness.strip_sgr(c)), "the status bar shows the current mode at startup" + label_suffix)
+        ok(any("safe-auto" in harness.strip_sgr(c) for (_, c) in rows1 if "mode:" in harness.strip_sgr(c)), "the status bar shows the current mode at startup" + label_suffix)
 
         max_row_1 = max((r for (r, _) in rows1), default=0)
         ok(max_row_1 <= rows, "no row of the startup redraw exceeds the terminal height" + label_suffix + (" (max row %d, height %d)" % (max_row_1, rows)))

@@ -5,10 +5,14 @@ import { MODE_SAFE_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
 export { visualWidth, buildWelcomeBox, terminalWidth };
 
-function modeDisplay(mode: string): string {
-  if (mode == MODE_SAFE_AUTO) { return mode + " (commands run unattended)"; }
-  if (mode == MODE_PLAN) { return mode + " (read-only, propose then approve)"; }
-  return mode;
+// The parenthetical that spells out what a mode does, or "" for the modes whose
+// name already says it. Carried as its own status field (see collectFields) so
+// it can be dropped ahead of the /help hint when the terminal is too narrow for
+// both - the mode name itself always stays.
+function modeDetail(mode: string): string {
+  if (mode == MODE_SAFE_AUTO) { return "commands run unattended"; }
+  if (mode == MODE_PLAN) { return "read-only, propose then approve"; }
+  return "";
 }
 
 export function borderLine(left: string, right: string, width: int): string {
@@ -28,11 +32,12 @@ const HELP_HINT: string = "/help for commands";
 const SCROLL_HINT: string = "PageUp/PageDown to scroll";
 
 const PRIO_SCROLL_HINT: int = 0;
-const PRIO_HELP_HINT: int = 1;
-const PRIO_TOKENS: int = 2;
-const PRIO_TASKS: int = 3;
-const PRIO_ELAPSED: int = 4;
-const PRIO_MODE: int = 5;
+const PRIO_MODE_DETAIL: int = 1;
+const PRIO_HELP_HINT: int = 2;
+const PRIO_TOKENS: int = 3;
+const PRIO_TASKS: int = 4;
+const PRIO_ELAPSED: int = 5;
+const PRIO_MODE: int = 6;
 
 export function idleStatus(mode: string): StatusInfo {
   return { mode: mode, elapsedMs: NO_TURN, tokens: 0, runningTasks: 0, turnLive: false };
@@ -82,8 +87,13 @@ type StatusFields = { texts: string[], priorities: int[] };
 function collectFields(info: StatusInfo): StatusFields {
   let texts: string[] = [];
   let priorities: int[] = [];
-  texts.push("mode: " + modeDisplay(info.mode));
+  texts.push("mode: " + info.mode);
   priorities.push(PRIO_MODE);
+  let detail = modeDetail(info.mode);
+  if (detail != "") {
+    texts.push(detail);
+    priorities.push(PRIO_MODE_DETAIL);
+  }
   if (info.elapsedMs >= 0) {
     texts.push(formatElapsed(info.elapsedMs));
     priorities.push(PRIO_ELAPSED);

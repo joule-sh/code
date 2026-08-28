@@ -175,3 +175,17 @@ test("safe-auto still keeps the mode readable at 45 columns even though its labe
   expect(visualWidth(line) <= 45);
   expect(line.indexOf("mode:") == 0);
 });
+
+test("on a narrow terminal safe-auto drops its 'commands run unattended' note before the /help hint", () => {
+  // safe-auto is the startup default, so a 40-column terminal must still show
+  // the help hint - the mode detail is the field that yields, not /help.
+  let narrow = statusText(idleStatus("safe-auto"), 40);
+  expect(visualWidth(narrow) <= 40);
+  expect(narrow.indexOf("mode: safe-auto") == 0);
+  expect(narrow.indexOf("/help") >= 0);
+  expect(narrow.indexOf("commands run unattended") < 0);
+  // With room for both, the note comes back and sits before the hint.
+  let wide = statusText(idleStatus("safe-auto"), 120);
+  expect(wide.indexOf("commands run unattended") >= 0);
+  expect(wide.indexOf("commands run unattended") < wide.indexOf("/help"));
+});

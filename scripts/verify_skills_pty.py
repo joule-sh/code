@@ -264,7 +264,7 @@ def scenario_skill_cannot_widen_its_own_permissions():
 
         mark = len(session.raw)
         session.write("/mode\r")
-        session.wait_for("mode: auto-edit", timeout=10.0, from_index=mark)
+        session.wait_for("mode: safe-auto", timeout=10.0, from_index=mark)
         ok(True, "the approval mode is still the default - the skill's frontmatter did not change it")
 
         session.write("\x04")

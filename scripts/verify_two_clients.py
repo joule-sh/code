@@ -130,7 +130,7 @@ def main():
         second = attach_session(attach_env, workspace)
         ok(True, "two terminals attached to the same daemon session over real ptys")
 
-        ok(len(rows_holding(first, "mode: auto-edit")) == 1,
+        ok(len(rows_holding(first, "mode: safe-auto")) == 1,
            "both terminals start out painting the mode the session actually says it is in")
 
         second.write("/mode full-auto\r")

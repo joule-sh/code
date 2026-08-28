@@ -344,6 +344,91 @@ export class PendingPlanDecision {
   }
 }
 
+// One line in the /model picker. `kind` is "header" (a group title), "note" (a
+// dim, unselectable line such as "not available yet") or "model" (a switchable
+// entry). Only "model" rows take the cursor; `id` is the wire model to switch
+// to, while `label` is what the row shows.
+export const MODEL_KIND_HEADER: string = "header";
+export const MODEL_KIND_NOTE: string = "note";
+export const MODEL_KIND_MODEL: string = "model";
+
+export type ModelEntry = { kind: string, label: string, id: string };
+
+export class PendingModelPick {
+  active: bool;
+  entries: ModelEntry[];
+  selected: int;
+  firstOptionRow: int;
+
+  constructor() {
+    this.active = false;
+    this.entries = [];
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  firstSelectable(): int {
+    let i = 0;
+    while (i < this.entries.length) {
+      if (this.entries[i].kind == MODEL_KIND_MODEL) { return i; }
+      i = i + 1;
+    }
+    return 0;
+  }
+
+  open(entries: ModelEntry[]): void {
+    this.entries = entries;
+    this.active = true;
+    this.firstOptionRow = -1;
+    this.selected = this.firstSelectable();
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  // Step to the next selectable row in `delta`'s direction, skipping headers and
+  // notes. Clamps at the ends rather than wrapping, and reports whether the
+  // cursor actually moved so the caller only repaints when it did.
+  moveSelection(delta: int): bool {
+    let n = this.entries.length;
+    if (n == 0) { return false; }
+    let step = 1;
+    if (delta < 0) { step = -1; }
+    let next = this.selected;
+    while (true) {
+      next = next + step;
+      if (next < 0 || next >= n) { return false; }
+      if (this.entries[next].kind == MODEL_KIND_MODEL) { break; }
+    }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+
+  selectedEntry(): ModelEntry {
+    if (this.selected < 0 || this.selected >= this.entries.length) {
+      let empty: ModelEntry = { kind: MODEL_KIND_NOTE, label: "", id: "" };
+      return empty;
+    }
+    return this.entries[this.selected];
+  }
+
+  close(): void {
+    this.active = false;
+    this.firstOptionRow = -1;
+    this.entries = [];
+  }
+
+  isPending(): bool {
+    return this.active;
+  }
+}
+
 const ESC_CODE: int = 27;
 
 function isSgrTerminator(c: string): bool {

@@ -105,7 +105,7 @@ async function main() {
     await sleep(200);
 
     const helloA = framesA.find((f) => f.type === "session.hello");
-    ok(!!helloA && helloA.mode === "auto-edit", "client A's session.hello reports the daemon's starting mode");
+    ok(!!helloA && helloA.mode === "safe-auto", "client A's session.hello reports the daemon's starting mode");
 
     connA.send(JSON.stringify({ v: 1, seq: 0, type: "mode.set", mode: "full-auto" }));
     await collectUntil(framesA, (f) => f.type === "mode.changed", 5000, "client A to see mode.changed after setting it itself");
