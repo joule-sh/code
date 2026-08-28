@@ -289,6 +289,64 @@ export function planDecisionOptionForChar(ch: string): int {
   return -1;
 }
 
+// The three answers to the Ctrl-C prompt: keep the session running as a
+// background daemon, quit outright, or stay put.
+export const QUIT_DECISION_KEEP: int = 0;
+export const QUIT_DECISION_QUIT: int = 1;
+export const QUIT_DECISION_STAY: int = 2;
+export const QUIT_DECISION_OPTION_COUNT: int = 3;
+
+export function quitDecisionOptionForChar(ch: string): int {
+  if (ch == "1" || ch == "k") { return QUIT_DECISION_KEEP; }
+  if (ch == "2" || ch == "q") { return QUIT_DECISION_QUIT; }
+  if (ch == "3" || ch == "s") { return QUIT_DECISION_STAY; }
+  return -1;
+}
+
+export class PendingQuitDecision {
+  active: bool;
+  selected: int;
+  firstOptionRow: int;
+
+  constructor() {
+    this.active = false;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  open(): void {
+    this.active = true;
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) { next = 0; }
+    if (next > QUIT_DECISION_OPTION_COUNT - 1) { next = QUIT_DECISION_OPTION_COUNT - 1; }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+
+  close(): void {
+    this.active = false;
+    this.firstOptionRow = -1;
+  }
+
+  isPending(): bool {
+    return this.active;
+  }
+}
+
 export class PendingPlanDecision {
   active: bool;
   previousMode: string;

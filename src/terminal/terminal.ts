@@ -16,8 +16,9 @@ import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText, skillsStartupNote, runSkillCommand } from "./skills_ui.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, PendingQuitDecision, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArrow, tryHandleModelPickEnter, tryHandleModelPickChar } from "./model_picker.ts";
+import { openQuitDecision, repaintQuitDecision, detachToBackground } from "./quit_decision.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { noteApprovalBlock } from "./approval_settled.ts";
@@ -82,6 +83,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let signin = new SignIn();
   let planDecision = new PendingPlanDecision();
   let modelPick = new PendingModelPick();
+  let quitDecision = new PendingQuitDecision();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
   let tasksBox = new TasksBox();
@@ -228,6 +230,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   }
 
   let running = true;
+  let detachRequested = false;
   while (running) {
     let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
 
@@ -236,6 +239,24 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       tasks.poll(session);
       pollUpdateNotice(updateNotifier, updateOffer, sb, input, gate.mode, rk);
       pollUpdateInstall(updateInstall, sb, input, gate.mode, rk);
+      continue;
+    }
+
+    // While the Ctrl-C prompt is open it owns the keyboard: arrows move the
+    // choice, a number or its initial picks one, and a second Ctrl-C/Ctrl-D is
+    // a fast "quit". Anything else is swallowed so it cannot leak to the input.
+    if (quitDecision.isPending()) {
+      if (k.kind == KEY_ARROW_UP) { if (quitDecision.moveSelection(-1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, gate.mode, rk); } continue; }
+      if (k.kind == KEY_ARROW_DOWN) { if (quitDecision.moveSelection(1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, gate.mode, rk); } continue; }
+      let choice = -1;
+      if (k.kind == KEY_ENTER) { choice = quitDecision.selected; }
+      else if (k.kind == KEY_CHAR) { choice = quitDecisionOptionForChar(k.char); }
+      else if (k.kind == KEY_CTRL_C || k.kind == KEY_CTRL_D || k.kind == KEY_EOF) { choice = QUIT_DECISION_QUIT; }
+      if (choice < 0) { continue; }
+      quitDecision.close();
+      if (choice == QUIT_DECISION_STAY) { sb.append("\n" + styleBanner("staying in this session")); drawScreen(sb, input, gate.mode, rk); continue; }
+      detachRequested = (choice == QUIT_DECISION_KEEP);
+      running = false;
       continue;
     }
 
@@ -250,7 +271,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
         input.clear();
         drawScreen(sb, input, gate.mode, rk);
       } else {
-        running = false;
+        openQuitDecision(quitDecision, sb);
+        drawScreen(sb, input, gate.mode, rk);
       }
       continue;
     }
@@ -451,4 +473,10 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   leaveScreen(mouse);
   rawDisable(STDIN);
+
+  if (detachRequested) {
+    for (const line of detachToBackground(workspaceRoot, session.history)) {
+      console.log(line);
+    }
+  }
 }
