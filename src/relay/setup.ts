@@ -11,6 +11,8 @@ export function configureRelayFromDisk(relay: RelayClient, argv: string[]): void
   relay.host = cfg.host;
   relay.httpBaseUrl = cfg.httpBaseUrl;
   relay.wsPort = cfg.wsPort;
+  relay.wsNeedsTls = cfg.wsNeedsTls;
+  relay.wsUrl = cfg.wsUrl;
   relay.webBaseUrl = cfg.webBaseUrl;
   relay.tmpDir = cfg.tmpDir;
   relay.credentialSecret = cred.secret;

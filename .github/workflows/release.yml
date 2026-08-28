@@ -10,13 +10,11 @@ permissions:
 
 jobs:
   build:
-    # Linux and Windows track the newest lumen; v0.7.3 is the first release
-    # exposing HttpStream.write(), which the relay client needs for a
-    # TLS-terminated websocket (spec 494). macOS stays on v0.7.1 because
-    # v0.7.2 stopped accepting `--link -L<dir>`, which is how the macOS steps
-    # below point the linker at Homebrew's static `libgc.a`; moving macOS off
-    # that is a change to the macOS release path, and belongs with the
-    # tickets that own it rather than here.
+    # Every target tracks the same lumen again. v0.7.5 is the first release
+    # that both reads back through a TLS-terminated websocket (spec 496,
+    # which the relay client needs) and takes `--library-path <dir>` (spec
+    # 497), the replacement for the `--link -L<dir>` that v0.7.2 began
+    # refusing and that had held macOS on v0.7.1 ever since (#211).
     strategy:
       fail-fast: false
       matrix:
@@ -24,22 +22,18 @@ jobs:
           - target: x86_64-linux
             runs_on: [self-hosted, diff]
             lumen_dist: lumen-x86_64-linux
-            lumen_version: v0.7.3
             exe: ""
           - target: aarch64-macos
             runs_on: macos-14
             lumen_dist: lumen-aarch64-macos
-            lumen_version: v0.7.1
             exe: ""
           - target: x86_64-macos
             runs_on: macos-15-intel
             lumen_dist: lumen-x86_64-macos
-            lumen_version: v0.7.1
             exe: ""
           - target: x86_64-windows
             runs_on: windows-latest
             lumen_dist: lumen-x86_64-windows
-            lumen_version: v0.7.3
             exe: ".exe"
     runs-on: ${{ matrix.runs_on }}
     # Every step here is written for a POSIX shell, and the Windows runner's
@@ -51,7 +45,7 @@ jobs:
       run:
         shell: bash
     env:
-      LUMEN_VERSION: ${{ matrix.lumen_version }}
+      LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
       # make is a native Windows program and inherits the Windows PATH, which
@@ -93,14 +87,14 @@ jobs:
       # dylib whenever it can see one, so the static archive is staged alone in
       # its own directory and Homebrew's dylib symlinks are unlinked. And Zig
       # ignores LIBRARY_PATH on macOS while knowing only Apple Silicon's
-      # /opt/homebrew, so the directory is passed as an explicit -L, which
+      # /opt/homebrew, so the directory is named with --library-path, which
       # lumen forwards to the backend ahead of its own -lgc.
       - if: runner.os == 'macOS'
         run: |
           mkdir -p "$PWD/gcstatic"
           cp "$(brew --prefix bdw-gc)/lib/libgc.a" "$PWD/gcstatic/"
           brew unlink bdw-gc
-          echo "LUMEN_FLAGS=--link -L$PWD/gcstatic" >> "$GITHUB_ENV"
+          echo "LUMEN_FLAGS=--library-path $PWD/gcstatic" >> "$GITHUB_ENV"
       # Linux goes further, because a bundled collector next to a dynamic libc
       # still leaves a glibc floor, and an archive that cannot satisfy either
       # installs fine and then dies in the loader (#184). Naming a musl target

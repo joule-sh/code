@@ -1,5 +1,5 @@
 import { INPUT, CANCEL, APPROVAL_REPLY } from "../protocol/frames.ts";
-import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, relayBaseUrl, splitEndpoint, shareProblem, attributionProblem, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
+import { refusalCodeOf, refusalEndsShare, REFUSAL_BUSY, shouldGiveUp, firstLine, resharedMessage, outageEndedMessage, refusedMessage, staleShareProblem, SHARE_GIVE_UP_MS, REFUSAL_SESSION_GONE, shouldSayUnreachable, UNREACHABLE_QUIET_MS, nextBackoffMs, maxSeqSeen, pushBounded, isDownstreamAllowed, encodeMailboxFrame, encodeMailboxControl, parseMailboxLine, nonEmptyLines, webUrlFor, resolveRelayConfig, relayBaseUrl, splitEndpoint, shareProblem, attributionProblem, httpsBaseUrl, TAG_FRAME, TAG_DISCONNECTED } from "./client_logic.ts";
 
 test("nextBackoffMs doubles and caps at BACKOFF_CAP_MS", () => {
   expect(nextBackoffMs(500) == 1000);
@@ -190,11 +190,16 @@ test("shareProblem is silent once a credential and a relay are both known", () =
   expect(shareProblem("https://console.example.com", "jl_secret", cfg) == "");
 });
 
-test("shareProblem refuses up front when the terminal socket needs TLS this build cannot speak", () => {
+test("shareProblem lets a wss:// terminal socket through, and says it needs TLS", () => {
   let cfg = resolveRelayConfig("https://joule.sh/relay", "wss://joule.sh/relay-terminal", "https://joule.sh/terminal/sessions", "");
-  let said = shareProblem("https://joule.sh", "jl_secret", cfg);
-  expect(said.indexOf("wss://joule.sh/relay-terminal") >= 0);
-  expect(said.indexOf("TLS") >= 0);
+  expect(shareProblem("https://joule.sh", "jl_secret", cfg) == "");
+  expect(cfg.wsNeedsTls);
+  expect(cfg.wsUrl == "wss://joule.sh/relay-terminal");
+});
+
+test("httpsBaseUrl carries a wss:// advert to its https:// twin, ws:// to http://", () => {
+  expect(httpsBaseUrl("wss://relay.example.com:443") == "https://relay.example.com:443");
+  expect(httpsBaseUrl("ws://relay.example.com:8080") == "http://relay.example.com:8080");
 });
 
 test("a relay that could not attribute the session names the console it asked", () => {

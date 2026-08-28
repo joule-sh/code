@@ -1,4 +1,4 @@
-import { connectWebSocket, receive, sendText, sendClose, Connection } from "../vendor/websocket/client.ts";
+import { connectWebSocket, receive, sendText, sendClose, Connection, Transport } from "../vendor/websocket/client.ts";
 import { CLOSE_NORMAL } from "../vendor/websocket/frame.ts";
 import { PROTOCOL_VERSION, RESUME, ResumeFrame, encodeResume } from "../protocol/frames.ts";
 import { encodeMailboxFrame, encodeMailboxControl, TAG_CONNECTED, TAG_DISCONNECTED, TAG_CONNECT_FAILED } from "../relay/client_logic.ts";
@@ -13,7 +13,7 @@ let g_port: int = 0;
 let g_connId: string = "";
 let g_since: int = -1;
 let g_mailboxPath: string = "";
-let g_socket: Socket[] = [];
+let g_socket: Transport[] = [];
 let g_generation: int = 0;
 let g_live: int = 0;
 
@@ -27,7 +27,7 @@ export function configureAttachWorker(host: string, port: int, connId: string, s
   g_live = g_live + 1;
 }
 
-export function currentAttachSocket(): Socket[] {
+export function currentAttachSocket(): Transport[] {
   return g_socket;
 }
 

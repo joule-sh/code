@@ -12,6 +12,8 @@ export class RelayClient {
   host: string;
   httpBaseUrl: string;
   wsPort: int;
+  wsNeedsTls: bool;
+  wsUrl: string;
   webBaseUrl: string;
   tmpDir: string;
   credentialSecret: string;
@@ -51,6 +53,8 @@ export class RelayClient {
     this.host = host;
     this.httpBaseUrl = httpBaseUrl;
     this.wsPort = wsPort;
+    this.wsNeedsTls = false;
+    this.wsUrl = "";
     this.webBaseUrl = webBaseUrl;
     this.tmpDir = tmpDir;
     this.credentialSecret = "";
@@ -149,7 +153,7 @@ export class RelayClient {
     this.nextRetryAt = 0;
 
     try { fs.writeFileSync(this.mailboxPath, ""); } catch { }
-    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, since, this.mailboxPath);
+    configureWorker(this.host, this.wsPort, this.wsNeedsTls, this.wsUrl, this.sessionId, this.secret, since, this.mailboxPath);
     Worker.run(receiveLoop);
 
     let ok: ConnectResult = { ok: true, code: this.code, url: webUrlFor(this.webBaseUrl, this.code), error: "" };
@@ -308,7 +312,7 @@ export class RelayClient {
       return;
     }
     this.connecting = true;
-    configureWorker(this.host, this.wsPort, this.sessionId, this.secret, this.lastSeq, this.mailboxPath);
+    configureWorker(this.host, this.wsPort, this.wsNeedsTls, this.wsUrl, this.sessionId, this.secret, this.lastSeq, this.mailboxPath);
     Worker.run(receiveLoop);
   }
 
