@@ -1,9 +1,9 @@
-import { styleFrame, stylePrompt, styleBanner, RESET, VIOLET, RED, GREEN, BOLD, YELLOW, DIM } from "./style.ts";
+import { styleFrame, stylePrompt, styleBanner, RESET, ACCENT, RED, GREEN, BOLD, YELLOW, DIM } from "./style.ts";
 import { TOOL_CALL, TOOL_RESULT, APPROVAL_REQUEST, TURN_END, ERROR, NOTICE, TEXT_DELTA } from "../protocol/frames.ts";
 
 test("a tool call is wrapped in violet and reset", () => {
   let out = styleFrame(TOOL_CALL, "  -> read a.ts");
-  expect(out.indexOf(VIOLET) == 0);
+  expect(out.indexOf(ACCENT) == 0);
   expect(out.indexOf("  -> read a.ts") >= 0);
   expect(out.slice(out.length - RESET.length, out.length) == RESET);
 });
@@ -41,7 +41,7 @@ test("an unstyled frame kind passes text through unchanged", () => {
 });
 
 test("stylePrompt and styleBanner wrap in their own color and reset", () => {
-  expect(stylePrompt("> ").indexOf(VIOLET) == 0);
+  expect(stylePrompt("> ").indexOf(ACCENT) == 0);
   expect(styleBanner("joule").indexOf(DIM) == 0);
 });
 

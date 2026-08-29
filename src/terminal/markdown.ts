@@ -1,4 +1,4 @@
-import { BOLD, UNDERLINE, DIM, VIOLET, RESET, wrap } from "./style.ts";
+import { BOLD, UNDERLINE, DIM, ACCENT, RESET, wrap } from "./style.ts";
 
 const CODE_FENCE: string = "```";
 const CODE_BORDER: string = DIM + "| " + RESET;
@@ -181,7 +181,7 @@ export function styleMarkdownLine(line: string, inCodeBlock: bool): MarkdownLine
     if (level + 1 <= line.length) {
       rest = line.slice(level + 1, line.length);
     }
-    return { text: wrap(BOLD + VIOLET, rest), inCodeBlock: false };
+    return { text: wrap(BOLD + ACCENT, rest), inCodeBlock: false };
   }
   return { text: styleInline(line), inCodeBlock: false };
 }

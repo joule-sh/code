@@ -2,7 +2,7 @@ import { rawEnable, rawDisable, readKey, CLEAR_LINE, KEY_CHAR, KEY_ENTER, KEY_BA
 import { ConfigFile, saveConfigFile, loadConfigFile, configFilePath } from "../providers/config.ts";
 import { platformOf } from "../providers/platform.ts";
 import { InputLine } from "./input_state.ts";
-import { VIOLET, BOLD, DIM, wrap } from "./style.ts";
+import { ACCENT, BOLD, DIM, wrap } from "./style.ts";
 
 const STDIN: int = 0;
 
@@ -92,7 +92,7 @@ function readRequiredField(label: string, prefill: string, mask: bool): string {
 }
 
 function readProviderChoice(): string {
-  writeLine(wrap(BOLD + VIOLET, "provider"));
+  writeLine(wrap(BOLD + ACCENT, "provider"));
   writeLine("  1) openai");
   writeLine("  2) deepseek");
   writeLine("  3) custom");
@@ -114,7 +114,7 @@ function readProviderChoice(): string {
 export function runOnboarding(): ConfigFile {
   rawEnable(STDIN);
 
-  writeLine(wrap(BOLD + VIOLET, "joule needs a model provider"));
+  writeLine(wrap(BOLD + ACCENT, "joule needs a model provider"));
   writeLine(wrap(DIM, "pick one below, or go custom and type your own"));
   write("\r\n");
 
@@ -126,7 +126,7 @@ export function runOnboarding(): ConfigFile {
   let apiKey = readRequiredField("api key", "", true);
 
   let existing = loadConfigFile(configFilePath());
-  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey, server: existing.server, updateCheck: existing.updateCheck, mouse: existing.mouse };
+  let file: ConfigFile = { baseUrl: baseUrl, model: model, apiKey: apiKey, server: existing.server, updateCheck: existing.updateCheck, mouse: existing.mouse, color: existing.color };
   saveConfigFile(configFilePath(), file);
 
   write("\r\n" + wrap(DIM, "saved to ~/.config/joule-code/config.json") + "\r\n\r\n");

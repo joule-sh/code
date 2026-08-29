@@ -1,4 +1,4 @@
-import { VIOLET, DIM, wrap } from "./style.ts";
+import { ACCENT, DIM, wrap } from "./style.ts";
 import { visualWidth, padTo, fitText, fitPath, repeatChar } from "./text.ts";
 import { repoSummary } from "./repo.ts";
 import { promptRowCount } from "./prompt_rows.ts";
@@ -127,7 +127,7 @@ function hintCell(h: Hint, cellWidth: int): HintCell {
   let descWidth = cellWidth - LABEL_WIDTH - COLUMN_GAP;
   if (descWidth < 0) { descWidth = 0; }
   let desc = fitText(h.description, descWidth);
-  let styled = wrap(VIOLET, padTo(h.name, LABEL_WIDTH)) + repeatChar(" ", COLUMN_GAP) + wrap(DIM, desc);
+  let styled = wrap(ACCENT, padTo(h.name, LABEL_WIDTH)) + repeatChar(" ", COLUMN_GAP) + wrap(DIM, desc);
   let c: HintCell = { styled: styled, width: LABEL_WIDTH + COLUMN_GAP + visualWidth(desc) };
   return c;
 }
@@ -205,14 +205,14 @@ export function wordmarkBlock(width: int, budget: int, factCount: int): string[]
     let out: string[] = [];
     let i = 0;
     while (i < WORDMARK_LOGO.length) {
-      let line = wrap(VIOLET, WORDMARK_LOGO[i]);
+      let line = wrap(ACCENT, WORDMARK_LOGO[i]);
       if (i == 0) { line = line + " " + wrap(DIM, VERSION); }
       out.push(line);
       i = i + 1;
     }
     return out;
   }
-  let plain: string[] = [wrap(VIOLET, WORDMARK) + " " + wrap(DIM, VERSION)];
+  let plain: string[] = [wrap(ACCENT, WORDMARK) + " " + wrap(DIM, VERSION)];
   return plain;
 }
 

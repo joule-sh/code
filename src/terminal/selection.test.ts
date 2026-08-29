@@ -1,6 +1,6 @@
 import { Selection, countLines, plainSlice, highlightRange, rangeForLine, selectedText, selectionIndicator, lineCountWord, COL_END } from "./selection.ts";
 import { COPY_TOOL, COPY_TERMINAL, COPY_NOWHERE } from "./clipboard.ts";
-import { REVERSE, RESET, VIOLET, DIM } from "./style.ts";
+import { REVERSE, RESET, ACCENT, DIM } from "./style.ts";
 
 const ESC_CODE: int = 27;
 
@@ -62,7 +62,7 @@ function dragged(anchorLine: int, anchorCol: int, headLine: int, headCol: int): 
 test("plainSlice takes a visible column range and drops the styling around it", () => {
   expect(plainSlice("hello world", 1, 5) == "hello");
   expect(plainSlice("hello world", 7, COL_END) == "world");
-  expect(plainSlice(VIOLET + "hello" + RESET + " world", 1, 5) == "hello");
+  expect(plainSlice(ACCENT + "hello" + RESET + " world", 1, 5) == "hello");
   expect(plainSlice("hello", 4, 2) == "");
 });
 
@@ -86,13 +86,13 @@ test("a highlight that runs to the end of the line still closes its attribute", 
 
 test("highlighting never adds or drops a visible character", () => {
   expect(stripSgr(highlightRange("abcdef", 2, 4)) == "abcdef");
-  expect(stripSgr(highlightRange(VIOLET + "abcdef" + RESET, 2, 4)) == "abcdef");
+  expect(stripSgr(highlightRange(ACCENT + "abcdef" + RESET, 2, 4)) == "abcdef");
   expect(stripSgr(highlightRange("abcdef", 1, COL_END)) == "abcdef");
   expect(stripSgr(highlightRange("abcdef", 9, 12)) == "abcdef");
 });
 
 test("a highlight inside a coloured line reopens that colour afterwards and stays balanced", () => {
-  let out = highlightRange(VIOLET + "abcdef" + RESET, 3, 4);
+  let out = highlightRange(ACCENT + "abcdef" + RESET, 3, 4);
   expect(out.indexOf(REVERSE) > 0);
   expect(sgrBalanced(out));
   expect(out.endsWith(RESET));
@@ -101,7 +101,7 @@ test("a highlight inside a coloured line reopens that colour afterwards and stay
 test("a highlight is balanced whatever shape the underlying line has", () => {
   expect(sgrBalanced(highlightRange("plain text", 2, 5)));
   expect(sgrBalanced(highlightRange(DIM + "dim text" + RESET, 1, COL_END)));
-  expect(sgrBalanced(highlightRange("lead " + VIOLET + "mid" + RESET + " tail", 4, 8)));
+  expect(sgrBalanced(highlightRange("lead " + ACCENT + "mid" + RESET + " tail", 4, 8)));
   expect(sgrBalanced(highlightRange("", 1, 5)));
 });
 
@@ -157,7 +157,7 @@ test("selectedText stitches the partial first and last lines around the whole mi
 });
 
 test("selectedText takes the text under the styling, not the escape bytes", () => {
-  let lines: string[] = [VIOLET + "coloured" + RESET];
+  let lines: string[] = [ACCENT + "coloured" + RESET];
   let sel = dragged(0, 1, 0, COL_END);
   expect(selectedText(sel, lines, nothingHidden) == "coloured");
 });

@@ -1,5 +1,5 @@
 import { TURN_START, TOOL_CALL, TOOL_RESULT } from "../protocol/frames.ts";
-import { VIOLET, wrap } from "./style.ts";
+import { ACCENT, wrap } from "./style.ts";
 
 const GLYPH: string = "◆";
 
@@ -15,5 +15,5 @@ export function buildQuantaIndicator(kind: string, tool: string): string {
   if (verb == "") {
     return "";
   }
-  return wrap(VIOLET, GLYPH + " " + verb);
+  return wrap(ACCENT, GLYPH + " " + verb);
 }

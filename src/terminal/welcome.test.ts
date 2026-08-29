@@ -1,6 +1,6 @@
 import { welcomeBlock, welcomeRows, hintLines, hints, permissionText, buildWelcomeBox, WelcomeFacts } from "./welcome.ts";
 import { visualWidth, truncateToWidth } from "./text.ts";
-import { VIOLET, DIM, RESET } from "./style.ts";
+import { ACCENT, DIM, RESET } from "./style.ts";
 import { parseCommand, CMD_UNKNOWN } from "./commands.ts";
 import { VERSION } from "../version.ts";
 
@@ -114,7 +114,7 @@ test("every colour opened on a line is closed on that same line, so nothing blee
   let raw = welcomeBlock(facts(), 80, TALL).split("\n");
   let i = 0;
   while (i < raw.length) {
-    let opens = countOf(raw[i], VIOLET) + countOf(raw[i], DIM);
+    let opens = countOf(raw[i], ACCENT) + countOf(raw[i], DIM);
     expect(countOf(raw[i], RESET) == opens);
     i = i + 1;
   }
@@ -155,10 +155,10 @@ test("the banner never costs a fact: when it is drawn, every fact row is still t
 
 test("the banner is accented and the version beside it is dim, not the other way round", () => {
   let first = welcomeBlock(facts(), 80, TALL).split("\n")[0];
-  expect(first.indexOf(VIOLET) == 0);
+  expect(first.indexOf(ACCENT) == 0);
   expect(first.indexOf(DIM + VERSION + RESET) > 0);
   let narrow = welcomeBlock(facts(), 45, TALL).split("\n")[0];
-  expect(narrow.indexOf(VIOLET + "joule" + RESET) == 0);
+  expect(narrow.indexOf(ACCENT + "joule" + RESET) == 0);
 });
 
 test("every value in the key-value block starts on one left edge", () => {
@@ -283,7 +283,7 @@ test("the second column of hints starts on one left edge, not wherever the first
 
 test("a hint name is accented and its description dim, so the thing you can type stands out", () => {
   let line = hintLines(80)[0];
-  expect(line.indexOf(VIOLET + "/model") == 0);
+  expect(line.indexOf(ACCENT + "/model") == 0);
   expect(line.indexOf(DIM + "switch the model" + RESET) >= 0);
 });
 
