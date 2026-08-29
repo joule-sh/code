@@ -1065,7 +1065,7 @@ def run_completion_panel_scenario():
         opened = text(bytes(session.raw))
         names = completion_names(opened)
         ok(len(names) >= 8, "a bare slash opens the panel listing every command, got %d rows" % len(names))
-        for expected in ("/help", "/model", "/mode", "/share", "/cat", "/tasks", "/skills", "/clear"):
+        for expected in ("/help", "/model", "/mode", "/session", "/share", "/cat", "/tasks", "/skills"):
             ok(expected in names, "the panel lists %s when the buffer is a bare slash" % expected)
         # How much of the list is on screen when the panel opens is whatever
         # fits the rows it has room for, which moves every time a command is

@@ -87,10 +87,15 @@ def run():
         if "" in ports and "review" in ports:
             ok(ports[""] != ports["review"], "they landed on different ports, got %r" % ports)
 
+        # Two full joule processes tearing down at once (each with its own
+        # daemon behind it) is heavier than any other pty harness asks for on
+        # a loaded CI machine - a longer budget than the usual 10s here, not
+        # a shorter one anywhere else, since nothing about the exit path
+        # itself changes with a second session running.
         default_session.write("\x04")
-        ok(default_session.wait_exit(10.0), "the default session's terminal exits cleanly on ctrl-d")
+        ok(default_session.wait_exit(25.0), "the default session's terminal exits cleanly on ctrl-d")
         review_session.write("\x04")
-        ok(review_session.wait_exit(10.0), "the review session's terminal exits cleanly on ctrl-d")
+        ok(review_session.wait_exit(25.0), "the review session's terminal exits cleanly on ctrl-d")
 
         # ctrl-d only detaches (see docs/03-daemon.md) - both daemons should
         # still be up, independently, after both terminals have left.
@@ -148,9 +153,12 @@ def run_session_command_scenario():
 
         default_session.write(b"\x1b[B")  # down arrow, to the review row
         default_session.write("\r")
-        default_session.wait_for("keeps running", timeout=10.0)
+        # Switching warms the target daemon before this terminal leaves, on
+        # top of the review session's own daemon already running - the same
+        # two-daemons-at-once cost as the ctrl-d waits above.
+        default_session.wait_for("keeps running", timeout=25.0)
         ok(True, "choosing a different session says the one being left keeps running")
-        exited = default_session.wait_exit(10.0)
+        exited = default_session.wait_exit(25.0)
         ok(exited, "the terminal exits after switching, rather than staying open on the old session")
 
         ports = daemon_ports(home_dir)
