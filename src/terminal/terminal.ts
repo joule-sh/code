@@ -1,7 +1,7 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { loadCredential } from "../auth/credentials.ts";
-import { sessionNameFlag } from "../daemon/attach_lifecycle.ts";
+import { sessionNameFlag, runningSessionsFor } from "../daemon/attach_lifecycle.ts";
 import { displayModel, qualifiedModel, wireModel } from "../providers/platform.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -11,7 +11,7 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_COLOR, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_RENAME, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_COLOR, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { applyConfiguredAccent, runColorCommand } from "./color_ui.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
@@ -24,6 +24,7 @@ import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPl
 import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArrow, tryHandleModelPickEnter, tryHandleModelPickChar } from "./model_picker.ts";
 import { openQuitDecision, repaintQuitDecision, detachToBackground } from "./quit_decision.ts";
 import { openSessionPick, repaintSessionPick, tryHandleSessionPickArrow, tryHandleSessionPickChar, currentSessionLine, stayingNote, switchSessionNotes, pickableSessions } from "./session_switch.ts";
+import { renameTargetCheck, renameNotes } from "./session_rename.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { noteApprovalBlock } from "./approval_settled.ts";
@@ -247,6 +248,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let running = true;
   let detachRequested = false;
   let switchTarget = "";
+  let renameTarget = "";
   while (running) {
     let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
 
@@ -474,6 +476,18 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       continue;
     }
 
+    if (cmd.kind == CMD_RENAME) {
+      let check = renameTargetCheck(workspaceRoot, cmd.arg, sessionName, runningSessionsFor(workspaceRoot));
+      if (!check.ok) {
+        sb.append(check.error);
+        drawScreen(sb, input, gate.mode, rk);
+      } else {
+        renameTarget = cmd.arg.trim();
+        running = false;
+      }
+      continue;
+    }
+
     if (cmd.kind == CMD_SHARE) {
       attachToRelay();
       continue;
@@ -534,6 +548,11 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   }
   if (switchTarget != "") {
     for (const line of switchSessionNotes(workspaceRoot, sessionName, switchTarget, session.history)) {
+      console.log(line);
+    }
+  }
+  if (renameTarget != "") {
+    for (const line of renameNotes(workspaceRoot, sessionName, renameTarget, session.history)) {
       console.log(line);
     }
   }

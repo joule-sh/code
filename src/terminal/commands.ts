@@ -2,6 +2,7 @@ export const CMD_HELP: string = "help";
 export const CMD_MODEL: string = "model";
 export const CMD_MODE: string = "mode";
 export const CMD_SESSION: string = "session";
+export const CMD_RENAME: string = "rename";
 export const CMD_SHARE: string = "share";
 export const CMD_LOGIN: string = "login";
 export const CMD_LOGOUT: string = "logout";
@@ -46,6 +47,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "model") { return withKind(CMD_MODEL, arg); }
   if (name == "mode") { return withKind(CMD_MODE, arg); }
   if (name == "session") { return withKind(CMD_SESSION, arg); }
+  if (name == "rename") { return withKind(CMD_RENAME, arg); }
   if (name == "share") { return withKind(CMD_SHARE, arg); }
   if (name == "login") { return withKind(CMD_LOGIN, arg); }
   if (name == "logout") { return withKind(CMD_LOGOUT, arg); }
@@ -66,6 +68,7 @@ export function commandList(): CommandInfo[] {
     { name: "/model", args: "[name]", description: "show or set the model" },
     { name: "/mode", args: "[mode]", description: "show or set the approval mode (read-only, auto-edit, full-auto)" },
     { name: "/session", args: "[name]", description: "list this workspace's running sessions to switch between, or switch to one by name" },
+    { name: "/rename", args: "<new-name>", description: "move this session's history to a new name and leave for it" },
     { name: "/share", args: "", description: "print the pairing URL for this session" },
     { name: "/login", args: "[server]", description: "sign in through a browser, to joule.sh or to a server you name" },
     { name: "/logout", args: "[server]", description: "forget the stored credential for that server, or for the one in use" },
