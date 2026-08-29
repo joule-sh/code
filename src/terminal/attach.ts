@@ -3,6 +3,7 @@ import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVA
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingQuitDecision, PendingSessionPick, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { openQuitDecision, repaintQuitDecision, backgroundKeptNotes } from "./quit_decision.ts";
 import { warmSessionNotes, sessionDisplayName, joulePlusSession, openSessionPick, repaintSessionPick, stayingNote, pickableSessions } from "./session_switch.ts";
+import { renameTargetCheck, renameNotes } from "./session_rename.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
 import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal, beginApprovalBlockLocal } from "./attach_approval.ts";
@@ -17,11 +18,11 @@ import { resolveResume, hasContinueFlag } from "./resume.ts";
 import { describeSessionSuffix } from "../session/persistence.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
-import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, sessionNameFlag, attachedMode, attachedModel, sawStopping } from "../daemon/attach_lifecycle.ts";
+import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, sessionNameFlag, attachedMode, attachedModel, sawStopping, runningSessionsFor } from "../daemon/attach_lifecycle.ts";
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_COLOR, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_RENAME, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_COLOR, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { applyConfiguredAccent, runColorCommand } from "./color_ui.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
@@ -259,6 +260,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
   let keepInBackground = false;
   let stopRequested = false;
   let switchTarget = "";
+  let renameTarget = "";
   if (result.pending.length > 0) {
     let stoppedAlready = processFrames(result.pending, true);
     drawScreen(sb, input, approvalLog.mode, rk);
@@ -490,6 +492,18 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
       continue;
     }
 
+    if (cmd.kind == CMD_RENAME) {
+      let check = renameTargetCheck(workspaceRoot, cmd.arg, sessionName, runningSessionsFor(workspaceRoot));
+      if (!check.ok) {
+        sb.append(check.error);
+        drawScreen(sb, input, approvalLog.mode, rk);
+      } else {
+        renameTarget = cmd.arg.trim();
+        running = false;
+      }
+      continue;
+    }
+
     if (cmd.kind == CMD_SHARE) {
       client.publish(encodeShareRequest({ v: PROTOCOL_VERSION, seq: 0, type: SHARE_REQUEST }));
       sb.append("\nasking the daemon to share this session over the relay");
@@ -543,6 +557,9 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
   if (switchTarget != "") {
     for (const n of warmSessionNotes(workspaceRoot, switchTarget)) { console.log(n); }
     console.log("joule: this session" + describeSessionSuffix(sessionName) + " keeps running - " + joulePlusSession("joule", sessionName) + " returns to it.");
+  }
+  if (renameTarget != "") {
+    for (const n of renameNotes(workspaceRoot, sessionName, renameTarget, null)) { console.log(n); }
   }
   if (stopRequested) {
     if (stopAcked) {
