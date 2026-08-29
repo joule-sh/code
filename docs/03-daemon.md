@@ -1141,3 +1141,43 @@ with `ctrl-d` (detaching was never supposed to stop anything). Then
 the daemon info directory again to confirm exactly one entry is gone -
 the named one - before the plain `joule --stop` that follows takes the
 other.
+
+## A scratch directory, so throwaway files have somewhere sanctioned to go (#336)
+
+An agent working a task regularly needs somewhere to put a file that
+is not the deliverable itself - a debug script, an intermediate
+transform's output, a draft it wants to look at before committing to
+it as a real edit. With nowhere sanctioned, that either lands in the
+workspace (and then has to be remembered and removed before it looks
+like part of the change) or in a shared system temp directory, which
+is genuinely unsafe to reuse: a leftover script from an unrelated
+earlier session can shadow a same-named module for anything run from
+that directory later.
+
+`ensureScratchDir(workspaceRoot, sessionName)` (`src/session/scratch.ts`)
+creates `.joule/scratch/<sessionKeyFor(workspaceRoot, sessionName)>`
+inside the workspace itself, reusing the same per-(workspace, session)
+key `--session` (#331) already keys the daemon runtime dir with, so two
+sessions on one workspace never collide. Living inside the workspace
+root rather than under the daemon's home-config directory is the whole
+design: every tool that is already jailed to the workspace root
+(read, write, edit, list, grep) can reach it with no change to
+`jail.ts`, and every `run` shell command can already reach it as a
+plain relative path with no env var to plumb through the three places
+a command gets built (`run.ts`, `run_foreground.ts`,
+`background_run.ts`), because all of them already start from the
+workspace root. The only new work is keeping git blind to it - a line
+appended to `.git/info/exclude` (never the user's own `.gitignore`,
+and skipped entirely for a directory that is not a git repo) - and
+telling the agent it exists, one line of system context injected at
+startup the same way `/memory`'s `startupMemoryText()` already is,
+naming the exact relative path rather than an env var so there is
+nothing to remember beyond it.
+
+Nothing prunes these directories on its own, matching how the rest of
+a session's runtime state already behaves - the inbox and broadcast
+log under the daemon runtime dir do not get cleaned up on `--stop`
+either. `joule --clean-scratch` is the bulk escape hatch: it removes
+`.joule/scratch` for the current workspace outright, covering every
+session that has ever used one on it, rather than trying to guess
+which ones are still wanted.
