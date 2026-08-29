@@ -15,6 +15,7 @@ import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
+import { ensureScratchDir, scratchContextNote } from "../session/scratch.ts";
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText, skillsStartupNote, runSkillCommand } from "./skills_ui.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
@@ -159,6 +160,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
   session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
+  session.injectSystemContext(scratchContextNote(ensureScratchDir(workspaceRoot, sessionName)));
   if (resume.history != null) { session.history = resume.history; }
   live.setSession(session);
 

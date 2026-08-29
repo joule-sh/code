@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello,
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText } from "../terminal/skills_ui.ts";
 import { loadWorkspaceSession, saveWorkspaceSession, describeSessionSuffix } from "../session/persistence.ts";
+import { ensureScratchDir, scratchContextNote } from "../session/scratch.ts";
 import { startupMemoryText } from "../terminal/memory_ui.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { wireForegroundRunner } from "../tools/run_foreground.ts";
@@ -106,6 +107,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
   session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
+  session.injectSystemContext(scratchContextNote(ensureScratchDir(workspaceRoot, sessionName)));
   let resumeRequested = (envOr("JOULE_DAEMON_RESUME", "")) == "1";
   if (resumeRequested) {
     let prior = loadWorkspaceSession(workspaceRoot, sessionName);

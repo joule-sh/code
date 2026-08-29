@@ -3,6 +3,8 @@ import { runDemo } from "./demo/demo.ts";
 import { runTerminal } from "./terminal/terminal.ts";
 import { runAttach, runDaemonJoule, runStop } from "./terminal/attach.ts";
 import { ENSURE_COMMAND, hasEnsureCommand, runDaemonEnsure } from "./daemon/ensure_cli.ts";
+import { cleanScratch } from "./session/scratch.ts";
+import { workspaceRoot } from "./vendor/platform/platform.ts";
 
 function hasFlagIn(argv: string[], name: string): bool {
   for (const a of argv) {
@@ -29,6 +31,12 @@ if (hasFlagIn(currentArgs(), "--version")) {
   runDemo();
 } else if (hasFlagIn(currentArgs(), "--stop")) {
   runStop(currentArgs());
+} else if (hasFlagIn(currentArgs(), "--clean-scratch")) {
+  if (cleanScratch(workspaceRoot())) {
+    console.log("joule: removed this workspace's scratch directory.");
+  } else {
+    console.log("joule: no scratch directory to remove for this workspace.");
+  }
 } else if (hasEnsureCommand(currentArgs())) {
   runDaemonEnsure(currentArgs());
 } else if (hasFlagIn(currentArgs(), "attach")) {
