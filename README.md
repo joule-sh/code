@@ -61,4 +61,6 @@ code.
   forced them.
 - [docs/06-selection.md](docs/06-selection.md): mouse selection and copy.
 - [docs/07-building.md](docs/07-building.md): building from source.
+- [docs/08-daemon-frame-protocol.md](docs/08-daemon-frame-protocol.md): the
+  daemon websocket frames, for a client that is not joule.
 - [specs/](specs/): one directory per decided piece.
