@@ -4,6 +4,7 @@ import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPl
 import { openQuitDecision, repaintQuitDecision, backgroundKeptNotes } from "./quit_decision.ts";
 import { warmSessionNotes, sessionDisplayName, joulePlusSession, openSessionPick, repaintSessionPick, stayingNote, pickableSessions } from "./session_switch.ts";
 import { renameTargetCheck, renameNotes } from "./session_rename.ts";
+import { modeFlagResult, promptFlag } from "./startup_flags.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
 import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal, beginApprovalBlockLocal } from "./attach_approval.ts";
@@ -147,6 +148,12 @@ class ClientState {
 
 function runClientLoop(argv: string[], workspaceRoot: string, sessionName: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
   applyConfiguredAccent();
+  let modeChoice = modeFlagResult(argv);
+  if (modeChoice.error != "") {
+    console.log(modeChoice.error);
+    process.exit(1);
+    return;
+  }
   let client = result.client;
   let sb = new Scrollback();
   sb.setWidth(terminalWidth());
@@ -254,6 +261,14 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
 
   for (const a of argv) {
     if (a == "--share") { client.publish(encodeShareRequest({ v: PROTOCOL_VERSION, seq: 0, type: SHARE_REQUEST })); }
+  }
+
+  if (modeChoice.mode != "") { setMode(modeChoice.mode); }
+  let initialPrompt = promptFlag(argv);
+  if (initialPrompt != "") {
+    sb.append("\n" + stylePrompt("> ") + initialPrompt);
+    drawScreen(sb, input, approvalLog.mode, rk);
+    sendInput(initialPrompt);
   }
 
   let running = true;

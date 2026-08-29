@@ -25,6 +25,7 @@ import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArro
 import { openQuitDecision, repaintQuitDecision, detachToBackground } from "./quit_decision.ts";
 import { openSessionPick, repaintSessionPick, tryHandleSessionPickArrow, tryHandleSessionPickChar, currentSessionLine, stayingNote, switchSessionNotes, pickableSessions } from "./session_switch.ts";
 import { renameTargetCheck, renameNotes } from "./session_rename.ts";
+import { modeFlagResult, promptFlag } from "./startup_flags.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { noteApprovalBlock } from "./approval_settled.ts";
@@ -155,6 +156,13 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   };
 
   let gate = new Gate(MODE_SAFE_AUTO, 120000, workspaceRoot, onApprovalRequest, onApprovalPoll);
+  let modeChoice = modeFlagResult(argv);
+  if (modeChoice.error != "") {
+    console.log(modeChoice.error);
+    process.exit(1);
+    return;
+  }
+  if (modeChoice.mode != "") { gate.mode = modeChoice.mode; }
   gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(live.sessionSlot, tracker.current, callId, summary, args));
   gateBox.set(gate);
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
@@ -243,6 +251,13 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   if (hasFlag(argv, "--share")) {
     attachToRelay();
+  }
+
+  let initialPrompt = promptFlag(argv);
+  if (initialPrompt != "") {
+    history.record(initialPrompt);
+    bridge.runNow(session, initialPrompt);
+    drawScreen(sb, input, gate.mode, rk);
   }
 
   let running = true;
