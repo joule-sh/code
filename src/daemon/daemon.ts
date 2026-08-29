@@ -3,7 +3,7 @@ import { loadCredential } from "../auth/credentials.ts";
 import { displayModel } from "../providers/platform.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
 import { ToolsRegistry } from "../tools/registry.ts";
-import { Gate, MODE_SAFE_AUTO } from "../approval/gate.ts";
+import { Gate } from "../approval/gate.ts";
 import { emitApprovalSettled } from "../approval/settled_frame.ts";
 import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
@@ -23,7 +23,8 @@ import { appendBroadcast, startBroadcastLog } from "./broadcast.ts";
 import { logDaemon, describeFrame } from "./daemon_log.ts";
 import { runDaemonWebSocket } from "./connection.ts";
 import { sweepInbox } from "./inbox.ts";
-import { inboxDir, daemonRuntimeDir } from "./paths.ts";
+import { inboxDir } from "./paths.ts";
+import { daemonStartup, runtimeDirChoice, RUNTIME_DIR_ENV } from "./startup.ts";
 import { writeDaemonInfo, removeDaemonInfo } from "./lifecycle.ts";
 import { VERSION } from "../version.ts";
 import { envOr, workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
@@ -56,7 +57,33 @@ function currentArgvForDaemon(): string[] {
   return result;
 }
 
+// The runtime directory the daemon was told to use, or the derived one, made
+// on disk. An operator-supplied path is the one that can fail here - a
+// directory under something read-only, or one whose parent does not exist -
+// and it fails before the broadcast log is touched, so the message names the
+// directory rather than leaving startBroadcastLog to report that it could not
+// clear a file in a directory that was never there.
+function makeRuntimeDir(runtimeDir: string): string {
+  try {
+    fs.mkdirSync(runtimeDir, true);
+    fs.mkdirSync(inboxDir(runtimeDir), true);
+  } catch {
+    return "could not create the runtime directory " + runtimeDir;
+  }
+  if (!fs.existsSync(inboxDir(runtimeDir))) {
+    return "could not create the runtime directory " + runtimeDir;
+  }
+  return "";
+}
+
 export function runDaemon(argv: string[], workspaceRoot: string, sessionName: string, port: int): void {
+  let startup = daemonStartup(argv);
+  if (startup.error != "") {
+    console.log(startup.error);
+    process.exit(1);
+    return;
+  }
+
   let cfg = loadConfig(argv);
   if (cfg.apiKey == "") {
     console.log("joule-daemon: no credentials configured, run joule once interactively first");
@@ -64,9 +91,19 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
     return;
   }
 
-  let runtimeDir = daemonRuntimeDir(workspaceRoot, sessionName);
-  fs.mkdirSync(runtimeDir, true);
-  fs.mkdirSync(inboxDir(runtimeDir), true);
+  let dirChoice = runtimeDirChoice(envOr(RUNTIME_DIR_ENV, ""), workspaceRoot, sessionName);
+  if (dirChoice.error != "") {
+    console.log(dirChoice.error);
+    process.exit(1);
+    return;
+  }
+  let runtimeDir = dirChoice.dir;
+  let dirProblem = makeRuntimeDir(runtimeDir);
+  if (dirProblem != "") {
+    console.log("joule-daemon: " + dirProblem + " - nothing could reach this daemon's inbox or broadcast log, so it is not starting");
+    process.exit(1);
+    return;
+  }
   sweepInbox(runtimeDir);
   let logCleared = startBroadcastLog(runtimeDir);
   if (logCleared != "") {
@@ -99,7 +136,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
     s.emit(encodeApprovalRequest(f));
   };
 
-  let gate = new Gate(MODE_SAFE_AUTO, APPROVAL_TIMEOUT_MS, workspaceRoot, onApprovalRequest, () => {});
+  let gate = new Gate(startup.mode, APPROVAL_TIMEOUT_MS, workspaceRoot, onApprovalRequest, () => {});
   gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(sessionBox.items, tracker.current, callId, summary, args));
   let approval: ApprovalGate = { check: (callId: string, tool: string, summary: string, args: string) => gate.check(callId, tool, summary, args) };
 
@@ -158,9 +195,14 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   }
 
   writeDaemonInfo(workspaceRoot, sessionName, port);
-  console.log("joule-daemon " + VERSION + ": workspace " + workspaceRoot + describeSessionSuffix(sessionName) + ", listening on 127.0.0.1:" + `${port}`);
+  console.log("joule-daemon " + VERSION + ": workspace " + workspaceRoot + describeSessionSuffix(sessionName) + ", listening on 127.0.0.1:" + `${port}` + ", mode " + gate.mode);
 
   Worker.run(() => { runDaemonWebSocket(port, runtimeDir); return 0; });
+  // A task named on the command line runs as if it had arrived as an input
+  // frame, before the loop starts draining the inbox - the same ordering
+  // terminal.ts uses for --prompt, and the reason an unattended daemon needs
+  // no client at all to do one piece of work.
+  if (startup.prompt != "") { worker.runInitialPrompt(startup.prompt); }
   worker.loop();
   uplink.stop();
   removeDaemonInfo(workspaceRoot, sessionName);

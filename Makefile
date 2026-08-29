@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness multi-session-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness relay-tls-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness multi-session-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-mode-flag-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness relay-tls-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -178,6 +178,13 @@ build-mismatch-harness: build bin/stub_model
 
 daemon-commands-harness: build bin/stub_model
 	node scripts/verify_daemon_mode_model.mjs
+
+# The headless startup path (#348): the mode a daemon comes up in, the first
+# task it can be handed on its command line, and the runtime directory it can
+# be told to use, all asserted against broadcast.log rather than a client -
+# which is the only surface something driving an unattended daemon has.
+daemon-mode-flag-harness: build bin/stub_model
+	node scripts/verify_daemon_mode_flag.mjs
 
 daemon-stop-harness: build bin/stub_model
 	node scripts/verify_daemon_stop.mjs

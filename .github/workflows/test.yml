@@ -398,6 +398,21 @@ jobs:
       - run: node --version
       - run: make ws-peer-lifecycle-harness
 
+  daemon-mode-flag:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 10
+    env:
+      LUMEN_VERSION: v0.7.5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: node --version
+      - run: make daemon-mode-flag-harness
+
   dangling-toolcall:
     runs-on: [self-hosted, diff]
     timeout-minutes: 10

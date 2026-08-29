@@ -72,6 +72,13 @@ export class SessionWorker {
     if (activeUplink != null) { activeUplink.pump(); }
   }
 
+  // A first task handed over at startup rather than sent as a frame. It goes
+  // through the same bridge an input frame does, so anything that arrives
+  // while it is running queues behind it instead of interleaving with it.
+  runInitialPrompt(text: string): void {
+    this.bridge.runNow(this.session, text);
+  }
+
   pollForApproval(): void {
     this.drainOnce();
     this.pollRelayUplink();
