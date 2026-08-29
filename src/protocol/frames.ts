@@ -41,7 +41,12 @@ export const DECISION_ALWAYS: string = "always";
 export const DECIDED_BY_PERSON: string = "person";
 export const DECIDED_BY_MODE: string = "mode";
 
-export type SessionHelloFrame = { v: int, seq: int, type: string, sessionId: string, workspace: string, model: string, mode: string, protocol: int, build: string };
+// `session` is the workspace multi-session name (#331) - "" for the default
+// session, so `sessionKeyFor`'s own default reproduces exactly. Not to be
+// confused with `sessionId`, which is an unrelated identity: the daemon sets
+// it to "daemon-<port>" for itself, and a relay share sets it to the relay's
+// own pairing id.
+export type SessionHelloFrame = { v: int, seq: int, type: string, sessionId: string, workspace: string, session: string, model: string, mode: string, protocol: int, build: string };
 export type TurnStartFrame = { v: int, seq: int, type: string, turnId: string, prompt: string };
 export type TextDeltaFrame = { v: int, seq: int, type: string, turnId: string, text: string };
 export type ToolCallFrame = { v: int, seq: int, type: string, turnId: string, callId: string, tool: string, args: string };
@@ -240,6 +245,10 @@ export function errorFrameCode(text: string): string {
 
 export function helloFrameWorkspace(text: string): string {
   return rawFieldValue(text, "workspace");
+}
+
+export function helloFrameSession(text: string): string {
+  return rawFieldValue(text, "session");
 }
 
 export function helloFrameBuild(text: string): string {

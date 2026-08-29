@@ -1,4 +1,4 @@
-.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness relay-tls-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
+.PHONY: build release test macos-test e2e share-liveness-harness terminal-share-mode-harness cold-start-harness stop-then-start-harness multi-session-harness skills-harness memory-files-harness editor-frames editor-icon editor-check editor-harness editor-window-harness editor-package npm-check npm-package terminal-harness clipboard-harness layout-harness onboarding-harness login-server-harness daemon-concurrent-harness daemon-attach-harness build-mismatch-harness daemon-commands-harness daemon-stop-harness attach-commands-harness two-client-harness share-bridge-harness console-association-harness owner-admission-harness session-listing-harness windows-harness windows-daemon-harness relay-reconnect-harness relay-reshare-harness relay-path-advert-harness relay-tls-advert-harness ws-peer-lifecycle-harness dangling-toolcall-harness bench-mailbox clean
 
 ALL_TS := $(shell find src -name '*.ts')
 TEST_TS := $(shell find src -name '*.test.ts')
@@ -184,6 +184,9 @@ daemon-stop-harness: build bin/stub_model
 
 stop-then-start-harness: build bin/stub_model
 	python3 scripts/verify_stop_then_start.py
+
+multi-session-harness: build bin/stub_model
+	python3 scripts/verify_multi_session_pty.py
 
 attach-commands-harness: build bin/stub_model
 	python3 scripts/verify_attach_commands.py

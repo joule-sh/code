@@ -1,7 +1,8 @@
-import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop, helloFrameWorkspace, helloFrameBuild } from "../protocol/frames.ts";
+import { PROTOCOL_VERSION, DAEMON_STOP, DAEMON_STOPPING, SESSION_HELLO, MODE_CHANGED, MODEL_CHANGED, frameType, decodeSessionHello, decodeModeChanged, decodeModelChanged, encodeDaemonStop, helloFrameWorkspace, helloFrameSession, helloFrameBuild } from "../protocol/frames.ts";
 import { VERSION } from "../version.ts";
 import { DaemonClient } from "./attach_client.ts";
 import { readDaemonInfo, readDaemonInfoAt, removeDaemonInfo, daemonPortOrZero, portFromWorkspace, daemonSpawnArgs, daemonLogPath, daemonInfoDir, defaultDaemonBinPath } from "./lifecycle.ts";
+import { describeSessionSuffix } from "../session/persistence.ts";
 import { shellProgram, tempDir, worthConnectingTo } from "../vendor/platform/platform.ts";
 
 export const DAEMON_HOST: string = "127.0.0.1";
@@ -28,6 +29,20 @@ export function hasStopFlag(argv: string[]): bool {
   return false;
 }
 
+export const SESSION_FLAG: string = "--session";
+
+// The session name (#331) named on the command line, or "" for the default
+// session - exactly what sessionKeyFor and everything built on it already
+// treat as "the session nobody named."
+export function sessionNameFlag(argv: string[]): string {
+  let i = 0;
+  while (i < argv.length) {
+    if (argv[i] == SESSION_FLAG && i + 1 < argv.length) { return argv[i + 1]; }
+    i = i + 1;
+  }
+  return "";
+}
+
 export function nextPortInRange(port: int): int {
   let next = port + 1;
   if (next >= DEFAULT_PORT_BASE + DEFAULT_PORT_SPREAD) { return DEFAULT_PORT_BASE; }
@@ -37,6 +52,13 @@ export function nextPortInRange(port: int): int {
 export function helloWorkspace(frames: string[]): string {
   for (const f of frames) {
     if (frameType(f) == SESSION_HELLO) { return helloFrameWorkspace(f); }
+  }
+  return "";
+}
+
+export function helloSession(frames: string[]): string {
+  for (const f of frames) {
+    if (frameType(f) == SESSION_HELLO) { return helloFrameSession(f); }
   }
   return "";
 }
@@ -105,9 +127,14 @@ export function attachedModel(frames: string[], fallback: string): string {
   return model;
 }
 
-export function describeWorkspace(seen: string): string {
-  if (seen == "") { return "nothing that identified itself"; }
-  return seen;
+// Whether a daemon's own hello frame identifies it as the one being looked
+// for. `recorded && seenWorkspace == ""` keeps the same leniency the pre-#331
+// check already had: a daemon we trust because it is the one our own info
+// file recorded, but whose hello has not arrived in `settled` yet, is a match
+// rather than a mismatch - there is nothing yet to contradict it.
+export function identityMatches(seenWorkspace: string, seenSession: string, workspaceRoot: string, sessionName: string, recorded: bool): bool {
+  if (recorded && seenWorkspace == "") { return true; }
+  return seenWorkspace == workspaceRoot && seenSession == sessionName;
 }
 
 export function isTaken(taken: int[], port: int): bool {
@@ -117,7 +144,11 @@ export function isTaken(taken: int[], port: int): bool {
   return false;
 }
 
-export function portsHeldByOthers(workspaceRoot: string): int[] {
+// Every port recorded for some daemon that is not this exact workspace and
+// session - so a fresh port search never lands on a daemon serving a
+// different session on the same path (#331), just as it never landed on a
+// different workspace's daemon.
+export function portsHeldByOthers(workspaceRoot: string, sessionName: string): int[] {
   let dir = daemonInfoDir();
   let names: string[] = [];
   try { names = fs.readdirSync(dir); } catch { return []; }
@@ -126,10 +157,33 @@ export function portsHeldByOthers(workspaceRoot: string): int[] {
     if (!name.endsWith(".json")) { continue; }
     let info = readDaemonInfoAt(dir + "/" + name);
     if (info == null) { continue; }
-    if (info.workspace == workspaceRoot) { continue; }
+    if (info.workspace == workspaceRoot && info.session == sessionName) { continue; }
     ports.push(info.port);
   }
   return ports;
+}
+
+// Every session name currently running a daemon for this workspace - "" for
+// the default session, then the rest in whatever order the directory gives
+// them. Only sessions with a daemon actually answering appear (probed the
+// same way ensureAttached decides whether a port is worth trying): a past
+// session with saved history but nothing running right now is reached
+// directly by name (`/session <name>`) rather than offered in a list built
+// from what is live.
+export function runningSessionsFor(workspaceRoot: string): string[] {
+  let dir = daemonInfoDir();
+  let names: string[] = [];
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  let out: string[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) { continue; }
+    let info = readDaemonInfoAt(dir + "/" + name);
+    if (info == null) { continue; }
+    if (info.workspace != workspaceRoot) { continue; }
+    if (!worthConnectingTo(DAEMON_HOST, info.port)) { continue; }
+    out.push(info.session);
+  }
+  return out;
 }
 
 export function firstFreePort(start: int, taken: int[]): int {
@@ -167,22 +221,22 @@ function waitForReady(client: DaemonClient, ticks: int): ReadyOutcome {
   return out;
 }
 
-export function waitForDaemonGone(workspaceRoot: string, ticks: int): bool {
+export function waitForDaemonGone(workspaceRoot: string, sessionName: string, ticks: int): bool {
   let i = 0;
   while (i < ticks) {
-    if (daemonPortOrZero(workspaceRoot) == 0) { return true; }
+    if (daemonPortOrZero(workspaceRoot, sessionName) == 0) { return true; }
     process.sleep(POLL_MS);
     i = i + 1;
   }
-  return daemonPortOrZero(workspaceRoot) == 0;
+  return daemonPortOrZero(workspaceRoot, sessionName) == 0;
 }
 
-export function stoppedNote(workspaceRoot: string): string {
-  return "joule --stop: the daemon for " + workspaceRoot + " has stopped";
+export function stoppedNote(workspaceRoot: string, sessionName: string): string {
+  return "joule --stop: the daemon for " + workspaceRoot + describeSessionSuffix(sessionName) + " has stopped";
 }
 
-export function stillRunningNote(workspaceRoot: string): string {
-  return "joule --stop: the daemon for " + workspaceRoot + " acknowledged the request but was still running " + `${STOP_GONE_TICKS * POLL_MS / 1000}` + "s later - it may be finishing an in-flight turn, and a joule started now would attach to it on its way out";
+export function stillRunningNote(workspaceRoot: string, sessionName: string): string {
+  return "joule --stop: the daemon for " + workspaceRoot + describeSessionSuffix(sessionName) + " acknowledged the request but was still running " + `${STOP_GONE_TICKS * POLL_MS / 1000}` + "s later - it may be finishing an in-flight turn, and a joule started now would attach to it on its way out";
 }
 
 export function waitForPortOpen(port: int, ticks: int): bool {
@@ -233,17 +287,26 @@ export function daemonBinFailure(daemonBinPath: string): string {
   return spawnFailureText(daemonBinPath, probe.status, probe.stderr);
 }
 
-export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachResult {
+// What a daemon answering the wrong identity is told to have answered for -
+// the workspace alone when it is a different workspace entirely, or the
+// workspace plus which session, when it is this workspace but a different
+// (or the default) session (#331).
+function describeIdentity(seenWorkspace: string, seenSession: string): string {
+  if (seenWorkspace == "") { return "nothing that identified itself"; }
+  return seenWorkspace + describeSessionSuffix(seenSession);
+}
+
+export function ensureAttached(workspaceRoot: string, sessionName: string, resumeFlag: bool): AttachResult {
   let notes: string[] = [];
-  let info = readDaemonInfo(workspaceRoot);
-  let taken = portsHeldByOthers(workspaceRoot);
+  let info = readDaemonInfo(workspaceRoot, sessionName);
+  let taken = portsHeldByOthers(workspaceRoot, sessionName);
   let port = DEFAULT_PORT_BASE;
   let recorded = false;
   if (info != null) {
     port = info.port;
     recorded = true;
   } else {
-    port = firstFreePort(portFromWorkspace(workspaceRoot, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD), taken);
+    port = firstFreePort(portFromWorkspace(workspaceRoot, sessionName, DEFAULT_PORT_BASE, DEFAULT_PORT_SPREAD), taken);
   }
 
   let attempt = 0;
@@ -258,7 +321,8 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     if (first.ready) {
       let settled = waitForHello(client, first.frames, HELLO_WAIT_TICKS);
       let seen = helloWorkspace(settled);
-      if (seen == workspaceRoot || (recorded && seen == "")) {
+      let seenSession = helloSession(settled);
+      if (identityMatches(seen, seenSession, workspaceRoot, sessionName, recorded)) {
         let build = helloBuild(settled);
         if (build != VERSION) {
           for (const n of buildMismatchNotes(port, build)) { notes.push(n); }
@@ -269,7 +333,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
         let already: AttachResult = { client: client, spawned: false, pending: settled, port: port, notes: notes };
         return already;
       }
-      notes.push("joule: 127.0.0.1:" + `${port}` + " answers for " + describeWorkspace(seen) + ", not " + workspaceRoot + " - looking for a port of its own");
+      notes.push("joule: 127.0.0.1:" + `${port}` + " answers for " + describeIdentity(seen, seenSession) + ", not " + workspaceRoot + describeSessionSuffix(sessionName) + " - looking for a port of its own");
       client.detach();
       taken.push(port);
       port = firstFreePort(nextPortInRange(port), taken);
@@ -287,7 +351,7 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
       let unusable: AttachResult = { client: client, spawned: false, pending: [], port: port, notes: notes };
       return unusable;
     }
-    let args = daemonSpawnArgs(workspaceRoot, port, daemonLogPath(workspaceRoot), resumeFlag, daemonBinPath);
+    let args = daemonSpawnArgs(workspaceRoot, sessionName, port, daemonLogPath(workspaceRoot, sessionName), resumeFlag, daemonBinPath);
     let spawn = child_process.spawnSync(shellProgram(), args);
     if (spawn.status != 0) {
       notes.push(spawnFailureText(daemonBinPath, spawn.status, spawn.stderr));
@@ -304,8 +368,9 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
     for (const f of second.frames) { combined.push(f); }
     let settled = waitForHello(client, combined, HELLO_WAIT_TICKS);
     let seen = helloWorkspace(settled);
-    if (seen != "" && seen != workspaceRoot) {
-      notes.push("joule: started a daemon for " + workspaceRoot + " on 127.0.0.1:" + `${port}` + " but 127.0.0.1:" + `${port}` + " answered for " + seen);
+    let seenSession = helloSession(settled);
+    if (seen != "" && !identityMatches(seen, seenSession, workspaceRoot, sessionName, false)) {
+      notes.push("joule: started a daemon for " + workspaceRoot + describeSessionSuffix(sessionName) + " on 127.0.0.1:" + `${port}` + " but 127.0.0.1:" + `${port}` + " answered for " + describeIdentity(seen, seenSession));
       notes.push("joule: two daemons are sharing that port - stop the stale one with joule --stop in " + seen);
       client.detach();
       let shared: AttachResult = { client: client, spawned: true, pending: settled, port: port, notes: notes };
@@ -330,14 +395,14 @@ export function ensureAttached(workspaceRoot: string, resumeFlag: bool): AttachR
   return none;
 }
 
-export function runAttachStop(workspaceRoot: string): void {
-  let info = readDaemonInfo(workspaceRoot);
+export function runAttachStop(workspaceRoot: string, sessionName: string): void {
+  let info = readDaemonInfo(workspaceRoot, sessionName);
   if (info == null) {
-    console.log("joule: no daemon is running for " + workspaceRoot);
+    console.log("joule: no daemon is running for " + workspaceRoot + describeSessionSuffix(sessionName));
     return;
   }
 
-  let unreachable = "joule: could not reach the daemon at 127.0.0.1:" + `${info.port}` + " for " + workspaceRoot + " - it may have already crashed or stopped";
+  let unreachable = "joule: could not reach the daemon at 127.0.0.1:" + `${info.port}` + " for " + workspaceRoot + describeSessionSuffix(sessionName) + " - it may have already crashed or stopped";
   if (!worthConnectingTo(DAEMON_HOST, info.port)) {
     console.log(unreachable);
     return;
@@ -353,8 +418,9 @@ export function runAttachStop(workspaceRoot: string): void {
 
   let settled = waitForHello(client, ready.frames, HELLO_WAIT_TICKS);
   let seen = helloWorkspace(settled);
-  if (seen != "" && seen != workspaceRoot) {
-    console.log("joule --stop: 127.0.0.1:" + `${info.port}` + " is serving " + seen + ", not " + workspaceRoot + " - leaving it alone");
+  let seenSession = helloSession(settled);
+  if (seen != "" && !identityMatches(seen, seenSession, workspaceRoot, sessionName, false)) {
+    console.log("joule --stop: 127.0.0.1:" + `${info.port}` + " is serving " + describeIdentity(seen, seenSession) + ", not " + workspaceRoot + describeSessionSuffix(sessionName) + " - leaving it alone");
     client.detach();
     return;
   }
@@ -377,10 +443,10 @@ export function runAttachStop(workspaceRoot: string): void {
   client.detach();
 
   if (acked) {
-    if (waitForDaemonGone(workspaceRoot, STOP_GONE_TICKS)) {
-      console.log(stoppedNote(workspaceRoot));
+    if (waitForDaemonGone(workspaceRoot, sessionName, STOP_GONE_TICKS)) {
+      console.log(stoppedNote(workspaceRoot, sessionName));
     } else {
-      console.log(stillRunningNote(workspaceRoot));
+      console.log(stillRunningNote(workspaceRoot, sessionName));
     }
     console.log("joule --stop: note - any already-running background task or subagent it started keeps running as its own detached process; stopping the daemon does not stop those (see docs/03-daemon.md)");
   } else {
@@ -401,12 +467,12 @@ export function sawStopping(frames: string[]): bool {
   return false;
 }
 
-export function reapDaemonForUpdate(workspaceRoot: string): string {
-  let port = daemonPortOrZero(workspaceRoot);
+export function reapDaemonForUpdate(workspaceRoot: string, sessionName: string): string {
+  let port = daemonPortOrZero(workspaceRoot, sessionName);
   if (port == 0) { return REAP_NONE; }
 
   if (!worthConnectingTo(DAEMON_HOST, port)) {
-    removeDaemonInfo(workspaceRoot);
+    removeDaemonInfo(workspaceRoot, sessionName);
     return REAP_GONE;
   }
 
@@ -415,13 +481,14 @@ export function reapDaemonForUpdate(workspaceRoot: string): string {
   let ready = waitForReady(client, CONNECT_WAIT_TICKS);
   if (!ready.ready) {
     client.detach();
-    removeDaemonInfo(workspaceRoot);
+    removeDaemonInfo(workspaceRoot, sessionName);
     return REAP_GONE;
   }
 
   let settled = waitForHello(client, ready.frames, HELLO_WAIT_TICKS);
   let seen = helloWorkspace(settled);
-  if (seen != "" && seen != workspaceRoot) {
+  let seenSession = helloSession(settled);
+  if (seen != "" && !identityMatches(seen, seenSession, workspaceRoot, sessionName, false)) {
     client.detach();
     return REAP_OTHER;
   }
@@ -437,6 +504,6 @@ export function reapDaemonForUpdate(workspaceRoot: string): string {
   }
   client.detach();
 
-  if (acked && waitForDaemonGone(workspaceRoot, STOP_GONE_TICKS)) { return REAP_STOPPED; }
+  if (acked && waitForDaemonGone(workspaceRoot, sessionName, STOP_GONE_TICKS)) { return REAP_STOPPED; }
   return REAP_NO_ACK;
 }

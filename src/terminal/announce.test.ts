@@ -29,12 +29,23 @@ function newSession(): Session {
 test("the shared hello carries the gate's approval mode, never the session kind", () => {
   let session = newSession();
   let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
-  let hello = decodeSessionHello(shareHello(session, "sess-1", "/repo", "deepseek/deepseek-chat", gate.mode));
+  let hello = decodeSessionHello(shareHello(session, "sess-1", "/repo", "", "deepseek/deepseek-chat", gate.mode));
   expect(hello != null);
   if (hello != null) {
     expect(hello.mode == MODE_AUTO_EDIT);
     expect(hello.mode != session.mode);
     expect(hello.model == "deepseek/deepseek-chat");
+    expect(hello.sessionId == "sess-1");
+  }
+});
+
+test("the shared hello carries the workspace multi-session name, distinct from the relay's own sessionId", () => {
+  let session = newSession();
+  let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
+  let hello = decodeSessionHello(shareHello(session, "sess-1", "/repo", "review", "deepseek/deepseek-chat", gate.mode));
+  expect(hello != null);
+  if (hello != null) {
+    expect(hello.session == "review");
     expect(hello.sessionId == "sess-1");
   }
 });

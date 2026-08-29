@@ -23,15 +23,26 @@ export function repaintQuitDecision(sb: Scrollback, pending: PendingQuitDecision
   }
 }
 
+// A runnable command for this exact workspace and session, e.g. "joule" or
+// "joule --stop --session review" - so a note someone reads names the command
+// that actually gets them back to (or ends) this session, not just what it
+// would do in prose.
+function joulePlusSession(base: string, sessionName: string): string {
+  if (sessionName == "") { return base; }
+  return base + " --session " + sessionName;
+}
+
 // What to print, after the alt screen is gone, when a session was left running
 // in the background. Both ways of getting there - the standalone terminal
 // handing itself to a fresh daemon, and an attached client walking away from
 // the one it was already talking to - say the same thing, because from here
 // they are the same thing.
-export function backgroundKeptNotes(port: int): string[] {
+export function backgroundKeptNotes(port: int, sessionName: string): string[] {
+  let named = "this session";
+  if (sessionName != "") { named = "the " + sessionName + " session"; }
   return [
-    "joule: this session is now running in the background (daemon on 127.0.0.1:" + `${port}` + ").",
-    "joule: run joule here to reattach, or joule --stop to end it.",
+    "joule: " + named + " is now running in the background (daemon on 127.0.0.1:" + `${port}` + ").",
+    "joule: run " + joulePlusSession("joule", sessionName) + " here to reattach, or " + joulePlusSession("joule --stop", sessionName) + " to end it.",
   ];
 }
 
@@ -40,15 +51,15 @@ export function backgroundKeptNotes(port: int): string[] {
 // so `joule` here reattaches to the same conversation. Returns the lines to
 // print once the terminal has left the alt screen. Never throws: if the daemon
 // will not come up, the history is still saved, and the note says how to resume.
-export function detachToBackground(workspaceRoot: string, history: Message[]): string[] {
-  persistTurnEnd(workspaceRoot, history);
-  let result = ensureAttached(workspaceRoot, true);
+export function detachToBackground(workspaceRoot: string, sessionName: string, history: Message[]): string[] {
+  persistTurnEnd(workspaceRoot, sessionName, history);
+  let result = ensureAttached(workspaceRoot, sessionName, true);
   let lines: string[] = [];
   for (const n of result.notes) { lines.push(n); }
   if (result.client.socketReady) {
-    for (const n of backgroundKeptNotes(result.client.port)) { lines.push(n); }
+    for (const n of backgroundKeptNotes(result.client.port, sessionName)) { lines.push(n); }
   } else {
-    lines.push("joule: could not start a background daemon, but the session is saved - run joule --continue here to resume it.");
+    lines.push("joule: could not start a background daemon, but the session is saved - run " + joulePlusSession("joule", sessionName) + " --continue here to resume it.");
   }
   result.client.detach();
   return lines;

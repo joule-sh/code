@@ -1091,3 +1091,53 @@ started a daemon of its own and attached to it. The same run under a real
 pty shows the three lines under the welcome box, which is where a person
 actually meets them. The pre-change client, pointed at the `0.22.0`
 daemon, attached to it and said nothing at all.
+
+## Naming a session, so one path can hold more than one conversation (#331)
+
+A workspace path was the *only* key a daemon ever had. `sessionKeyFor(workspaceRoot)`
+hashed the path into a port, and that hash reached everything downstream
+of it - the daemon's info file, its runtime dir (inbox and broadcast
+log), its log file, and the persisted history file. One path meant one
+hash meant one daemon meant one conversation: every `joule` run from the
+same directory attached to whatever was already live there, `--continue`
+or not.
+
+`--session <name>` adds a second key alongside the path. `sessionKeyFor`
+now takes a name and salts its hash with it (`""` reproduces the old hash
+byte for byte, so upgrading orphans nothing already on disk); every
+function built on top - `portFromWorkspace`, `daemonInfoPath`,
+`daemonRuntimeDir`, `daemonLogPath`, `sessionFilePath` - took the name as
+a second argument and the rest followed with no other path construction
+to touch. `joule --session review` and a plain `joule` on the identical
+path now land on different ports, write different info files, and never
+see each other's turns.
+
+The handshake needed the same widening. `SESSION_HELLO` already carried
+a `sessionId` field, but that is the daemon's own identity
+(`"daemon-" + port`) and, on the relay share path, the relay's pairing
+id - a different concept wearing a similar name. A new `session` field
+carries the workspace session name instead, read the same raw,
+never-strict way `workspace` and `build` already are
+(`helloFrameSession`), so `ensureAttached`'s mismatch check - "is this the
+daemon I am looking for" - now asks about both: `identityMatches` requires
+the workspace *and* the session to agree, with the same leniency the old
+check had for a daemon we already trust from our own info file but whose
+hello has not arrived yet.
+
+`joule --stop` moved the same way - `runAttachStop` and
+`reapDaemonForUpdate` take a session name now, and every note that used
+to say "the daemon for `<workspace>`" says "the daemon for `<workspace>`
+(session `<name>`)" for a named session and exactly what it always said
+for the default one (`describeSessionSuffix("")` is `""`).
+
+### Verification
+
+`make multi-session-harness` runs two real `joule` processes against the
+same workspace - a plain one and `joule --session review` - and checks
+what the product's own files say: two daemons recorded under the same
+`HOME`, on different ports, both still up after both terminals detach
+with `ctrl-d` (detaching was never supposed to stop anything). Then
+`joule --stop --session review` is asked for by name, and the check reads
+the daemon info directory again to confirm exactly one entry is gone -
+the named one - before the plain `joule --stop` that follows takes the
+other.

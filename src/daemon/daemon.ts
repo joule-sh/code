@@ -11,7 +11,7 @@ import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest, frameType, TURN_START, TURN_END, decodeTurnStart } from "../protocol/frames.ts";
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText } from "../terminal/skills_ui.ts";
-import { loadWorkspaceSession, saveWorkspaceSession } from "../session/persistence.ts";
+import { loadWorkspaceSession, saveWorkspaceSession, describeSessionSuffix } from "../session/persistence.ts";
 import { startupMemoryText } from "../terminal/memory_ui.ts";
 import { TaskManager } from "../tasks/manager.ts";
 import { wireForegroundRunner } from "../tools/run_foreground.ts";
@@ -55,7 +55,7 @@ function currentArgvForDaemon(): string[] {
   return result;
 }
 
-export function runDaemon(argv: string[], workspaceRoot: string, port: int): void {
+export function runDaemon(argv: string[], workspaceRoot: string, sessionName: string, port: int): void {
   let cfg = loadConfig(argv);
   if (cfg.apiKey == "") {
     console.log("joule-daemon: no credentials configured, run joule once interactively first");
@@ -63,7 +63,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
     return;
   }
 
-  let runtimeDir = daemonRuntimeDir(workspaceRoot);
+  let runtimeDir = daemonRuntimeDir(workspaceRoot, sessionName);
   fs.mkdirSync(runtimeDir, true);
   fs.mkdirSync(inboxDir(runtimeDir), true);
   sweepInbox(runtimeDir);
@@ -108,7 +108,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
   session.injectSystemContext(startupMemoryText());
   let resumeRequested = (envOr("JOULE_DAEMON_RESUME", "")) == "1";
   if (resumeRequested) {
-    let prior = loadWorkspaceSession(workspaceRoot);
+    let prior = loadWorkspaceSession(workspaceRoot, sessionName);
     if (prior != null) { session.history = prior.history; }
   }
   sessionBox.set(session);
@@ -139,13 +139,13 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
       if (f != null) { tracker.setCurrent(f.turnId); }
     }
     if (frameType(frameJson) == TURN_END) {
-      saveWorkspaceSession(workspaceRoot, session.history);
+      saveWorkspaceSession(workspaceRoot, sessionName, session.history);
     }
   });
 
   let hello: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
-    sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, model: displayModel(cfg),
+    sessionId: "daemon-" + `${port}`, workspace: workspaceRoot, session: sessionName, model: displayModel(cfg),
     mode: gate.mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   let helloUndelivered = appendBroadcast(runtimeDir, encodeSessionHello(hello));
@@ -155,13 +155,13 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
     return;
   }
 
-  writeDaemonInfo(workspaceRoot, port);
-  console.log("joule-daemon " + VERSION + ": workspace " + workspaceRoot + ", listening on 127.0.0.1:" + `${port}`);
+  writeDaemonInfo(workspaceRoot, sessionName, port);
+  console.log("joule-daemon " + VERSION + ": workspace " + workspaceRoot + describeSessionSuffix(sessionName) + ", listening on 127.0.0.1:" + `${port}`);
 
   Worker.run(() => { runDaemonWebSocket(port, runtimeDir); return 0; });
   worker.loop();
   uplink.stop();
-  removeDaemonInfo(workspaceRoot);
+  removeDaemonInfo(workspaceRoot, sessionName);
   console.log("joule-daemon: stopped");
   process.exit(0);
 }
@@ -169,6 +169,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, port: int): voi
 export function runDaemonMain(): void {
   let argv = currentArgvForDaemon();
   let workspaceRoot = currentWorkspaceRoot();
+  let sessionName = envOr("JOULE_SESSION_NAME", "");
   let port = envPort("JOULE_DAEMON_PORT", 8199);
-  runDaemon(argv, workspaceRoot, port);
+  runDaemon(argv, workspaceRoot, sessionName, port);
 }

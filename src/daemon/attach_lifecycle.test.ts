@@ -1,12 +1,21 @@
-import { helloWorkspace, helloBuild, describeBuild, buildMismatchNotes, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure, waitForDaemonGone, stoppedNote, stillRunningNote, tmpDir } from "./attach_lifecycle.ts";
+import { helloWorkspace, helloSession, helloBuild, describeBuild, buildMismatchNotes, attachedMode, attachedModel, nextPortInRange, isTaken, firstFreePort, firstLine, spawnFailureText, daemonBinFailure, waitForDaemonGone, stoppedNote, stillRunningNote, identityMatches, sessionNameFlag, tmpDir } from "./attach_lifecycle.ts";
 import { VERSION } from "../version.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello } from "../protocol/frames.ts";
 
 function helloFrom(workspace: string, build: string): string {
   let f: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: 0, type: SESSION_HELLO,
-    sessionId: "daemon-8300", workspace: workspace, model: "stub",
+    sessionId: "daemon-8300", workspace: workspace, session: "", model: "stub",
     mode: "ask", protocol: PROTOCOL_VERSION, build: build,
+  };
+  return encodeSessionHello(f);
+}
+
+function helloFromSession(workspace: string, session: string): string {
+  let f: SessionHelloFrame = {
+    v: PROTOCOL_VERSION, seq: 0, type: SESSION_HELLO,
+    sessionId: "daemon-8300", workspace: workspace, session: session, model: "stub",
+    mode: "ask", protocol: PROTOCOL_VERSION, build: VERSION,
   };
   return encodeSessionHello(f);
 }
@@ -18,7 +27,7 @@ function hello(workspace: string): string {
 function helloSaying(mode: string, model: string): string {
   let f: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: 1, type: SESSION_HELLO,
-    sessionId: "daemon-8300", workspace: "/tmp/mine", model: model,
+    sessionId: "daemon-8300", workspace: "/tmp/mine", session: "", model: model,
     mode: mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   return encodeSessionHello(f);
@@ -52,6 +61,12 @@ test("a daemon for another workspace does not read as this one", () => {
 
 test("a daemon that predates the build field still names its workspace", () => {
   expect(helloWorkspace([helloBeforeTheBuildField("/tmp/mine")]) == "/tmp/mine");
+});
+
+test("helloSession reads the session name out of a session.hello, and is \"\" for the default session", () => {
+  expect(helloSession([helloFromSession("/tmp/mine", "review")]) == "review");
+  expect(helloSession([hello("/tmp/mine")]) == "");
+  expect(helloSession([]) == "");
 });
 
 test("helloBuild reads the build out of a session.hello", () => {
@@ -121,6 +136,20 @@ test("the last change in the replay is the one a joining client lands on", () =>
   expect(attachedMode(frames, "auto-edit") == "read-only");
 });
 
+test("identityMatches requires both the workspace and the session name to agree", () => {
+  expect(identityMatches("/repo", "", "/repo", "", false));
+  expect(identityMatches("/repo", "review", "/repo", "review", false));
+  expect(!identityMatches("/repo", "", "/repo", "review", false));
+  expect(!identityMatches("/repo", "review", "/repo", "", false));
+  expect(!identityMatches("/repo", "review", "/repo", "release", false));
+  expect(!identityMatches("/other", "", "/repo", "", false));
+});
+
+test("identityMatches trusts a recorded port that has not said hello yet, regardless of session", () => {
+  expect(identityMatches("", "", "/repo", "review", true));
+  expect(!identityMatches("", "", "/repo", "review", false));
+});
+
 test("nextPortInRange steps to the next port in the range", () => {
   expect(nextPortInRange(8300) == 8301);
   expect(nextPortInRange(8698) == 8699);
@@ -184,8 +213,21 @@ test("a daemon binary that runs and exits cleanly reports no failure", () => {
 
 test("a stop that waits reports the daemon gone rather than merely acknowledged", () => {
   let ws = tmpDir() + "/joule-stop-gone-" + `${Date.now()}`;
-  expect(waitForDaemonGone(ws, 1));
-  expect(stoppedNote(ws).indexOf("has stopped") > 0);
-  expect(stillRunningNote(ws).indexOf("still running") > 0);
-  expect(stillRunningNote(ws).indexOf("attach to it on its way out") > 0);
+  expect(waitForDaemonGone(ws, "", 1));
+  expect(stoppedNote(ws, "").indexOf("has stopped") > 0);
+  expect(stillRunningNote(ws, "").indexOf("still running") > 0);
+  expect(stillRunningNote(ws, "").indexOf("attach to it on its way out") > 0);
+});
+
+test("stoppedNote and stillRunningNote name a non-default session, and say nothing extra for the default one", () => {
+  let ws = "/tmp/some-workspace";
+  expect(stoppedNote(ws, "").indexOf("(session") < 0);
+  expect(stoppedNote(ws, "review").indexOf("(session review)") >= 0);
+  expect(stillRunningNote(ws, "review").indexOf("(session review)") >= 0);
+});
+
+test("sessionNameFlag reads the name after --session, and is \"\" when it is absent", () => {
+  expect(sessionNameFlag(["joule", "--session", "review"]) == "review");
+  expect(sessionNameFlag(["joule"]) == "");
+  expect(sessionNameFlag(["joule", "--session"]) == "");
 });

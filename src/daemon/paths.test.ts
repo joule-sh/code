@@ -33,5 +33,10 @@ test("inboxPath and broadcastLogPath live under the runtime dir passed to them",
 });
 
 test("two different workspaces never share a runtime dir", () => {
-  expect(daemonRuntimeDir("/tmp/one") != daemonRuntimeDir("/tmp/two"));
+  expect(daemonRuntimeDir("/tmp/one", "") != daemonRuntimeDir("/tmp/two", ""));
+});
+
+test("two named sessions on the same workspace never share a runtime dir either", () => {
+  expect(daemonRuntimeDir("/tmp/one", "a") != daemonRuntimeDir("/tmp/one", "b"));
+  expect(daemonRuntimeDir("/tmp/one", "a") != daemonRuntimeDir("/tmp/one", ""));
 });

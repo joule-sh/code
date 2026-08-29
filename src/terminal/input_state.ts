@@ -487,6 +487,63 @@ export class PendingModelPick {
   }
 }
 
+// The /session picker (#331): a flat list of session names currently running
+// on this workspace ("" for the default session) - no headers or notes to
+// skip over, unlike /model, so selection just clamps at the ends.
+export class PendingSessionPick {
+  active: bool;
+  entries: string[];
+  selected: int;
+  firstOptionRow: int;
+
+  constructor() {
+    this.active = false;
+    this.entries = [];
+    this.selected = 0;
+    this.firstOptionRow = -1;
+  }
+
+  open(entries: string[], currentIndex: int): void {
+    this.entries = entries;
+    this.active = true;
+    this.firstOptionRow = -1;
+    this.selected = currentIndex;
+    if (this.selected < 0 || this.selected >= entries.length) { this.selected = 0; }
+  }
+
+  setOptionRows(first: int): void {
+    this.firstOptionRow = first;
+  }
+
+  hasOptionRows(): bool {
+    return this.firstOptionRow >= 0;
+  }
+
+  moveSelection(delta: int): bool {
+    let next = this.selected + delta;
+    if (next < 0) { next = 0; }
+    if (next > this.entries.length - 1) { next = this.entries.length - 1; }
+    if (next == this.selected) { return false; }
+    this.selected = next;
+    return true;
+  }
+
+  selectedEntry(): string {
+    if (this.selected < 0 || this.selected >= this.entries.length) { return ""; }
+    return this.entries[this.selected];
+  }
+
+  close(): void {
+    this.active = false;
+    this.firstOptionRow = -1;
+    this.entries = [];
+  }
+
+  isPending(): bool {
+    return this.active;
+  }
+}
+
 const ESC_CODE: int = 27;
 
 function isSgrTerminator(c: string): bool {
