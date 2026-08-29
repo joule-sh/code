@@ -740,6 +740,18 @@ jobs:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      # A statically linked lumen binary cannot start where /dev is mounted
+      # noexec, which is how a GitHub-hosted runner comes up. The collector
+      # lumen builds into a targeted binary takes its heap from /dev/zero
+      # rather than an anonymous mapping and asks for it PROT_EXEC, so the
+      # mmap comes back EACCES and bdwgc aborts with "Cannot allocate
+      # executable pages" before main runs. It is the released archive that
+      # behaves this way rather than anything this workflow builds - the host
+      # builds every other job makes link the distribution's libgc and are
+      # unaffected - so the mount is relaxed here rather than the binary
+      # changed. lumen-lang-org/lumen#54; when the collector maps
+      # anonymously this step goes.
+      - run: sudo mount -o remount,exec /dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -853,4 +865,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # A statically linked lumen binary cannot start where /dev is mounted
+      # noexec, which is how a GitHub-hosted runner comes up. The collector
+      # lumen builds into a targeted binary takes its heap from /dev/zero
+      # rather than an anonymous mapping and asks for it PROT_EXEC, so the
+      # mmap comes back EACCES and bdwgc aborts with "Cannot allocate
+      # executable pages" before main runs. It is the released archive that
+      # behaves this way rather than anything this workflow builds - the host
+      # builds every other job makes link the distribution's libgc and are
+      # unaffected - so the mount is relaxed here rather than the binary
+      # changed. lumen-lang-org/lumen#54; when the collector maps
+      # anonymously this step goes.
+      - run: sudo mount -o remount,exec /dev
       - run: sh scripts/check_install_swap.sh install.sh
