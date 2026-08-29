@@ -1,7 +1,8 @@
 import { isatty, rawEnable, rawDisable, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVAL_REQUEST, TURN_START, TURN_END, TEXT_DELTA, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, frameType, frameTurnId, encodeInput, encodeCancel, encodeApprovalReply, decodeSessionHello, decodeApprovalRequest, decodeTurnStart, decodeModeChanged, decodeModelChanged, decodeDaemonStopping, decodeTextDelta, encodeModeSet, encodeModelSet, encodeTasksRequest, encodeDaemonStop, encodeShareRequest } from "../protocol/frames.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingQuitDecision, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingQuitDecision, PendingSessionPick, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { openQuitDecision, repaintQuitDecision, backgroundKeptNotes } from "./quit_decision.ts";
+import { warmSessionNotes, sessionDisplayName, joulePlusSession, openSessionPick, repaintSessionPick, stayingNote, pickableSessions } from "./session_switch.ts";
 import { Scrollback } from "./scrollback.ts";
 import { TurnStatusTracker, appendFrame, drawScreen } from "./screen.ts";
 import { ApprovalLog, repaintApprovalOptionsLocal, answerApprovalLocal, reportIfResolvedElsewhereLocal, beginApprovalBlockLocal } from "./attach_approval.ts";
@@ -13,13 +14,14 @@ import { MODE_SAFE_AUTO, MODE_PLAN } from "./attach_slots.ts";
 import { stylePrompt, styleBanner } from "./style.ts";
 import { buildWelcomeBox, terminalWidth } from "./layout.ts";
 import { resolveResume, hasContinueFlag } from "./resume.ts";
+import { describeSessionSuffix } from "../session/persistence.ts";
 import { startUpdateNotifier, pollUpdateNotice } from "./update_notice.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
-import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, attachedMode, attachedModel, sawStopping } from "../daemon/attach_lifecycle.ts";
+import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, sessionNameFlag, attachedMode, attachedModel, sawStopping } from "../daemon/attach_lifecycle.ts";
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
@@ -60,7 +62,7 @@ function stopDaemonAndWait(client: DaemonClient): bool {
 }
 
 export function runStop(argv: string[]): void {
-  runAttachStop(currentWorkspaceRoot());
+  runAttachStop(currentWorkspaceRoot(), sessionNameFlag(argv));
 }
 
 function attachHelpText(): string {
@@ -78,20 +80,22 @@ export function runDaemonJoule(argv: string[]): DaemonAttempt {
   let cfg = loadConfig(argv);
   if (cfg.apiKey == "") { return declined([]); }
   let serverBase = loadServerOrigin(argv);
+  let sessionName = sessionNameFlag(argv);
   let wantsResume = hasContinueFlag(argv);
-  let result = ensureAttached(workspaceRoot, wantsResume);
+  let result = ensureAttached(workspaceRoot, sessionName, wantsResume);
   if (!result.client.socketReady) {
     return declined(declineNotes(result.notes, workspaceRoot));
   }
-  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, false);
+  runClientLoop(argv, workspaceRoot, sessionName, displayModel(cfg), serverBase, result, wantsResume, false);
   return attached();
 }
 
 export function runAttach(argv: string[]): void {
   let workspaceRoot = currentWorkspaceRoot();
+  let sessionName = sessionNameFlag(argv);
 
   if (hasStopFlag(argv)) {
-    runAttachStop(workspaceRoot);
+    runAttachStop(workspaceRoot, sessionName);
     return;
   }
 
@@ -104,25 +108,25 @@ export function runAttach(argv: string[]): void {
   let cfg = loadConfig(argv);
   let serverBase = loadServerOrigin(argv);
   let wantsResume = hasContinueFlag(argv);
-  let result = ensureAttached(workspaceRoot, wantsResume);
+  let result = ensureAttached(workspaceRoot, sessionName, wantsResume);
   if (!result.client.socketReady) {
     for (const n of result.notes) { console.log(n); }
-    console.log("joule attach: could not reach a daemon for " + workspaceRoot);
+    console.log("joule attach: could not reach a daemon for " + workspaceRoot + describeSessionSuffix(sessionName));
     process.exit(1);
     return;
   }
-  runClientLoop(argv, workspaceRoot, displayModel(cfg), serverBase, result, wantsResume, true);
+  runClientLoop(argv, workspaceRoot, sessionName, displayModel(cfg), serverBase, result, wantsResume, true);
 }
 
-function resumeNoteFor(argv: string[], workspaceRoot: string, result: AttachResult, wantsResume: bool): string {
+function resumeNoteFor(argv: string[], workspaceRoot: string, sessionName: string, result: AttachResult, wantsResume: bool): string {
   if (result.spawned) {
-    return resolveResume(argv, workspaceRoot).note;
+    return resolveResume(argv, workspaceRoot, sessionName).note;
   }
   if (wantsResume && result.pending.length > 0) {
     return "\n" + styleBanner("--- resumed previous session ---");
   }
   if (wantsResume) {
-    return "\n" + styleBanner("already attached to a running session for this workspace - --continue only applies when starting a new daemon");
+    return "\n" + styleBanner("already attached to a running session for this workspace" + describeSessionSuffix(sessionName) + " - --continue only applies when starting a new daemon");
   }
   return "";
 }
@@ -139,7 +143,7 @@ class ClientState {
   }
 }
 
-function runClientLoop(argv: string[], workspaceRoot: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
+function runClientLoop(argv: string[], workspaceRoot: string, sessionName: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
   let client = result.client;
   let sb = new Scrollback();
   sb.setWidth(terminalWidth());
@@ -152,6 +156,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let updateInstall = new PendingUpdateInstall();
   let planPending = new PendingPlanDecision();
   let quitDecision = new PendingQuitDecision();
+  let sessionPick = new PendingSessionPick();
   let planTracker = new PlanOfferTracker();
   let tagged = new TaggedTurns();
   let notifier = startUpdateNotifier();
@@ -240,7 +245,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
     sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit"));
   }
   for (const n of result.notes) { sb.append("\n" + styleBanner(n)); }
-  let resumeNote = resumeNoteFor(argv, workspaceRoot, result, wantsResume);
+  let resumeNote = resumeNoteFor(argv, workspaceRoot, sessionName, result, wantsResume);
   if (resumeNote != "") { sb.append(resumeNote); }
   drawScreen(sb, input, approvalLog.mode, rk);
 
@@ -251,6 +256,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   let running = true;
   let keepInBackground = false;
   let stopRequested = false;
+  let switchTarget = "";
   if (result.pending.length > 0) {
     let stoppedAlready = processFrames(result.pending, true);
     drawScreen(sb, input, approvalLog.mode, rk);
@@ -274,7 +280,7 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
         drawScreen(sb, input, approvalLog.mode, rk);
       }
       pollUpdateNotice(notifier, updateOffer, sb, input, approvalLog.mode, rk);
-      pollUpdateInstall(updateInstall, sb, input, approvalLog.mode, rk);
+      pollUpdateInstall(updateInstall, sessionName, sb, input, approvalLog.mode, rk);
       reportIfResolvedElsewhereLocal(approvalLog, sb, input, rk, pendingApproval);
       if (daemonStopped) {
         client.detach();
@@ -303,6 +309,25 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       keepInBackground = (choice == QUIT_DECISION_KEEP);
       stopRequested = (choice == QUIT_DECISION_QUIT);
       running = false;
+      continue;
+    }
+
+    // The /session picker owns the keyboard the same way: arrows move the
+    // choice, enter picks it - the current session's own row means stay -
+    // and anything else is swallowed rather than leaking into the input.
+    if (sessionPick.isPending()) {
+      if (k.kind == KEY_ARROW_UP) { if (sessionPick.moveSelection(-1)) { repaintSessionPick(sb, sessionPick, sessionName); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
+      if (k.kind == KEY_ARROW_DOWN) { if (sessionPick.moveSelection(1)) { repaintSessionPick(sb, sessionPick, sessionName); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
+      if (k.kind != KEY_ENTER) { continue; }
+      let picked = sessionPick.selectedEntry();
+      sessionPick.close();
+      if (picked == sessionName) {
+        sb.append(stayingNote(sessionName));
+      } else {
+        switchTarget = picked;
+        running = false;
+      }
+      drawScreen(sb, input, approvalLog.mode, rk);
       continue;
     }
 
@@ -444,6 +469,25 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
       continue;
     }
 
+    if (cmd.kind == CMD_SESSION) {
+      if (cmd.arg == "") {
+        let names = pickableSessions(workspaceRoot, sessionName);
+        if (names.length <= 1) {
+          sb.append("\nsession: " + sessionDisplayName(sessionName));
+        } else {
+          openSessionPick(sessionPick, sb, names, sessionName);
+        }
+      } else if (cmd.arg == sessionName) {
+        sb.append("\nalready in the " + sessionDisplayName(sessionName) + " session");
+      } else {
+        switchTarget = cmd.arg;
+        running = false;
+        continue;
+      }
+      drawScreen(sb, input, approvalLog.mode, rk);
+      continue;
+    }
+
     if (cmd.kind == CMD_SHARE) {
       client.publish(encodeShareRequest({ v: PROTOCOL_VERSION, seq: 0, type: SHARE_REQUEST }));
       sb.append("\nasking the daemon to share this session over the relay");
@@ -490,7 +534,11 @@ function runClientLoop(argv: string[], workspaceRoot: string, initialModel: stri
   rawDisable(STDIN);
 
   if (keepInBackground) {
-    for (const n of backgroundKeptNotes(result.port)) { console.log(n); }
+    for (const n of backgroundKeptNotes(result.port, sessionName)) { console.log(n); }
+  }
+  if (switchTarget != "") {
+    for (const n of warmSessionNotes(workspaceRoot, switchTarget)) { console.log(n); }
+    console.log("joule: this session" + describeSessionSuffix(sessionName) + " keeps running - " + joulePlusSession("joule", sessionName) + " returns to it.");
   }
   if (stopRequested) {
     if (stopAcked) {

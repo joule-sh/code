@@ -155,6 +155,21 @@ jobs:
       - run: python3 --version
       - run: make stop-then-start-harness
 
+  multi-session:
+    runs-on: [self-hosted, diff]
+    timeout-minutes: 5
+    env:
+      LUMEN_VERSION: v0.7.5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
+          tar -xzf lumen.tar.gz
+          echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
+          echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
+      - run: python3 --version
+      - run: make multi-session-harness
+
   memory-files:
     runs-on: [self-hosted, diff]
     timeout-minutes: 5
@@ -506,6 +521,7 @@ jobs:
       - run: make build-mismatch-harness
       - run: make daemon-stop-harness
       - run: make stop-then-start-harness
+      - run: make multi-session-harness
       - run: make daemon-commands-harness
       - run: make attach-commands-harness
       - run: make two-client-harness

@@ -1,6 +1,7 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { loadCredential } from "../auth/credentials.ts";
+import { sessionNameFlag } from "../daemon/attach_lifecycle.ts";
 import { displayModel, qualifiedModel, wireModel } from "../providers/platform.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -10,16 +11,17 @@ import { Session } from "../session/session.ts";
 import { Message, Provider, ToolRegistry, ApprovalGate } from "../session/types.ts";
 import { CancelWatch, TurnTracker, LiveProvider } from "../providers/live.ts";
 import { PROTOCOL_VERSION, frameType, frameTurnId, decodeTurnStart, TURN_START, TURN_END, APPROVAL_REQUEST, ApprovalRequestFrame, encodeApprovalRequest } from "../protocol/frames.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_UNKNOWN, CMD_NONE } from "./commands.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText, startupMemoryText } from "./memory_ui.ts";
 import { loadWorkspaceInstructions } from "../session/project_instructions.ts";
 import { startupSkillsText, skillsStartupNote, runSkillCommand } from "./skills_ui.ts";
 import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platform.ts";
-import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, PendingQuitDecision, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, PendingQuitDecision, PendingSessionPick, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArrow, tryHandleModelPickEnter, tryHandleModelPickChar } from "./model_picker.ts";
 import { openQuitDecision, repaintQuitDecision, detachToBackground } from "./quit_decision.ts";
+import { openSessionPick, repaintSessionPick, tryHandleSessionPickArrow, tryHandleSessionPickChar, currentSessionLine, stayingNote, switchSessionNotes, pickableSessions } from "./session_switch.ts";
 import { Scrollback } from "./scrollback.ts";
 import { repaintApprovalOptions, answerApproval, denyPendingApproval, reportIfResolvedElsewhere } from "./approval_ui.ts";
 import { noteApprovalBlock } from "./approval_settled.ts";
@@ -63,7 +65,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let server = loadServerOrigin(argv);
   let credential = loadCredential(server.base);
   let workspaceRoot = currentWorkspaceRoot();
-  let resume = resolveResume(argv, workspaceRoot);
+  let sessionName = sessionNameFlag(argv);
+  let resume = resolveResume(argv, workspaceRoot, sessionName);
   let updateNotifier = startUpdateNotifier(); let updateOffer = new PendingUpdateOffer(); let updateInstall = new PendingUpdateInstall();
 
   let platformScopes = "";
@@ -91,6 +94,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let planDecision = new PendingPlanDecision();
   let modelPick = new PendingModelPick();
   let quitDecision = new PendingQuitDecision();
+  let sessionPick = new PendingSessionPick();
   let gateBox = new GateBox();
   let relayBox = new RelayBox();
   let tasksBox = new TasksBox();
@@ -195,7 +199,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       drawScreen(sb, input, gate.mode, rk);
       return;
     }
-    relay.publish(shareHello(session, relay.sessionId, workspaceRoot, displayModel(live.cfg), gate.mode));
+    relay.publish(shareHello(session, relay.sessionId, workspaceRoot, sessionName, displayModel(live.cfg), gate.mode));
     sb.append("\nattached - code " + result.code + " - " + result.url);
     drawScreen(sb, input, gate.mode, rk);
   };
@@ -217,7 +221,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     } else {
       appendFrame(sb, rk, frameJson);
     }
-    if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, session.history); offerPlanDecision(planDecision, gate, session, sb, frameJson); }
+    if (frameType(frameJson) == TURN_END) { persistTurnEnd(workspaceRoot, sessionName, session.history); offerPlanDecision(planDecision, gate, session, sb, frameJson); }
     drawScreen(sb, input, gate.mode, rk);
     runRelayTick(relay, session, gate, bridge, sb, input, rk);
   });
@@ -238,6 +242,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   let running = true;
   let detachRequested = false;
+  let switchTarget = "";
   while (running) {
     let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
 
@@ -245,7 +250,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       runRelayTick(relay, session, gate, bridge, sb, input, rk);
       tasks.poll(session);
       pollUpdateNotice(updateNotifier, updateOffer, sb, input, gate.mode, rk);
-      pollUpdateInstall(updateInstall, sb, input, gate.mode, rk);
+      pollUpdateInstall(updateInstall, sessionName, sb, input, gate.mode, rk);
       continue;
     }
 
@@ -300,6 +305,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       if (tryHandleUpdateOfferChar(updateOffer, updateInstall, VERSION, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionChar(planDecision, gate, session, bridge, sb, input.buf == "", k.char)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandleModelPickChar(modelPick, input.buf == "")) { continue; }
+      if (tryHandleSessionPickChar(sessionPick, input.buf == "")) { continue; }
       input.push(k.char);
       history.cancelNavigation();
       drawScreen(sb, input, gate.mode, rk);
@@ -328,6 +334,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandleModelPickArrow(modelPick, sb, input.buf == "", -1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandleSessionPickArrow(sessionPick, sb, input.buf == "", -1, sessionName)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(-1);
         drawScreen(sb, input, gate.mode, rk);
@@ -346,6 +353,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       if (tryHandleUpdateOfferArrow(updateOffer, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandlePlanDecisionArrow(planDecision, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (tryHandleModelPickArrow(modelPick, sb, input.buf == "", 1)) { drawScreen(sb, input, gate.mode, rk); continue; }
+      if (tryHandleSessionPickArrow(sessionPick, sb, input.buf == "", 1, sessionName)) { drawScreen(sb, input, gate.mode, rk); continue; }
       if (input.completion.isOpen() && !history.navigating) {
         input.completion.move(1);
         drawScreen(sb, input, gate.mode, rk);
@@ -378,6 +386,18 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     if (tryHandleUpdateOfferEnter(updateOffer, updateInstall, VERSION, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
     if (tryHandlePlanDecisionEnter(planDecision, gate, session, bridge, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
     if (tryHandleModelPickEnter(modelPick, live, session, sb, input.buf == "")) { drawScreen(sb, input, gate.mode, rk); continue; }
+    if (sessionPick.isPending() && input.buf == "") {
+      let chosen = sessionPick.selectedEntry();
+      sessionPick.close();
+      if (chosen == sessionName) {
+        sb.append(stayingNote(sessionName));
+      } else {
+        switchTarget = chosen;
+        running = false;
+      }
+      drawScreen(sb, input, gate.mode, rk);
+      continue;
+    }
 
     let line = input.takeAndClear();
     drawScreen(sb, input, gate.mode, rk);
@@ -427,6 +447,26 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
         sb.append("\nunknown mode: " + cmd.arg + " (expected read-only, auto-edit, safe-auto, full-auto, or plan)");
       }
       drawScreen(sb, input, gate.mode, rk);
+      continue;
+    }
+
+    if (cmd.kind == CMD_SESSION) {
+      if (cmd.arg == "") {
+        let names = pickableSessions(workspaceRoot, sessionName);
+        if (names.length <= 1) {
+          sb.append(currentSessionLine(sessionName));
+          drawScreen(sb, input, gate.mode, rk);
+        } else {
+          openSessionPick(sessionPick, sb, names, sessionName);
+          drawScreen(sb, input, gate.mode, rk);
+        }
+      } else if (cmd.arg == sessionName) {
+        sb.append(stayingNote(sessionName));
+        drawScreen(sb, input, gate.mode, rk);
+      } else {
+        switchTarget = cmd.arg;
+        running = false;
+      }
       continue;
     }
 
@@ -482,7 +522,12 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   rawDisable(STDIN);
 
   if (detachRequested) {
-    for (const line of detachToBackground(workspaceRoot, session.history)) {
+    for (const line of detachToBackground(workspaceRoot, sessionName, session.history)) {
+      console.log(line);
+    }
+  }
+  if (switchTarget != "") {
+    for (const line of switchSessionNotes(workspaceRoot, sessionName, switchTarget, session.history)) {
       console.log(line);
     }
   }

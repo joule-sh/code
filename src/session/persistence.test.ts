@@ -1,5 +1,5 @@
 import { Message, ROLE_USER, ROLE_ASSISTANT, ROLE_SYSTEM } from "./types.ts";
-import { SessionFile, sessionKeyFor, parseSessionFile, saveSessionFile, loadSessionFile } from "./persistence.ts";
+import { SessionFile, sessionKeyFor, describeSessionSuffix, parseSessionFile, saveSessionFile, loadSessionFile } from "./persistence.ts";
 
 function freshRoot(name: string): string {
   let root = "/tmp/persistence-test-" + name;
@@ -20,25 +20,25 @@ function sampleHistory(): Message[] {
 }
 
 test("sessionKeyFor is stable for the same workspace path", () => {
-  let a = sessionKeyFor("/home/user/projects/code");
-  let b = sessionKeyFor("/home/user/projects/code");
+  let a = sessionKeyFor("/home/user/projects/code", "");
+  let b = sessionKeyFor("/home/user/projects/code", "");
   expect(a == b);
 });
 
 test("sessionKeyFor differs for different workspace paths", () => {
-  let a = sessionKeyFor("/home/user/projects/code");
-  let b = sessionKeyFor("/home/user/projects/other");
+  let a = sessionKeyFor("/home/user/projects/code", "");
+  let b = sessionKeyFor("/home/user/projects/other", "");
   expect(a != b);
 });
 
 test("sessionKeyFor does not collide when sanitized slugs would otherwise match", () => {
-  let a = sessionKeyFor("/a/b");
-  let b = sessionKeyFor("/a-b");
+  let a = sessionKeyFor("/a/b", "");
+  let b = sessionKeyFor("/a-b", "");
   expect(a != b);
 });
 
 test("sessionKeyFor only uses filename-safe characters", () => {
-  let key = sessionKeyFor("/home/user/weird path/with spaces+stuff!");
+  let key = sessionKeyFor("/home/user/weird path/with spaces+stuff!", "");
   let i = 0;
   let allSafe = true;
   while (i < key.length) {
@@ -49,6 +49,62 @@ test("sessionKeyFor only uses filename-safe characters", () => {
   }
   expect(allSafe);
 });
+
+test("sessionKeyFor(root, \"\") is byte-identical to the pre-#331 key, so an upgrade orphans nothing on disk", () => {
+  let key = sessionKeyFor("/home/user/projects/code", "");
+  expect(key == "-home-user-projects-code-" + hexEncode16(crypto.sha1Bytes("/home/user/projects/code")));
+});
+
+test("a named session gets a different key from the default session on the same path", () => {
+  let unnamed = sessionKeyFor("/home/user/projects/code", "");
+  let named = sessionKeyFor("/home/user/projects/code", "review");
+  expect(unnamed != named);
+});
+
+test("two different session names on the same path never collide", () => {
+  let a = sessionKeyFor("/home/user/projects/code", "review");
+  let b = sessionKeyFor("/home/user/projects/code", "release");
+  expect(a != b);
+});
+
+test("the same session name on two different paths never collides", () => {
+  let a = sessionKeyFor("/home/user/projects/code", "review");
+  let b = sessionKeyFor("/home/user/projects/other", "review");
+  expect(a != b);
+});
+
+test("a session name only uses filename-safe characters too", () => {
+  let key = sessionKeyFor("/repo", "weird name+stuff!");
+  let i = 0;
+  let allSafe = true;
+  while (i < key.length) {
+    let c = key.charAt(i);
+    let isSafe = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c == "." || c == "_" || c == "-";
+    if (!isSafe) { allSafe = false; }
+    i = i + 1;
+  }
+  expect(allSafe);
+});
+
+test("describeSessionSuffix says nothing for the default session, so every existing message is unaffected", () => {
+  expect(describeSessionSuffix("") == "");
+});
+
+test("describeSessionSuffix names a non-default session", () => {
+  expect(describeSessionSuffix("review") == " (session review)");
+});
+
+function hexEncode16(bytes: string): string {
+  let digits = "0123456789abcdef";
+  let out = "";
+  let i = 0;
+  while (i < bytes.length && i < 8) {
+    let c = bytes.charCodeAt(i);
+    out = out + digits.charAt(c / 16) + digits.charAt(c % 16);
+    i = i + 1;
+  }
+  return out;
+}
 
 test("parseSessionFile reads a well-formed file with nested history", () => {
   let f = parseSessionFile("{\"workspace\":\"/repo\",\"savedAt\":\"123\",\"history\":[{\"role\":\"user\",\"text\":\"hi\",\"toolCallId\":\"\",\"toolCalls\":[]}]}");

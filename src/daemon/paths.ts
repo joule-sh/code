@@ -4,9 +4,9 @@ import { homeDir } from "../vendor/platform/platform.ts";
 export const ATTACH_PREFIX: string = "/attach/";
 export const ATTACH_SUFFIX: string = "/ws";
 
-export function daemonRuntimeDir(workspaceRoot: string): string {
+export function daemonRuntimeDir(workspaceRoot: string, sessionName: string): string {
   let home = homeDir();
-  return home + "/.config/joule-code/daemon/" + sessionKeyFor(workspaceRoot);
+  return home + "/.config/joule-code/daemon/" + sessionKeyFor(workspaceRoot, sessionName);
 }
 
 export function inboxDir(runtimeDir: string): string {

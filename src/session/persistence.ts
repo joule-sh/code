@@ -36,13 +36,37 @@ function hexEncode(bytes: string, maxBytes: int): string {
   return out;
 }
 
-export function sessionKeyFor(workspaceRoot: string): string {
+// The key a workspace path (plus, since #331, an optional session name)
+// resolves to everywhere identity matters: the persisted history file, the
+// daemon's info/log paths, its runtime dir, and the port it listens on. name
+// == "" reproduces the pre-#331 key byte for byte - the slug and the hash
+// input are both exactly what they always were - so nothing already on disk
+// is orphaned by upgrading. A named session gets its own slug tail (purely
+// for a human scanning the directory - the hash is what actually
+// disambiguates) and its own hash, salted so "path A, session BC" can never
+// collide with "path AB, session C".
+export function sessionKeyFor(workspaceRoot: string, name: string): string {
   let slug = sanitizeForFilename(workspaceRoot);
   if (slug.length > SLUG_MAX_LEN) {
     slug = slug.slice(slug.length - SLUG_MAX_LEN, slug.length);
   }
-  let suffix = hexEncode(crypto.sha1Bytes(workspaceRoot), KEY_HASH_BYTES);
+  let hashInput = workspaceRoot;
+  if (name != "") {
+    slug = slug + "-" + sanitizeForFilename(name);
+    hashInput = workspaceRoot + " session:" + name;
+  }
+  let suffix = hexEncode(crypto.sha1Bytes(hashInput), KEY_HASH_BYTES);
   return slug + "-" + suffix;
+}
+
+// What a message says about which session it means, appended after the
+// workspace path - "" for the default session, so every existing message
+// stays byte-identical. Shared by the daemon's own log line and every
+// attach/stop/reap note that names a workspace, so a person always reads the
+// same phrase for the same session.
+export function describeSessionSuffix(name: string): string {
+  if (name == "") { return ""; }
+  return " (session " + name + ")";
 }
 
 export function sessionsDir(): string {
@@ -50,8 +74,8 @@ export function sessionsDir(): string {
   return home + "/.config/joule-code/sessions";
 }
 
-export function sessionFilePath(workspaceRoot: string): string {
-  return sessionsDir() + "/" + sessionKeyFor(workspaceRoot) + ".json";
+export function sessionFilePath(workspaceRoot: string, name: string): string {
+  return sessionsDir() + "/" + sessionKeyFor(workspaceRoot, name) + ".json";
 }
 
 export function parseSessionFile(text: string): SessionFile | null {
@@ -78,11 +102,11 @@ export function saveSessionFile(filePath: string, file: SessionFile): void {
   fs.renameSync(tmpPath, filePath);
 }
 
-export function saveWorkspaceSession(workspaceRoot: string, history: Message[]): void {
+export function saveWorkspaceSession(workspaceRoot: string, name: string, history: Message[]): void {
   let file: SessionFile = { workspace: workspaceRoot, savedAt: `${Date.now()}`, history: history };
-  saveSessionFile(sessionFilePath(workspaceRoot), file);
+  saveSessionFile(sessionFilePath(workspaceRoot, name), file);
 }
 
-export function loadWorkspaceSession(workspaceRoot: string): SessionFile | null {
-  return loadSessionFile(sessionFilePath(workspaceRoot));
+export function loadWorkspaceSession(workspaceRoot: string, name: string): SessionFile | null {
+  return loadSessionFile(sessionFilePath(workspaceRoot, name));
 }

@@ -7,12 +7,12 @@ import { TAG_INSTALLED } from "../update/install_worker.ts";
 import { reapDaemonForUpdate } from "../daemon/attach_lifecycle.ts";
 import { workspaceRoot } from "../vendor/platform/platform.ts";
 
-export function pollUpdateInstall(install: PendingUpdateInstall, sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker): void {
+export function pollUpdateInstall(install: PendingUpdateInstall, sessionName: string, sb: Scrollback, input: InputLine, mode: string, rk: TurnStatusTracker): void {
   let msg = install.poll();
   if (msg == "") { return; }
   sb.append("\n" + styleBanner(msg));
   if (install.lastKind == TAG_INSTALLED) {
-    sb.append("\n" + styleBanner("joule: " + reapDaemonForUpdate(workspaceRoot())));
+    sb.append("\n" + styleBanner("joule: " + reapDaemonForUpdate(workspaceRoot(), sessionName)));
   }
   drawScreen(sb, input, mode, rk);
 }

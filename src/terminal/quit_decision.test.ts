@@ -53,10 +53,17 @@ test("closing the prompt clears its pending state and its option rows", () => {
 });
 
 test("keeping a session says where it went and how to end it", () => {
-  let notes = backgroundKeptNotes(41234);
+  let notes = backgroundKeptNotes(41234, "");
   expect(notes.length == 2);
   expect(notes[0].indexOf("127.0.0.1:41234") >= 0);
   expect(notes[1].indexOf("joule --stop") >= 0);
+});
+
+test("keeping a named session says how to reattach and end that exact session", () => {
+  let notes = backgroundKeptNotes(41234, "review");
+  expect(notes[0].indexOf("review") >= 0);
+  expect(notes[1].indexOf("joule --session review") >= 0);
+  expect(notes[1].indexOf("joule --stop --session review") >= 0);
 });
 
 test("only the highlighted answer row carries the cursor marker", () => {

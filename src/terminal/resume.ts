@@ -72,13 +72,13 @@ export function decideResume(shouldContinue: bool, hasFile: bool, history: Messa
   return found;
 }
 
-export function resolveResume(argv: string[], workspaceRoot: string): ResumeOutcome {
+export function resolveResume(argv: string[], workspaceRoot: string, sessionName: string): ResumeOutcome {
   let shouldContinue = hasContinueFlag(argv);
   if (!shouldContinue) {
     let empty: Message[] = [];
     return decideResume(false, false, empty);
   }
-  let file = loadWorkspaceSession(workspaceRoot);
+  let file = loadWorkspaceSession(workspaceRoot, sessionName);
   if (file == null) {
     let empty: Message[] = [];
     return decideResume(true, false, empty);
@@ -86,6 +86,6 @@ export function resolveResume(argv: string[], workspaceRoot: string): ResumeOutc
   return decideResume(true, true, file.history);
 }
 
-export function persistTurnEnd(workspaceRoot: string, history: Message[]): void {
-  saveWorkspaceSession(workspaceRoot, history);
+export function persistTurnEnd(workspaceRoot: string, sessionName: string, history: Message[]): void {
+  saveWorkspaceSession(workspaceRoot, sessionName, history);
 }

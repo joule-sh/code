@@ -2,10 +2,10 @@ import { Session } from "../session/session.ts";
 import { PROTOCOL_VERSION, SESSION_HELLO, SessionHelloFrame, encodeSessionHello, MODE_CHANGED, ModeChangedFrame, encodeModeChanged, MODEL_CHANGED, ModelChangedFrame, encodeModelChanged } from "../protocol/frames.ts";
 import { VERSION } from "../version.ts";
 
-export function shareHello(session: Session, sessionId: string, workspace: string, model: string, mode: string): string {
+export function shareHello(session: Session, sessionId: string, workspace: string, sessionName: string, model: string, mode: string): string {
   let hello: SessionHelloFrame = {
     v: PROTOCOL_VERSION, seq: session.takeSeq(), type: SESSION_HELLO,
-    sessionId: sessionId, workspace: workspace, model: model,
+    sessionId: sessionId, workspace: workspace, session: sessionName, model: model,
     mode: mode, protocol: PROTOCOL_VERSION, build: VERSION,
   };
   return encodeSessionHello(hello);

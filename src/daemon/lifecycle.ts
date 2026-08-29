@@ -1,17 +1,17 @@
 import { sessionKeyFor } from "../session/persistence.ts";
 import { detectRunningExePath } from "../update/install_detect.ts";
-import { powershellQuoteSingle } from "../tools/shell_quote.ts";
+import { shellQuoteSingle, powershellQuoteSingle } from "../tools/shell_quote.ts";
 import { exeSuffix, homeDir, isWindows, shellArgs } from "../vendor/platform/platform.ts";
 
-export type DaemonInfo = { workspace: string, port: int, startedAt: string };
+export type DaemonInfo = { workspace: string, session: string, port: int, startedAt: string };
 
 export function daemonInfoDir(): string {
   let home = homeDir();
   return home + "/.config/joule-code/daemon";
 }
 
-export function daemonInfoPath(workspaceRoot: string): string {
-  return daemonInfoDir() + "/" + sessionKeyFor(workspaceRoot) + ".json";
+export function daemonInfoPath(workspaceRoot: string, sessionName: string): string {
+  return daemonInfoDir() + "/" + sessionKeyFor(workspaceRoot, sessionName) + ".json";
 }
 
 export function parseDaemonInfo(text: string): DaemonInfo | null {
@@ -28,12 +28,12 @@ export function readDaemonInfoAt(infoPath: string): DaemonInfo | null {
   return parseDaemonInfo(fs.readFileSync(infoPath));
 }
 
-export function writeDaemonInfoAt(infoPath: string, workspace: string, port: int): void {
+export function writeDaemonInfoAt(infoPath: string, workspace: string, sessionName: string, port: int): void {
   let dir = path.dirname(infoPath);
   if (dir != "" && !fs.existsSync(dir)) {
     fs.mkdirSync(dir, true);
   }
-  let info: DaemonInfo = { workspace: workspace, port: port, startedAt: `${Date.now()}` };
+  let info: DaemonInfo = { workspace: workspace, session: sessionName, port: port, startedAt: `${Date.now()}` };
   fs.writeFileSync(infoPath, JSON.stringify(info));
 }
 
@@ -43,16 +43,16 @@ export function removeDaemonInfoAt(infoPath: string): void {
   }
 }
 
-export function readDaemonInfo(workspaceRoot: string): DaemonInfo | null {
-  return readDaemonInfoAt(daemonInfoPath(workspaceRoot));
+export function readDaemonInfo(workspaceRoot: string, sessionName: string): DaemonInfo | null {
+  return readDaemonInfoAt(daemonInfoPath(workspaceRoot, sessionName));
 }
 
-export function writeDaemonInfo(workspaceRoot: string, port: int): void {
-  writeDaemonInfoAt(daemonInfoPath(workspaceRoot), workspaceRoot, port);
+export function writeDaemonInfo(workspaceRoot: string, sessionName: string, port: int): void {
+  writeDaemonInfoAt(daemonInfoPath(workspaceRoot, sessionName), workspaceRoot, sessionName, port);
 }
 
-export function daemonPortOrZero(workspaceRoot: string): int {
-  let infoPath = daemonInfoPath(workspaceRoot);
+export function daemonPortOrZero(workspaceRoot: string, sessionName: string): int {
+  let infoPath = daemonInfoPath(workspaceRoot, sessionName);
   if (!fs.existsSync(infoPath)) { return 0; }
   try {
     let info = JSON.parse<DaemonInfo>(fs.readFileSync(infoPath));
@@ -62,12 +62,12 @@ export function daemonPortOrZero(workspaceRoot: string): int {
   }
 }
 
-export function removeDaemonInfo(workspaceRoot: string): void {
-  removeDaemonInfoAt(daemonInfoPath(workspaceRoot));
+export function removeDaemonInfo(workspaceRoot: string, sessionName: string): void {
+  removeDaemonInfoAt(daemonInfoPath(workspaceRoot, sessionName));
 }
 
-export function portFromWorkspace(workspaceRoot: string, base: int, spread: int): int {
-  let key = sessionKeyFor(workspaceRoot);
+export function portFromWorkspace(workspaceRoot: string, sessionName: string, base: int, spread: int): int {
+  let key = sessionKeyFor(workspaceRoot, sessionName);
   let sum = 0;
   let i = 0;
   while (i < key.length) {
@@ -87,10 +87,12 @@ export function defaultDaemonBinPath(): string {
   return daemonBinNameFor(detectRunningExePath());
 }
 
-export function posixDaemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+export function posixDaemonSpawnCommand(workspaceRoot: string, sessionName: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   let resumeEnv = "";
   if (resumeFlag) { resumeEnv = "JOULE_DAEMON_RESUME=1 "; }
-  return "(cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + resumeEnv + "nohup " + daemonBinPath + ") >" + logPath + " 2>&1 </dev/null &";
+  let sessionEnv = "";
+  if (sessionName != "") { sessionEnv = "JOULE_SESSION_NAME=" + shellQuoteSingle(sessionName) + " "; }
+  return "(cd " + workspaceRoot + " && JOULE_DAEMON_PORT=" + `${port}` + " " + sessionEnv + resumeEnv + "nohup " + daemonBinPath + ") >" + logPath + " 2>&1 </dev/null &";
 }
 
 export function windowsDaemonStartCommand(workspaceRoot: string, logPath: string, daemonBinPath: string): string {
@@ -101,30 +103,31 @@ export function windowsDaemonStartCommand(workspaceRoot: string, logPath: string
     + " -RedirectStandardError " + powershellQuoteSingle(daemonErrorLogPath(logPath));
 }
 
-export function windowsDaemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+export function windowsDaemonSpawnCommand(workspaceRoot: string, sessionName: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   let resumeValue = "";
   if (resumeFlag) { resumeValue = "1"; }
   return "$ErrorActionPreference = 'Stop'; "
     + "$env:JOULE_DAEMON_PORT = '" + `${port}` + "'; "
+    + "$env:JOULE_SESSION_NAME = " + powershellQuoteSingle(sessionName) + "; "
     + "$env:JOULE_DAEMON_RESUME = '" + resumeValue + "'; "
     + "Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden"
     + " -ArgumentList '-NoProfile','-NonInteractive','-Command',"
     + powershellQuoteSingle(windowsDaemonStartCommand(workspaceRoot, logPath, daemonBinPath));
 }
 
-export function daemonSpawnCommand(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
+export function daemonSpawnCommand(workspaceRoot: string, sessionName: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string {
   if (isWindows()) {
-    return windowsDaemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath);
+    return windowsDaemonSpawnCommand(workspaceRoot, sessionName, port, logPath, resumeFlag, daemonBinPath);
   }
-  return posixDaemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath);
+  return posixDaemonSpawnCommand(workspaceRoot, sessionName, port, logPath, resumeFlag, daemonBinPath);
 }
 
-export function daemonSpawnArgs(workspaceRoot: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string[] {
-  return shellArgs(daemonSpawnCommand(workspaceRoot, port, logPath, resumeFlag, daemonBinPath));
+export function daemonSpawnArgs(workspaceRoot: string, sessionName: string, port: int, logPath: string, resumeFlag: bool, daemonBinPath: string): string[] {
+  return shellArgs(daemonSpawnCommand(workspaceRoot, sessionName, port, logPath, resumeFlag, daemonBinPath));
 }
 
-export function daemonLogPath(workspaceRoot: string): string {
-  return daemonInfoDir() + "/" + sessionKeyFor(workspaceRoot) + ".log";
+export function daemonLogPath(workspaceRoot: string, sessionName: string): string {
+  return daemonInfoDir() + "/" + sessionKeyFor(workspaceRoot, sessionName) + ".log";
 }
 
 export function daemonErrorLogPath(logPath: string): string {
