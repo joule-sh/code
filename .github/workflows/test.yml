@@ -1,5 +1,12 @@
 name: test
 
+# The Linux jobs run on GitHub-hosted runners, which start clean. A host
+# `lumen compile` resolves the Boehm collector as a system library, so every
+# job that builds for the host installs libgc-dev; the jobs that name a
+# target build their own collector and need nothing. The two jobs that open a
+# window install the display stack for the same reason - none of it was ever
+# written down while one long-lived machine happened to have it.
+
 on:
   push:
     branches: [main]
@@ -7,11 +14,15 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -23,12 +34,16 @@ jobs:
       - run: make test
 
   e2e:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -38,12 +53,16 @@ jobs:
       - run: make e2e
 
   terminal-structural:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -53,12 +72,16 @@ jobs:
       - run: make terminal-harness
 
   model-platform-harness:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -69,10 +92,10 @@ jobs:
 
   # Reads the clipboard back after a drag instead of trusting an escape
   # sequence (#282). Needs a display and a clipboard command; the harness
-  # starts and stops its own Xvfb, and both runners take jobs, so the check
-  # installs what is missing the way the editor-window job does.
+  # starts and stops its own Xvfb, and the runner is clean, so the job installs
+  # both outright.
   clipboard:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
@@ -83,25 +106,24 @@ jobs:
           tar -xzf lumen.tar.gz
           echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
-      - name: Make sure this runner has a display and a clipboard command
+      - name: Install the collector, a display and a clipboard command
         run: |
-          missing=""
-          command -v Xvfb >/dev/null || missing="xvfb"
-          command -v xclip >/dev/null || missing="$missing xclip"
-          if [ -z "$missing" ]; then echo "already provisioned"; exit 0; fi
-          echo "missing:$missing"
-          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get update -qq
-          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y -qq --no-install-recommends xvfb xclip
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libgc-dev xvfb xclip
       - run: python3 --version && xclip -version || true
       - run: make clipboard-harness
 
   layout-harness:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -111,12 +133,16 @@ jobs:
       - run: make layout-harness
 
   skills:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -126,12 +152,16 @@ jobs:
       - run: make skills-harness
 
   cold-start:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -141,12 +171,16 @@ jobs:
       - run: make cold-start-harness
 
   stop-then-start:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -156,12 +190,16 @@ jobs:
       - run: make stop-then-start-harness
 
   multi-session:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -171,12 +209,16 @@ jobs:
       - run: make multi-session-harness
 
   memory-files:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -186,12 +228,16 @@ jobs:
       - run: make memory-files-harness
 
   login-server:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -201,12 +247,16 @@ jobs:
       - run: make login-server-harness
 
   daemon-concurrent:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -216,12 +266,16 @@ jobs:
       - run: make daemon-concurrent-harness
 
   editor:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -232,7 +286,7 @@ jobs:
       - run: make editor-package
 
   editor-window:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       LUMEN_VERSION: v0.7.5
@@ -244,26 +298,16 @@ jobs:
           echo "$PWD/lumen-x86_64-linux" >> "$GITHUB_PATH"
           echo "$PWD/lumen-x86_64-linux/zig" >> "$GITHUB_PATH"
       - run: node --version && npm --version
-      # A real editor window is an Electron window, so this runner needs a
-      # display, the GTK stack behind it, and ImageMagick to read the bars.
-      # Both runners take jobs, so the check installs what is missing.
-      - name: Make sure this runner can open an editor window
+      # A real editor window is an Electron window, so this job needs a display,
+      # the GTK stack behind it, and ImageMagick to read the bars. The package
+      # names are the noble ones ubuntu-latest is.
+      - name: Install the collector and the stack an editor window needs
         run: |
-          missing=""
-          command -v Xvfb >/dev/null || missing="xvfb"
-          command -v import >/dev/null && command -v convert >/dev/null || missing="$missing imagemagick"
-          for lib in libgtk-3.so.0 libnss3.so libasound.so.2 libgbm.so.1 libxkbfile.so.1 libsecret-1.so.0 libatk-bridge-2.0.so.0 libcups.so.2; do
-            ldconfig -p | grep -q "$lib" || missing="$missing $lib"
-          done
-          if [ -z "$missing" ]; then echo "already provisioned"; exit 0; fi
-          echo "missing:$missing"
-          . /etc/os-release && echo "on $PRETTY_NAME"
-          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get update -qq
-          sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y -qq --no-install-recommends \
-            xvfb imagemagick libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxkbfile1 libsecret-1-0 libatk-bridge2.0-0t64 libcups2t64
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            libgc-dev xvfb imagemagick libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxkbfile1 \
+            libsecret-1-0 libatk-bridge2.0-0t64 libcups2t64
       - run: make editor-window-harness
-      - if: always()
-        run: pkill -f 'Xvfb :' || true
 
   # The same real editor window, on Windows. The extension refused to start
   # there at all until #250, and the reason the refusal outlived the Windows
@@ -312,7 +356,7 @@ jobs:
   # rather than binaries this job builds, so the checks make their own fixture
   # archives and never need a compiler.
   npm-packaging:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -320,12 +364,16 @@ jobs:
       - run: make npm-check
 
   daemon-attach:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -335,12 +383,16 @@ jobs:
       - run: make daemon-attach-harness
 
   build-mismatch:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -350,12 +402,16 @@ jobs:
       - run: make build-mismatch-harness
 
   two-clients:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -368,12 +424,16 @@ jobs:
   # these drive a real relay and a real browser socket, and both assert on
   # timing or on a value read off the wire rather than on a frame count.
   share-liveness:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -384,12 +444,16 @@ jobs:
       - run: make terminal-share-mode-harness
 
   ws-peer-lifecycle:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -399,12 +463,16 @@ jobs:
       - run: make ws-peer-lifecycle-harness
 
   daemon-mode-flag:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -414,12 +482,16 @@ jobs:
       - run: make daemon-mode-flag-harness
 
   dangling-toolcall:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -429,12 +501,16 @@ jobs:
       - run: make dangling-toolcall-harness
 
   session-listing:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -445,12 +521,16 @@ jobs:
       - run: make owner-admission-harness
 
   relay-reconnect:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -460,12 +540,16 @@ jobs:
       - run: make relay-reconnect-harness
 
   relay-path-advert:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -475,12 +559,16 @@ jobs:
       - run: make relay-path-advert-harness
 
   relay-tls-advert:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -490,12 +578,16 @@ jobs:
       - run: make relay-tls-advert-harness
 
   relay-reshare:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       LUMEN_VERSION: v0.7.5
     steps:
       - uses: actions/checkout@v4
+      - name: Install the Boehm collector a host build links against
+        run: |
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgc-dev
       - run: |
           curl -fsSL -o lumen.tar.gz "https://github.com/lumen-lang-org/lumen/releases/download/${LUMEN_VERSION}/lumen-x86_64-linux.tar.gz"
           tar -xzf lumen.tar.gz
@@ -642,7 +734,7 @@ jobs:
       - run: make windows-daemon-harness
 
   linux-release:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       LUMEN_VERSION: v0.7.5
@@ -757,7 +849,7 @@ jobs:
   # assertion means the same thing here; this job is what keeps install.sh
   # honestly POSIX as well as correct.
   install-swap-linux:
-    runs-on: [self-hosted, diff]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
