@@ -7,7 +7,7 @@ import { Session } from "../session/session.ts";
 import { announceModel } from "./announce.ts";
 import { Scrollback } from "./scrollback.ts";
 import { PendingModelPick, ModelEntry, MODEL_KIND_HEADER, MODEL_KIND_NOTE, MODEL_KIND_MODEL } from "./input_state.ts";
-import { REVERSE, DIM, VIOLET, BOLD, RESET, wrap } from "./style.ts";
+import { REVERSE, DIM, ACCENT, BOLD, RESET, wrap } from "./style.ts";
 
 const OPTION_INDENT: string = "    ";
 const MARKER_ON: string = "> ";
@@ -139,7 +139,7 @@ export function buildModelEntries(cfg: ProviderConfig, providerIds: string[]): M
 
 export function modelEntryRow(e: ModelEntry, isSelected: bool): string {
   if (e.kind == MODEL_KIND_HEADER) {
-    return "  " + wrap(BOLD + VIOLET, e.label);
+    return "  " + wrap(BOLD + ACCENT, e.label);
   }
   if (e.kind == MODEL_KIND_NOTE) {
     return OPTION_INDENT + wrap(DIM, e.label);

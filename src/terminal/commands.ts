@@ -10,6 +10,7 @@ export const CMD_TASKS: string = "tasks";
 export const CMD_MEMORY: string = "memory";
 export const CMD_SKILLS: string = "skills";
 export const CMD_MOUSE: string = "mouse";
+export const CMD_COLOR: string = "color";
 export const CMD_CLEAR: string = "clear";
 export const CMD_EXIT: string = "exit";
 export const CMD_UNKNOWN: string = "unknown";
@@ -53,6 +54,7 @@ export function parseCommand(line: string): ParsedCommand {
   if (name == "memory") { return withKind(CMD_MEMORY, arg); }
   if (name == "skills" || name == "skill") { return withKind(CMD_SKILLS, arg); }
   if (name == "mouse") { return withKind(CMD_MOUSE, arg); }
+  if (name == "color") { return withKind(CMD_COLOR, arg); }
   if (name == "clear") { return withKind(CMD_CLEAR, arg); }
   if (name == "exit") { return withKind(CMD_EXIT, arg); }
   return withKind(CMD_UNKNOWN, name);
@@ -72,6 +74,7 @@ export function commandList(): CommandInfo[] {
     { name: "/memory", args: "[add <text>|forget <n>|clear]", description: "show, add to, or edit what joule remembers about you" },
     { name: "/skills", args: "[name]", description: "list skills and where each came from, or use one by name" },
     { name: "/mouse", args: "[on|off]", description: "show or set mouse reporting (wheel scrolls, drag copies)" },
+    { name: "/color", args: "[name]", description: "show or set the accent colour (violet, blue, cyan, magenta, orange)" },
     { name: "/clear", args: "", description: "clear the scrollback" },
     { name: "/exit", args: "", description: "quit" },
   ];

@@ -21,7 +21,8 @@ import { AttachResult, ensureAttached, runAttachStop, hasStopFlag, sessionNameFl
 import { DaemonAttempt, attached, declined, declineNotes } from "./daemon_attempt.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { runSkillCommand, skillsStartupNote } from "./skills_ui.ts";
-import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { parseCommand, helpText, CMD_HELP, CMD_MODEL, CMD_MODE, CMD_SESSION, CMD_SHARE, CMD_LOGIN, CMD_LOGOUT, CMD_CAT, CMD_TASKS, CMD_MEMORY, CMD_SKILLS, CMD_MOUSE, CMD_COLOR, CMD_CLEAR, CMD_EXIT, CMD_NONE } from "./commands.ts";
+import { applyConfiguredAccent, runColorCommand } from "./color_ui.ts";
 import { catText } from "./cat.ts";
 import { SignIn, beginSignIn, submitSignIn, cancelSignIn, logoutText } from "./login_ui.ts";
 import { memoryCommandText } from "./memory_ui.ts";
@@ -144,6 +145,7 @@ class ClientState {
 }
 
 function runClientLoop(argv: string[], workspaceRoot: string, sessionName: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
+  applyConfiguredAccent();
   let client = result.client;
   let sb = new Scrollback();
   sb.setWidth(terminalWidth());
@@ -512,6 +514,8 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
     if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
     if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); applyMouseState(sb, mouse.on); drawScreen(sb, input, approvalLog.mode, rk); continue; }
+
+    if (cmd.kind == CMD_COLOR) { sb.append(runColorCommand(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
 
     if (cmd.kind == CMD_TASKS) {
       client.publish(encodeTasksRequest({ v: PROTOCOL_VERSION, seq: 0, type: TASKS_REQUEST, arg: cmd.arg }));

@@ -1,7 +1,7 @@
 import { Scrollback } from "./scrollback.ts";
 import { InputLine } from "./input_state.ts";
 import { CODE_MARKER } from "./prompt_rows.ts";
-import { styleBanner, wrap, DIM, GREEN, VIOLET } from "./style.ts";
+import { styleBanner, wrap, DIM, GREEN, ACCENT } from "./style.ts";
 import { shellQuoteSingle } from "../tools/shell_quote.ts";
 import { checkServer, insecureAllowed, normalizeServer, serverPinned, serverSourceLabel, ServerOrigin, SERVER_OK, INSECURE_ENV, DEFAULT_SERVER, SERVER_FROM_DEFAULT } from "../auth/server.ts";
 import { loginUrl, exchangeCode, normalizeCode, CODE_LENGTH, EX_OK, EX_BAD_CODE, EX_UNKNOWN } from "../auth/exchange.ts";
@@ -112,7 +112,7 @@ function introduce(sb: Scrollback, base: string, url: string, origin: ServerOrig
   if (known != "") { sb.append(known); }
   let lead = "open ";
   if (existing.secret == "") { lead = "first time here. Open "; }
-  sb.append("\n" + lead + wrap(VIOLET, url) + " and enter the " + `${CODE_LENGTH}` + "-character code it shows you.");
+  sb.append("\n" + lead + wrap(ACCENT, url) + " and enter the " + `${CODE_LENGTH}` + "-character code it shows you.");
   if (!openBrowser(url)) {
     sb.append("\n" + wrap(DIM, "no browser opened from here, so copy that address into one yourself."));
   }

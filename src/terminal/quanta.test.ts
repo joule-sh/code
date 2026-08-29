@@ -1,5 +1,5 @@
 import { quantaVerb, buildQuantaIndicator } from "./quanta.ts";
-import { VIOLET, RESET } from "./style.ts";
+import { ACCENT, RESET } from "./style.ts";
 import { TURN_START, TOOL_CALL, TOOL_RESULT, TURN_END, TEXT_DELTA } from "../protocol/frames.ts";
 
 test("a turn.start frame maps to thinking", () => {
@@ -28,7 +28,7 @@ test("the idle state builds no indicator text at all", () => {
 
 test("the thinking indicator is styled violet with a reset, no mascot name in the text", () => {
   let out = buildQuantaIndicator(TURN_START, "");
-  expect(out.indexOf(VIOLET) == 0);
+  expect(out.indexOf(ACCENT) == 0);
   expect(out.indexOf("thinking") >= 0);
   expect(out.indexOf("quanta") < 0);
   expect(out.slice(out.length - RESET.length, out.length) == RESET);

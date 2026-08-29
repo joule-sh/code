@@ -1,5 +1,5 @@
 import { promptRowCount, usesBox, scrollToEnd, buildPrompt, buildPromptMarked, PROMPT_MARKER, CODE_MARKER, MIN_ROWS_FOR_BOX, BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS } from "./input_box.ts";
-import { VIOLET, RESET } from "./style.ts";
+import { ACCENT, RESET } from "./style.ts";
 import { visualWidth } from "./layout.ts";
 
 function removeAll(line: string, needle: string): string {
@@ -13,7 +13,7 @@ function removeAll(line: string, needle: string): string {
 }
 
 function stripColor(line: string): string {
-  return removeAll(removeAll(line, VIOLET), RESET);
+  return removeAll(removeAll(line, ACCENT), RESET);
 }
 
 test("the row threshold is 12, matching the two short cases verify_layout.py tests on either side of it", () => {
@@ -56,7 +56,7 @@ test("below the row threshold the prompt is the bare marker on one row", () => {
   let render = buildPrompt("hi", 80, 10);
   expect(render.lines.length == 1);
   expect(render.cursorLine == 0);
-  expect(render.lines[0].indexOf(VIOLET) == 0);
+  expect(render.lines[0].indexOf(ACCENT) == 0);
   expect(render.lines[0].indexOf("hi") >= 0);
 });
 

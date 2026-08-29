@@ -1,4 +1,4 @@
-import { VIOLET, wrap } from "./style.ts";
+import { ACCENT, wrap } from "./style.ts";
 import { borderLine, contentLine, visualWidth } from "./layout.ts";
 import { BOX_PROMPT_ROWS, PLAIN_PROMPT_ROWS, MIN_ROWS_FOR_BOX, PROMPT_MARKER, CODE_MARKER, promptRowCount, usesBox } from "./prompt_rows.ts";
 
@@ -38,7 +38,7 @@ function plainPrompt(buf: string, marker: string, termWidth: int): PromptRender 
   let avail = termWidth - visualWidth(marker);
   if (avail < 0) { avail = 0; }
   let shown = scrollToEnd(buf, avail);
-  let line = wrap(VIOLET, marker) + shown;
+  let line = wrap(ACCENT, marker) + shown;
   let col = visualWidth(marker) + visualWidth(shown) + 1;
   return { lines: [line], cursorLine: 0, cursorCol: col };
 }
@@ -51,9 +51,9 @@ function boxPrompt(buf: string, marker: string, termWidth: int): PromptRender {
   if (avail < 0) { avail = 0; }
   let shown = scrollToEnd(buf, avail);
 
-  let top = wrap(VIOLET, borderLine("┌", "┐", termWidth));
-  let content = wrap(VIOLET, contentLine(prefix + shown, termWidth));
-  let bottom = wrap(VIOLET, borderLine("└", "┘", termWidth));
+  let top = wrap(ACCENT, borderLine("┌", "┐", termWidth));
+  let content = wrap(ACCENT, contentLine(prefix + shown, termWidth));
+  let bottom = wrap(ACCENT, borderLine("└", "┘", termWidth));
 
   let col = 1 + prefixWidth + visualWidth(shown) + 1;
   return { lines: [top, content, bottom], cursorLine: 1, cursorCol: col };

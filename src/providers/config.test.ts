@@ -59,7 +59,7 @@ test("parseConfigFile on empty or malformed text returns empty, not a crash", ()
 test("saveConfigFile writes a config that loadConfigFile reads back exactly", () => {
   let root = freshRoot("roundtrip");
   let target = root + "/nested/config.json";
-  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123", server: "", updateCheck: "", mouse: "" };
+  let file: ConfigFile = { baseUrl: "https://api.example.com", model: "some-model", apiKey: "sk-abc123", server: "", updateCheck: "", mouse: "", color: "" };
 
   saveConfigFile(target, file);
   let loaded = loadConfigFile(target);
@@ -72,8 +72,8 @@ test("saveConfigFile writes a config that loadConfigFile reads back exactly", ()
 test("saveConfigFile overwrites a previously written config", () => {
   let root = freshRoot("overwrite");
   let target = root + "/config.json";
-  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key", server: "", updateCheck: "", mouse: "" };
-  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key", server: "", updateCheck: "", mouse: "" };
+  let first: ConfigFile = { baseUrl: "https://first.example.com", model: "first-model", apiKey: "first-key", server: "", updateCheck: "", mouse: "", color: "" };
+  let second: ConfigFile = { baseUrl: "https://second.example.com", model: "second-model", apiKey: "second-key", server: "", updateCheck: "", mouse: "", color: "" };
 
   saveConfigFile(target, first);
   saveConfigFile(target, second);
@@ -87,7 +87,7 @@ test("saveConfigFile overwrites a previously written config", () => {
 test("saveConfigFile round-trips the updateCheck toggle", () => {
   let root = freshRoot("update-check-toggle");
   let target = root + "/config.json";
-  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "off", mouse: "" };
+  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "off", mouse: "", color: "" };
 
   saveConfigFile(target, file);
   let loaded = loadConfigFile(target);
@@ -96,7 +96,7 @@ test("saveConfigFile round-trips the updateCheck toggle", () => {
 });
 
 test("withServer replaces only the server, carrying the provider settings through untouched", () => {
-  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off", mouse: "on" };
+  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off", mouse: "on", color: "blue" };
   let updated = withServer(existing, "https://joule.internal");
   expect(updated.server == "https://joule.internal");
   expect(updated.baseUrl == existing.baseUrl);
@@ -104,12 +104,13 @@ test("withServer replaces only the server, carrying the provider settings throug
   expect(updated.apiKey == existing.apiKey);
   expect(updated.updateCheck == existing.updateCheck);
   expect(updated.mouse == existing.mouse);
+  expect(updated.color == existing.color);
 });
 
 test("a config written with a chosen server reads back with it, and keeps the rest", () => {
   let root = freshRoot("withserver");
   let target = root + "/config.json";
-  let existing: ConfigFile = { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "sk-1", server: "", updateCheck: "", mouse: "" };
+  let existing: ConfigFile = { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "sk-1", server: "", updateCheck: "", mouse: "", color: "" };
   saveConfigFile(target, withServer(existing, "https://joule.internal"));
   let back = loadConfigFile(target);
   expect(back.server == "https://joule.internal");
@@ -120,7 +121,7 @@ test("a config written with a chosen server reads back with it, and keeps the re
 test("saveConfigFile round-trips the mouse reporting toggle", () => {
   let root = freshRoot("mouse-toggle");
   let target = root + "/config.json";
-  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "", mouse: "on" };
+  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "", mouse: "on", color: "" };
 
   saveConfigFile(target, file);
   let loaded = loadConfigFile(target);
@@ -134,7 +135,7 @@ test("a config file that predates the mouse setting reads back with it empty, wh
 });
 
 test("withMouse replaces only the mouse setting, carrying the rest through untouched", () => {
-  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off", mouse: "" };
+  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off", mouse: "", color: "cyan" };
   let updated = withMouse(existing, "on");
   expect(updated.mouse == "on");
   expect(updated.baseUrl == existing.baseUrl);
@@ -142,4 +143,33 @@ test("withMouse replaces only the mouse setting, carrying the rest through untou
   expect(updated.apiKey == existing.apiKey);
   expect(updated.server == existing.server);
   expect(updated.updateCheck == existing.updateCheck);
+  expect(updated.color == existing.color);
+});
+
+test("saveConfigFile round-trips the color choice", () => {
+  let root = freshRoot("color-toggle");
+  let target = root + "/config.json";
+  let file: ConfigFile = { baseUrl: "", model: "", apiKey: "", server: "", updateCheck: "", mouse: "", color: "magenta" };
+
+  saveConfigFile(target, file);
+  let loaded = loadConfigFile(target);
+
+  expect(loaded.color == "magenta");
+});
+
+test("a config file that predates the color setting reads back with it empty, which means the default accent", () => {
+  let f = parseConfigFile("{\"baseUrl\":\"http://localhost:8080\",\"model\":\"local-model\"}");
+  expect(f.color == "");
+});
+
+test("withColor replaces only the color, carrying the rest through untouched", () => {
+  let existing: ConfigFile = { baseUrl: "https://api.openai.com/v1", model: "gpt-5", apiKey: "sk-live", server: "https://joule.sh", updateCheck: "off", mouse: "on", color: "" };
+  let updated = withColor(existing, "orange");
+  expect(updated.color == "orange");
+  expect(updated.baseUrl == existing.baseUrl);
+  expect(updated.model == existing.model);
+  expect(updated.apiKey == existing.apiKey);
+  expect(updated.server == existing.server);
+  expect(updated.updateCheck == existing.updateCheck);
+  expect(updated.mouse == existing.mouse);
 });

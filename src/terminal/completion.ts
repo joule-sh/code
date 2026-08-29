@@ -1,5 +1,5 @@
 import { CommandInfo, commandList } from "./commands.ts";
-import { VIOLET, DIM, BOLD, wrap } from "./style.ts";
+import { ACCENT, DIM, BOLD, wrap } from "./style.ts";
 
 export const COMPLETION_MAX_LIST_ROWS: int = 12;
 export const COMPLETION_MARKER: string = "> ";
@@ -163,10 +163,10 @@ export function panelBudget(termRows: int, indicatorRows: int, promptRows: int):
 export function entryRows(cmd: CommandInfo, selected: bool, descWidth: int): string[] {
   let out: string[] = [];
   let lead = "  ";
-  let color = VIOLET;
+  let color = ACCENT;
   if (selected) {
     lead = COMPLETION_MARKER;
-    color = BOLD + VIOLET;
+    color = BOLD + ACCENT;
   }
   if (descWidth < MIN_DESCRIPTION_WIDTH) {
     out.push(lead + wrap(color, cmd.name));

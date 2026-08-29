@@ -1,5 +1,5 @@
 import { MarkdownState, appendMarkdownDelta, flushMarkdown, styleMarkdownLine } from "./markdown.ts";
-import { BOLD, UNDERLINE, DIM, VIOLET, RESET } from "./style.ts";
+import { BOLD, UNDERLINE, DIM, ACCENT, RESET } from "./style.ts";
 
 test("plain text with no markdown passes through unchanged once its line completes", () => {
   let state = new MarkdownState();
@@ -41,18 +41,18 @@ test("underscores inside a snake_case identifier are left untouched, not styled 
 
 test("an h1 header is styled bold violet with the marker stripped", () => {
   let result = styleMarkdownLine("# Section Title", false);
-  expect(result.text == BOLD + VIOLET + "Section Title" + RESET);
+  expect(result.text == BOLD + ACCENT + "Section Title" + RESET);
   expect(!result.inCodeBlock);
 });
 
 test("an h3 header strips all three hashes", () => {
   let result = styleMarkdownLine("### Sub heading", false);
-  expect(result.text == BOLD + VIOLET + "Sub heading" + RESET);
+  expect(result.text == BOLD + ACCENT + "Sub heading" + RESET);
 });
 
 test("a line that merely starts with a hash but has no following space is not a header", () => {
   let result = styleMarkdownLine("#no-space", false);
-  expect(result.text.indexOf(VIOLET) < 0);
+  expect(result.text.indexOf(ACCENT) < 0);
   expect(result.text.indexOf("#no-space") >= 0);
 });
 
