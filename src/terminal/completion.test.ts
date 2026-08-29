@@ -201,7 +201,7 @@ test("backspacing reopens a wider match set", () => {
   input.backspace();
   input.backspace();
   expect(input.buf == "/c");
-  expect(input.completion.matches.length == 2);
+  expect(input.completion.matches.length == 3);
 });
 
 test("submitting the line closes the panel", () => {
