@@ -208,3 +208,18 @@ test("a turn's frames each push the uplink as they are emitted, not once the tur
   expect(calls.pumps > before + 1);
   expect(calls.ticks == 0);
 });
+
+test("runInitialPrompt runs a task nobody sent as a frame, and it lands in the history as a submission", () => {
+  let worker = newWorker(freshRuntimeDir("initial-prompt"));
+  let before = worker.session.history.length;
+  worker.runInitialPrompt("add a health route");
+  expect(worker.session.history.length > before);
+  expect(worker.session.history[before].text == "add a health route");
+});
+
+test("runInitialPrompt leaves the bridge idle afterwards, so later frames run rather than queue", () => {
+  let worker = newWorker(freshRuntimeDir("initial-prompt-idle"));
+  worker.runInitialPrompt("add a health route");
+  expect(!worker.bridge.busy);
+  expect(worker.bridge.pending.length == 0);
+});

@@ -1181,3 +1181,88 @@ either. `joule --clean-scratch` is the bulk escape hatch: it removes
 `.joule/scratch` for the current workspace outright, covering every
 session that has ever used one on it, rather than trying to guess
 which ones are still wanted.
+
+## Coming up headless: the mode, the first task, and where the runtime dir goes (#348)
+
+Everything the daemon needed to be told, it was told by a frame from an
+attached client. That is fine for a daemon a person attaches to, and wrong
+for one started inside an environment nobody is watching: the daemon came up
+in `safe-auto` because `daemon.ts` hardcoded it, so the first gated tool call
+broadcast an `approval.request` that nothing would ever answer and sat there
+for the full `APPROVAL_TIMEOUT_MS` - two minutes per call - before being
+denied. The mode had to be answerable before the first frame, not after.
+
+`joule-daemon --mode full-auto` is that answer, and it is the terminal's flag,
+not a second one. `daemonStartup(argv)` (`src/daemon/startup.ts`) calls
+`modeFlagResult(argv)` and `promptFlag(argv)` from
+`src/terminal/startup_flags.ts` unchanged, so `joule` and `joule-daemon`
+accept the same spellings, refuse the same input, and print the same words
+when they refuse it - including `--mode plan`, which both still turn down
+because entering plan mode for real runs `enterPlanMode`'s ceremony that a
+bare assignment at startup does not. A refusal exits non-zero before anything
+is written, so a mistyped mode never truncates the broadcast log of the
+daemon that was already there. **No flag still means `safe-auto`**: a daemon
+nobody passes anything to behaves exactly as it did.
+
+`--prompt` comes along for the same reason and by the same route. It is read
+off the same argv, and it runs through `SessionWorker.runInitialPrompt`, which
+is `RelayInputBridge.runNow` - the identical path an `input` frame takes, so
+anything arriving while that first task runs queues behind it rather than
+interleaving with it. What it buys is a daemon that does one piece of work
+with no client ever connecting to it.
+
+### `JOULE_DAEMON_RUNTIME_DIR`
+
+The daemon's frame plumbing is file-backed: inbound frames are lines in
+`<runtimeDir>/inbox/<connId>.in`, and every outbound frame is a line in
+`<runtimeDir>/broadcast.log`. The websocket is a shim over those two files.
+That is what makes a daemon drivable from outside its own machine - a program
+holding a `docker exec` into the container can append an input line and tail
+the log with no port published and no network at all.
+
+To do that it has to name the directory, and the directory was
+`homeDir() + "/.config/joule-code/daemon/" + sessionKeyFor(workspaceRoot,
+sessionName)` - a SHA-1 over the workspace path with the session name folded
+in. Reimplementing that hash in the caller means the same derivation in two
+languages in two repositories, and the first time one of them changes, the
+writer and the reader disagree silently: an inbox nobody drains looks exactly
+like a daemon with nothing to say. So the caller is told the directory
+instead. `JOULE_DAEMON_RUNTIME_DIR`, when set and non-empty, is used verbatim;
+unset or whitespace, the derived path is used and nothing about it changes.
+
+Three decisions worth stating:
+
+- **A relative path is refused**, not resolved. The whole point of the
+  variable is that two processes name one directory, and two processes with
+  different working directories resolve one relative path to two - the failure
+  mode being silence, which is the worst kind. It exits non-zero saying so.
+- **A path that does not exist is created**, along with its `inbox/`, the same
+  as the derived one always has been. If it cannot be created the daemon says
+  which directory it could not create and exits, rather than starting and
+  leaving `startBroadcastLog` to report that it could not clear a file in a
+  directory that was never there.
+- **It moves the runtime directory, not the daemon's record.** The
+  `<key>.json` beside it is how `joule attach` finds a daemon by workspace,
+  and a client discovering a daemon has no reason to know where that daemon
+  keeps its inbox, so the record stays in the derived location.
+
+This resolves the first open question on #348 in favour of the option that
+leaves one implementation of `sessionKeyFor` in the world.
+
+### Verification
+
+`make daemon-mode-flag-harness` (`scripts/verify_daemon_mode_flag.mjs`) drives
+real daemons against the stub model and asserts against `broadcast.log`
+rather than a websocket client, because the log is the only surface something
+driving an unattended daemon has. It covers: `--mode full-auto` writing a
+`session.hello` with `"mode":"full-auto"` and then running the scripted `run`
+tool with no `approval.request` at all; no flag still writing `"safe-auto"`
+and still parking that same tool in an approval; `--prompt` producing a
+`turn.start` and a `turn.end` with nothing ever attached; `--mode plan`,
+`--mode yolo` and a relative `JOULE_DAEMON_RUNTIME_DIR` each exiting non-zero
+with a message that says why; and, with the variable set, `broadcast.log` and
+`inbox/` appearing there and not under `HOME`.
+
+Unit coverage is `src/daemon/startup.test.ts` (the flag and directory
+decisions, without a daemon) and two cases in
+`src/daemon/session_worker.test.ts` for `runInitialPrompt`.
