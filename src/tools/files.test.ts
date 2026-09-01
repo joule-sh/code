@@ -18,6 +18,15 @@ test("read: happy path returns the file content", () => {
   expect(!r.truncated);
 });
 
+test("read: a binary file is refused rather than returned as bytes", () => {
+  let root = freshRoot("read-binary");
+  fs.writeFileSync(root + "/pic.jpg", "JFIF" + String.fromCharCode(0) + "bytes");
+  let r = readFile(root, "pic.jpg", 0, 0);
+  expect(!r.ok);
+  expect(r.content == "");
+  expect(r.error.indexOf("binary") > 0);
+});
+
 test("read: past EOF is empty, not an error", () => {
   let root = freshRoot("read-eof");
   fs.writeFileSync(root + "/a.ts", "line1\nline2");

@@ -21,6 +21,21 @@ function joinLines(lines: string[]): string {
   return out;
 }
 
+function looksBinary(s: string): bool {
+  let n = s.length;
+  if (n > 8000) {
+    n = 8000;
+  }
+  let i: int = 0;
+  while (i < n) {
+    if (s.charCodeAt(i) == 0) {
+      return true;
+    }
+    i = i + 1;
+  }
+  return false;
+}
+
 export function readFile(root: string, relPath: string, offset: int, limit: int): ReadResult {
   let j = jail(root, relPath);
   if (!j.ok) {
@@ -30,6 +45,13 @@ export function readFile(root: string, relPath: string, offset: int, limit: int)
     return { ok: false, content: "", truncated: false, error: "no such file" };
   }
   let full = fs.readFileSync(j.path);
+  if (looksBinary(full)) {
+    return { ok: false, content: "",
+      truncated: false,
+      error: relPath + " is a binary file (" + `${full.length}` + " bytes), not text —"
+        + " read tells you what it is rather than handing back bytes the model cannot use."
+        + " Work on it with a script instead: open it in python and act on it there." };
+  }
   let lines = full.split("\n");
 
   let start = offset;
