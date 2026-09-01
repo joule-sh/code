@@ -8,6 +8,19 @@ export type ProviderConfig = { baseUrl: string, model: string, apiKey: string };
 
 export type ToolSchema = { name: string, description: string, parametersJson: string };
 
+export const API_KEY_FILE_MARK: string = "file:";
+
+export function liveApiKey(apiKey: string): string {
+  if (!apiKey.startsWith(API_KEY_FILE_MARK)) {
+    return apiKey;
+  }
+  let path = apiKey.slice(API_KEY_FILE_MARK.length, apiKey.length);
+  if (path == "" || !fs.existsSync(path)) {
+    return "";
+  }
+  return fs.readFileSync(path).trim();
+}
+
 export function authHeaders(apiKey: string): Map<string, string> {
   let h = new Map<string, string>();
   h.set("Content-Type", "application/json");
@@ -158,10 +171,17 @@ export function consumeStream(readLine: () => string, isDone: () => bool, should
   return { text: text, calls: calls, failed: false, errorCode: "", errorMessage: "", tokens: usage };
 }
 
+export function completionsUrl(baseUrl: string): string {
+  if (baseUrl.endsWith("/chat/completions")) {
+    return baseUrl;
+  }
+  return baseUrl + "/v1/chat/completions";
+}
+
 export function streamChat(cfg: ProviderConfig, messages: Message[], tools: ToolSchema[], onDelta: (text: string) => void, shouldStop: () => bool): ProviderReply {
   let body = requestBody(cfg.model, messages, tools);
-  let url = cfg.baseUrl + "/v1/chat/completions";
-  let s = http.stream(url, "POST", body, authHeaders(cfg.apiKey));
+  let url = completionsUrl(cfg.baseUrl);
+  let s = http.stream(url, "POST", body, authHeaders(liveApiKey(cfg.apiKey)));
 
   let status = s.status();
   if (status != 200) {

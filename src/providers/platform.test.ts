@@ -53,3 +53,10 @@ test("a config shows the model with its platform", () => {
   let cfg: ProviderConfig = { baseUrl: "https://api.deepseek.com", model: "deepseek-chat", apiKey: "k" };
   expect(displayModel(cfg) == "deepseek/deepseek-chat");
 });
+
+test("a Vertex endpoint is named for display like the other platforms", () => {
+  let base = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/us-central1/endpoints/openapi/chat/completions";
+  expect(qualifiedModel(base, "google/gemini-2.0-flash") == "google/gemini-2.0-flash");
+  expect(qualifiedModel(base, "gemini-2.0-flash") == "vertex/gemini-2.0-flash");
+  expect(wireModel(base, "vertex/gemini-2.0-flash") == "gemini-2.0-flash");
+});
