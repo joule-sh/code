@@ -243,6 +243,7 @@ jobs:
             --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
 
   # Publishing is downstream of the release, in its own job, and takes the file
   # the release already carries rather than packaging a second one. Two reasons.
