@@ -20,7 +20,7 @@ jobs:
       matrix:
         include:
           - target: x86_64-linux
-            runs_on: ubuntu-latest
+            runs_on: [self-hosted, diff]
             lumen_dist: lumen-x86_64-linux
             exe: ""
           - target: aarch64-macos
