@@ -7,6 +7,7 @@ import { renderFrame, approvalOptionRow, approvalOptionsFor } from "./renderer.t
 
 const BG_PREFIX: string = "bg:";
 const AGENT_PREFIX: string = "agent:";
+const PIPELINE_PREFIX: string = "pipeline:";
 
 function tagFor(turnId: string): string {
   if (turnId.length >= BG_PREFIX.length && turnId.slice(0, BG_PREFIX.length) == BG_PREFIX) {
@@ -14,6 +15,9 @@ function tagFor(turnId: string): string {
   }
   if (turnId.length >= AGENT_PREFIX.length && turnId.slice(0, AGENT_PREFIX.length) == AGENT_PREFIX) {
     return "[agent " + turnId.slice(AGENT_PREFIX.length, turnId.length) + "] ";
+  }
+  if (turnId.length >= PIPELINE_PREFIX.length && turnId.slice(0, PIPELINE_PREFIX.length) == PIPELINE_PREFIX) {
+    return "[pipeline " + turnId.slice(PIPELINE_PREFIX.length, turnId.length) + "] ";
   }
   return "";
 }
@@ -29,6 +33,7 @@ function insertTag(rendered: string, tag: string): string {
 export function isTaskTurnId(turnId: string): bool {
   if (turnId.length >= BG_PREFIX.length && turnId.slice(0, BG_PREFIX.length) == BG_PREFIX) { return true; }
   if (turnId.length >= AGENT_PREFIX.length && turnId.slice(0, AGENT_PREFIX.length) == AGENT_PREFIX) { return true; }
+  if (turnId.length >= PIPELINE_PREFIX.length && turnId.slice(0, PIPELINE_PREFIX.length) == PIPELINE_PREFIX) { return true; }
   return false;
 }
 

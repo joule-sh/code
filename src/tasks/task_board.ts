@@ -8,6 +8,7 @@ import { buildRunTaskStatus, buildAgentTaskStatus } from "./task_status.ts";
 
 const BG_TURN_PREFIX: string = "bg:";
 const AGENT_TURN_PREFIX: string = "agent:";
+const PIPELINE_TURN_PREFIX: string = "pipeline:";
 
 export function backgroundTurnId(id: string): string {
   return BG_TURN_PREFIX + id;
@@ -17,9 +18,14 @@ export function agentTurnId(id: string): string {
   return AGENT_TURN_PREFIX + id;
 }
 
+export function pipelineTurnId(id: string): string {
+  return PIPELINE_TURN_PREFIX + id;
+}
+
 export function isTaskTurnId(turnId: string): bool {
   if (turnId.length >= BG_TURN_PREFIX.length && turnId.slice(0, BG_TURN_PREFIX.length) == BG_TURN_PREFIX) { return true; }
   if (turnId.length >= AGENT_TURN_PREFIX.length && turnId.slice(0, AGENT_TURN_PREFIX.length) == AGENT_TURN_PREFIX) { return true; }
+  if (turnId.length >= PIPELINE_TURN_PREFIX.length && turnId.slice(0, PIPELINE_TURN_PREFIX.length) == PIPELINE_TURN_PREFIX) { return true; }
   return false;
 }
 
