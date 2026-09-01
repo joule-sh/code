@@ -40,7 +40,13 @@ export const RUN_SCHEMA: ToolSchema = {
 export const SPAWN_AGENT_SCHEMA: ToolSchema = {
   name: "spawn_agent",
   description: "Spawn an independent subagent to work a scoped sub-problem on its own turn loop, using the same read/write/edit/list/grep/run tools, while this session keeps going. It runs under the same approval mode this session is in right now - anything it needs to ask about shows up as a normal approval card here. It cannot spawn further subagents, and it cannot be forcibly killed once started, only asked to stop between its own steps (see /tasks). Its result is appended to this conversation's history automatically once it finishes, so a later message can refer to what it found or did.",
-  parametersJson: "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\",\"description\":\"a self-contained description of the sub-problem - the subagent starts with no other context\"}},\"required\":[\"task\"]}",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\",\"description\":\"a self-contained description of the sub-problem - the subagent starts with no other context\"},\"steps\":{\"type\":\"integer\",\"description\":\"turn budget, default 10, at most 40 - name a bigger one for real production work, keep the default for a quick check\"},\"report\":{\"type\":\"string\",\"description\":\"when set, the subagent's final reply must be exactly one JSON object of this shape and nothing else, e.g. {\\\"verdict\\\":\\\"pass\\\"|\\\"fail\\\",\\\"reasons\\\":[...]} - use it when the answer will be routed on rather than read\"}},\"required\":[\"task\"]}",
+};
+
+export const RUN_PIPELINE_SCHEMA: ToolSchema = {
+  name: "run_pipeline",
+  description: "Run a declared multi-stage plan of subagents: stages run in order, the tasks inside a stage run in parallel, and {{prior}} in a task text is replaced with the previous stage's reports. The daemon advances the stages - no model decides the hand-offs - and one consolidated report lands in this conversation when the last stage finishes. A stage's report field makes each of its tasks answer as one JSON object of that shape, which is what a later stage can route on. At most 5 stages, 5 tasks per stage, 10 tasks in all, one pipeline at a time. Subagents in a pipeline cannot spawn anything, so the plan is the whole graph. Approvals surface per tool call exactly as for spawn_agent.",
+  parametersJson: "{\"type\":\"object\",\"properties\":{\"stages\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"tasks\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"report\":{\"type\":\"string\",\"description\":\"optional - the JSON shape each task in this stage must reply with\"},\"steps\":{\"type\":\"integer\",\"description\":\"optional turn budget per task in this stage, default 10, at most 40\"}},\"required\":[\"name\",\"tasks\"]}}},\"required\":[\"stages\"]}",
 };
 
 export const TASK_STATUS_SCHEMA: ToolSchema = {
@@ -65,7 +71,7 @@ export function allFileToolSchemas(): ToolSchema[] {
 // secret is empty) this is exactly the old fixed list, so a signed-out
 // session is unaffected.
 export function allToolSchemas(platformScopes: string): ToolSchema[] {
-  let out: ToolSchema[] = [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA, TASK_STATUS_SCHEMA, SKILL_SCHEMA];
+  let out: ToolSchema[] = [READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, LIST_SCHEMA, GREP_SCHEMA, RUN_SCHEMA, SPAWN_AGENT_SCHEMA, RUN_PIPELINE_SCHEMA, TASK_STATUS_SCHEMA, SKILL_SCHEMA];
   if (platformScopes != "") {
     for (const s of platformToolSchemas(platformScopes)) { out.push(s); }
   }

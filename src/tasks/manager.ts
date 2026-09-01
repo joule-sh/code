@@ -4,6 +4,7 @@ import { BackgroundRunTask, SubagentTask } from "./state.ts";
 import { TaskBoard, backgroundTurnId, agentTurnId, isTaskTurnId } from "./task_board.ts";
 import { configureBackgroundRun, spawnBackgroundRun } from "./background_run.ts";
 import { configureSubagent, spawnSubagent } from "./subagent_worker.ts";
+import { Pipeline, parsePipelineSpec, reportOf } from "./pipeline.ts";
 
 export { backgroundTurnId, agentTurnId, isTaskTurnId };
 
@@ -13,6 +14,7 @@ export class TaskManager {
   modeProvider: () => string;
   nonce: string;
   board: TaskBoard;
+  pipelines: Pipeline[];
 
   constructor(root: string, providerCfg: ProviderConfig, modeProvider: () => string) {
     this.root = root;
@@ -20,6 +22,7 @@ export class TaskManager {
     this.modeProvider = modeProvider;
     this.nonce = `${Date.now()}`;
     this.board = new TaskBoard();
+    this.pipelines = [];
   }
 
   startBackgroundRun(command: string): string {
@@ -32,7 +35,7 @@ export class TaskManager {
     return "started in the background as task " + id + " - its output streams into the scrollback and /tasks as it happens; it cannot be forcibly stopped once started, only finish or /tasks cancel " + id + " to detach";
   }
 
-  startSubagent(taskText: string): string {
+  spawnOne(taskText: string, steps: int, report: string): string {
     let id = this.board.freshId("agent-");
     let outPath = "/tmp/joule-" + this.nonce + "-" + id + "-out.log";
     let inPath = "/tmp/joule-" + this.nonce + "-" + id + "-in.log";
@@ -40,10 +43,29 @@ export class TaskManager {
     fs.writeFileSync(outPath, "");
     fs.writeFileSync(inPath, "");
     let mode = this.modeProvider();
-    configureSubagent(this.providerCfg.baseUrl, this.providerCfg.model, this.providerCfg.apiKey, taskText, this.root, mode, outPath, inPath, cancelPath);
+    configureSubagent(this.providerCfg.baseUrl, this.providerCfg.model, this.providerCfg.apiKey, taskText, this.root, mode, outPath, inPath, cancelPath, steps, report);
     spawnSubagent();
     this.board.registerAgentTask(new SubagentTask(id, taskText, outPath, inPath, cancelPath, mode));
+    return id;
+  }
+
+  startSubagent(taskText: string, steps: int, report: string): string {
+    let id = this.spawnOne(taskText, steps, report);
+    let mode = this.modeProvider();
     return "spawned subagent " + id + " (mode: " + mode + ") for: " + taskText + " - it runs on its own turn loop and reports back into this conversation when it finishes; check /tasks for progress, /tasks cancel " + id + " to ask it to stop between steps";
+  }
+
+  startPipeline(args: string): string {
+    if (this.pipelines.length > 0 && !this.pipelines[this.pipelines.length - 1].done) {
+      return "a pipeline is already running (" + this.pipelines[this.pipelines.length - 1].statusText() + ") - one at a time; wait for it or cancel its agents via /tasks";
+    }
+    let parsed = parsePipelineSpec(args);
+    if (!parsed.ok) { return "run_pipeline refused: " + parsed.fault; }
+    let id = this.board.freshId("pipe-");
+    let p = new Pipeline(id, parsed.spec);
+    p.advance((task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
+    this.pipelines.push(p);
+    return "pipeline " + id + " started: " + p.statusText() + " - stages advance on their own as agents finish, and the final reports land in this conversation; /tasks shows progress";
   }
 
   cancel(id: string): string {
@@ -56,7 +78,11 @@ export class TaskManager {
   }
 
   listText(): string {
-    return this.board.listText();
+    let out = this.board.listText();
+    for (const p of this.pipelines) {
+      out = out + "\n" + p.statusText();
+    }
+    return out;
   }
 
   runningTaskCount(): int {
@@ -105,5 +131,15 @@ export class TaskManager {
 
   poll(session: Session): void {
     this.board.poll(session);
+    for (const p of this.pipelines) {
+      if (p.done) { continue; }
+      let finished = p.poll(
+        (id: string) => this.board.agentDone(id),
+        (id: string) => reportOf(this.board.agentAccumulated(id)),
+        (task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
+      if (finished) {
+        session.note("[pipeline " + p.id + " finished]\n" + p.summary);
+      }
+    }
   }
 }

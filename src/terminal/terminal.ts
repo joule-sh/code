@@ -179,7 +179,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   tasksBox.set(tasks);
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
-    startSubagent: (task: string) => tasks.startSubagent(task),
+    startSubagent: (task: string, steps: int, report: string) => tasks.startSubagent(task, steps, report),
+    startPipeline: (args: string) => tasks.startPipeline(args),
     taskStatus: (id: string) => tasks.taskStatus(id),
   };
   registry.setTaskRunner(taskRunner);

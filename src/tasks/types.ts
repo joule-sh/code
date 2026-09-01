@@ -1,6 +1,7 @@
 export type TaskRunner = {
   startBackgroundRun: (command: string) => string,
-  startSubagent: (task: string) => string,
+  startSubagent: (task: string, steps: int, report: string) => string,
+  startPipeline: (args: string) => string,
   taskStatus: (id: string) => string,
 };
 
