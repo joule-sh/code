@@ -8,6 +8,7 @@ export function platformOf(baseUrl: string): string {
   if (url.indexOf("api.openai.com") >= 0) { return "openai"; }
   if (url.indexOf("api.anthropic.com") >= 0) { return "anthropic"; }
   if (url.indexOf("api.mistral.ai") >= 0) { return "mistral"; }
+  if (url.indexOf("aiplatform.googleapis.com") >= 0) { return "vertex"; }
   return "";
 }
 

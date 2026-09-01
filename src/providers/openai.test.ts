@@ -1,4 +1,4 @@
-import { consumeStream, errorReplyFromBody, requestBody, usageTotalTokens, ToolSchema } from "./openai.ts";
+import { completionsUrl, consumeStream, errorReplyFromBody, liveApiKey, requestBody, usageTotalTokens, ToolSchema } from "./openai.ts";
 import { Message } from "../session/types.ts";
 
 class LineQueue {
@@ -257,4 +257,23 @@ test("a stream with no usage object reports zero tokens rather than a guess", ()
   let reply = consumeStream(() => q.next(), () => q.finished(), () => false, (t: string) => {});
   expect(!reply.failed);
   expect(reply.tokens == 0);
+});
+
+test("a base URL already naming the completions endpoint is used verbatim", () => {
+  expect(completionsUrl("https://api.deepseek.com") == "https://api.deepseek.com/v1/chat/completions");
+  let vertex = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/p/locations/us-central1/endpoints/openapi/chat/completions";
+  expect(completionsUrl(vertex) == vertex);
+});
+
+test("a file: key is read at call time, and a missing file is an empty key", () => {
+  expect(liveApiKey("sk-plain") == "sk-plain");
+  let path = "/tmp/joule-key-test";
+  fs.writeFileSync(path, "tok-123
+");
+  expect(liveApiKey("file:" + path) == "tok-123");
+  fs.writeFileSync(path, "tok-456");
+  expect(liveApiKey("file:" + path) == "tok-456");
+  fs.rmSync(path, false);
+  expect(liveApiKey("file:" + path) == "");
+  expect(liveApiKey("file:") == "");
 });

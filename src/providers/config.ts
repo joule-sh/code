@@ -82,6 +82,10 @@ export function loadConfig(argv: string[]): ProviderConfig {
   let envBaseUrl = envOr("JOULE_CODE_BASE_URL", "");
   let envModel = envOr("JOULE_CODE_MODEL", "");
   let envApiKey = envOr("JOULE_CODE_API_KEY", "");
+  let envApiKeyFile = envOr("JOULE_CODE_API_KEY_FILE", "");
+  if (envApiKeyFile != "") {
+    envApiKey = "file:" + envApiKeyFile;
+  }
   let file = loadConfigFile(configFilePath());
   return resolveConfig(flagModel, flagBaseUrl, envBaseUrl, envModel, envApiKey, file.baseUrl, file.model, file.apiKey);
 }

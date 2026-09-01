@@ -69,6 +69,16 @@ indirection gets the same result with none of that.
   pass through untouched — the trim applies only when what remains is a bare
   origin.
 
+## What is already built
+
+The two obstacle-fixes landed ahead of validation, since they hold for any
+OpenAI-compatible host: `completionsUrl` uses a base URL verbatim when it
+already ends in `/chat/completions`, and a key of the form `file:/path` (or
+`JOULE_CODE_API_KEY_FILE=/path`) is read from that file at each request, so a
+rotated token is picked up without a restart. `platformOf` names
+`aiplatform.googleapis.com` as `vertex` for display. All additive; nothing
+existing changed behaviour.
+
 ## Validation iteration — what must be proven before building
 
 Run against a real GCP project (credentials are the operator's to bring):
