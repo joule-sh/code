@@ -64,7 +64,13 @@ export class ToolsRegistry {
     if (tool == "spawn_agent") {
       if (this.tasksSlot.length == 0) { return fail("subagents are not available in this session"); }
       let task = jsonStringMemberAt(args, 0, "task");
-      return ok(this.tasksSlot[0].startSubagent(task), false);
+      let steps = jsonIntMemberAt(args, 0, "steps");
+      let report = jsonStringMemberAt(args, 0, "report");
+      return ok(this.tasksSlot[0].startSubagent(task, steps, report), false);
+    }
+    if (tool == "run_pipeline") {
+      if (this.tasksSlot.length == 0) { return fail("pipelines are not available in this session"); }
+      return ok(this.tasksSlot[0].startPipeline(args), false);
     }
     if (tool == "task_status") {
       if (this.tasksSlot.length == 0) { return fail("background tasks are not available in this session"); }

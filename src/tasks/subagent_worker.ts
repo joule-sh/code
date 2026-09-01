@@ -6,11 +6,33 @@ import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO } from "../approval/gate
 import { appendMailbox, findMailboxEntry } from "./mailbox.ts";
 import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, encodeSubagentToolCallPayload, encodeSubagentToolResultPayload, encodeSubagentApprovalPayload, encodeSubagentErrorPayload } from "./subagent_protocol.ts";
 
-const MAX_SUBAGENT_STEPS: int = 10;
+const DEFAULT_SUBAGENT_STEPS: int = 10;
+const MAX_SUBAGENT_STEPS: int = 40;
 const APPROVAL_TIMEOUT_MS: int = 120000;
 const APPROVAL_POLL_MS: int = 150;
 
 const SUBAGENT_SYSTEM_PROMPT: string = "You are a subagent spawned by another agent to work one scoped task independently. Use the read, write, edit, list, grep, and run tools to make real progress, then reply in plain text summarizing what you did and found. You cannot spawn further subagents. Keep going until the task is actually done or you are certain it cannot be done, rather than stopping after the first step.";
+
+export function clampSteps(asked: int): int {
+  if (asked <= 0) { return DEFAULT_SUBAGENT_STEPS; }
+  if (asked > MAX_SUBAGENT_STEPS) { return MAX_SUBAGENT_STEPS; }
+  return asked;
+}
+
+// The report contract is a directive to the model, not a schema the daemon
+// validates: the final reply has to be one JSON object of the asked shape and
+// nothing else, so the caller can route on it instead of parsing prose.
+export function withReportDirective(prompt: string, report: string): string {
+  if (report == "") { return prompt; }
+  return prompt + " Your FINAL reply - the one with no tool calls - must be exactly one"
+    + " JSON object of this shape and nothing else, no prose before or after: " + report;
+}
+
+export function looksLikeLoneJson(text: string): bool {
+  let t = text.trim();
+  if (t.length < 2) { return false; }
+  return t.startsWith("{") && t.endsWith("}");
+}
 
 let g_agent_base_url: string = "";
 let g_agent_model: string = "";
@@ -21,8 +43,10 @@ let g_agent_mode: string = "";
 let g_agent_out: string = "";
 let g_agent_in: string = "";
 let g_agent_cancel: string = "";
+let g_agent_steps: int = 0;
+let g_agent_report: string = "";
 
-export function configureSubagent(baseUrl: string, model: string, apiKey: string, task: string, root: string, mode: string, outPath: string, inPath: string, cancelPath: string): void {
+export function configureSubagent(baseUrl: string, model: string, apiKey: string, task: string, root: string, mode: string, outPath: string, inPath: string, cancelPath: string, steps: int, report: string): void {
   g_agent_base_url = baseUrl;
   g_agent_model = model;
   g_agent_api_key = apiKey;
@@ -32,6 +56,8 @@ export function configureSubagent(baseUrl: string, model: string, apiKey: string
   g_agent_out = outPath;
   g_agent_in = inPath;
   g_agent_cancel = cancelPath;
+  g_agent_steps = clampSteps(steps);
+  g_agent_report = report;
 }
 
 function isReadToolLite(tool: string): bool {
@@ -85,7 +111,7 @@ function checkSubagentApproval(alwaysAllowed: string[], localCallId: string, too
 
 export function subagentLoop(): int {
   let history: Message[] = [];
-  history.push({ role: ROLE_SYSTEM, text: SUBAGENT_SYSTEM_PROMPT, toolCallId: "", toolCalls: [] });
+  history.push({ role: ROLE_SYSTEM, text: withReportDirective(SUBAGENT_SYSTEM_PROMPT, g_agent_report), toolCallId: "", toolCalls: [] });
   history.push({ role: ROLE_USER, text: g_agent_task, toolCallId: "", toolCalls: [] });
 
   let tools: ToolSchema[] = subagentToolSchemas();
@@ -93,8 +119,10 @@ export function subagentLoop(): int {
   let alwaysAllowed: string[] = [];
   let step: int = 0;
   let localCallSeq: int = 0;
+  let budget: int = clampSteps(g_agent_steps);
+  let corrected: bool = false;
 
-  while (step < MAX_SUBAGENT_STEPS) {
+  while (step < budget) {
     if (isCancelled()) {
       appendMailbox(g_agent_out, TAG_CANCELLED, "cancelled before step " + `${step}`);
       return step;
@@ -119,6 +147,15 @@ export function subagentLoop(): int {
     }
 
     if (reply.calls.length == 0) {
+      // A report contract that came back as prose gets one correction and one
+      // extra step - once - so a near-miss becomes routable instead of noise.
+      if (g_agent_report != "" && !looksLikeLoneJson(reply.text) && !corrected) {
+        corrected = true;
+        budget = budget + 1;
+        history.push({ role: ROLE_USER, text: "Reply again with exactly one JSON object of this shape and nothing else: " + g_agent_report, toolCallId: "", toolCalls: [] });
+        step = step + 1;
+        continue;
+      }
       appendMailbox(g_agent_out, TAG_DONE, "");
       return step;
     }

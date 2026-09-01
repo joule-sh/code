@@ -57,6 +57,20 @@ export class TaskBoard {
     return [];
   }
 
+  agentDone(id: string): bool {
+    for (const t of this.agentTasks) {
+      if (t.id == id) { return t.done; }
+    }
+    return false;
+  }
+
+  agentAccumulated(id: string): string {
+    for (const t of this.agentTasks) {
+      if (t.id == id) { return t.accumulated; }
+    }
+    return "";
+  }
+
   findAgentTask(id: string): SubagentTask[] {
     for (const t of this.agentTasks) {
       if (t.id == id) { return [t]; }

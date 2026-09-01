@@ -156,7 +156,8 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode);
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
-    startSubagent: (task: string) => tasks.startSubagent(task),
+    startSubagent: (task: string, steps: int, report: string) => tasks.startSubagent(task, steps, report),
+    startPipeline: (args: string) => tasks.startPipeline(args),
     taskStatus: (id: string) => tasks.taskStatus(id),
   };
   registry.setTaskRunner(taskRunner);
