@@ -1,7 +1,8 @@
 import { Session } from "../session/session.ts";
 import { ProviderConfig } from "../providers/openai.ts";
+import { PROTOCOL_VERSION, TEXT_DELTA, TURN_END, REASON_DONE, TextDeltaFrame, TurnEndFrame, encodeTextDelta, encodeTurnEnd } from "../protocol/frames.ts";
 import { BackgroundRunTask, SubagentTask } from "./state.ts";
-import { TaskBoard, backgroundTurnId, agentTurnId, isTaskTurnId } from "./task_board.ts";
+import { TaskBoard, backgroundTurnId, agentTurnId, pipelineTurnId, isTaskTurnId } from "./task_board.ts";
 import { configureBackgroundRun, spawnBackgroundRun } from "./background_run.ts";
 import { configureSubagent, spawnSubagent } from "./subagent_worker.ts";
 import { Pipeline, parsePipelineSpec, reportOf } from "./pipeline.ts";
@@ -63,9 +64,8 @@ export class TaskManager {
     if (!parsed.ok) { return "run_pipeline refused: " + parsed.fault; }
     let id = this.board.freshId("pipe-");
     let p = new Pipeline(id, parsed.spec);
-    p.advance((task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
     this.pipelines.push(p);
-    return "pipeline " + id + " started: " + p.statusText() + " - stages advance on their own as agents finish, and the final reports land in this conversation; /tasks shows progress";
+    return "pipeline " + id + " started with " + `${parsed.spec.stages.length}` + " stage(s) - stages advance on their own as agents finish, and the final reports land in this conversation; /tasks shows progress";
   }
 
   cancel(id: string): string {
@@ -80,7 +80,7 @@ export class TaskManager {
   listText(): string {
     let out = this.board.listText();
     for (const p of this.pipelines) {
-      out = out + "\n" + p.statusText();
+      out = out + "\n" + p.statusBlock();
     }
     return out;
   }
@@ -133,11 +133,21 @@ export class TaskManager {
     this.board.poll(session);
     for (const p of this.pipelines) {
       if (p.done) { continue; }
+      let before = p.stageAt;
       let finished = p.poll(
         (id: string) => this.board.agentDone(id),
         (id: string) => reportOf(this.board.agentAccumulated(id)),
         (task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
+      // Stage transitions render in every client - the terminal tags the
+      // lines, the console builds its pipeline card from them - so they go
+      // out as frames on the pipeline's own turn, not into model history.
+      if (!finished && p.stageAt != before) {
+        let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TEXT_DELTA, turnId: pipelineTurnId(p.id), text: p.stageStartedText() + "\n" };
+        session.emit(encodeTextDelta(f));
+      }
       if (finished) {
+        let ef: TurnEndFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TURN_END, turnId: pipelineTurnId(p.id), reason: REASON_DONE };
+        session.emit(encodeTurnEnd(ef));
         session.note("[pipeline " + p.id + " finished]\n" + p.summary);
       }
     }

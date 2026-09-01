@@ -152,6 +152,33 @@ test("a fan-out stage waits for every agent before moving on", () => {
   expect(pipe.summary.indexOf("[agent-2]") > 0);
 });
 
+test("the status block marks stages done, active with agents, and pending", () => {
+  let p = parsePipelineSpec("{\"stages\":[{\"name\":\"survey\",\"tasks\":[\"a\"]},{\"name\":\"verify\",\"tasks\":[\"b\"]}]}");
+  expect(p.ok);
+  let pipe = new Pipeline("pipe-9", p.spec);
+  let fleet = new FakeFleet();
+  let spawn = (task: string, steps: int, report: string) => fleet.spawn(task);
+  let agentDone = (id: string) => fleet.isDone(id);
+  let agentReport = (id: string) => "r";
+
+  expect(pipe.statusBlock().indexOf("[ ] survey") > 0);
+
+  pipe.poll(agentDone, agentReport, spawn);
+  expect(pipe.stageStartedText() == "stage 1/2 (survey) started: agent-1");
+  expect(pipe.statusBlock().indexOf("[>] survey agent-1") > 0);
+  expect(pipe.statusBlock().indexOf("[ ] verify") > 0);
+
+  fleet.finish("agent-1");
+  pipe.poll(agentDone, agentReport, spawn);
+  expect(pipe.statusBlock().indexOf("[x] survey") > 0);
+  expect(pipe.statusBlock().indexOf("[>] verify agent-2") > 0);
+
+  fleet.finish("agent-2");
+  pipe.poll(agentDone, agentReport, spawn);
+  expect(pipe.statusBlock().indexOf("done") > 0);
+  expect(pipe.statusBlock().indexOf("[x] verify") > 0);
+});
+
 test("the step budget clamps at both ends and the directive only appears when asked", () => {
   expect(clampSteps(0) == 10);
   expect(clampSteps(-3) == 10);

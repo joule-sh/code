@@ -250,6 +250,46 @@ export class Pipeline {
       + " (" + this.stageName() + "), " + `${this.activeIds.length}` + " agent(s)";
   }
 
+  // What the scrollback shows when a stage starts: which stage, and which
+  // agents now carry it.
+  stageStartedText(): string {
+    let agents = "";
+    let i: int = 0;
+    while (i < this.activeIds.length) {
+      if (i > 0) { agents = agents + ", "; }
+      agents = agents + this.activeIds[i];
+      i = i + 1;
+    }
+    return "stage " + `${this.stageAt + 1}` + "/" + `${this.spec.stages.length}`
+      + " (" + this.stageName() + ") started: " + agents;
+  }
+
+  // The /tasks view: one marker line per stage - [x] finished, [>] active
+  // with its agents, [ ] still to come.
+  statusBlock(): string {
+    let head = this.done
+      ? this.id + "  done  " + `${this.spec.stages.length}` + " stage(s)"
+      : this.id + "  running  " + this.statusText().split(": ")[1];
+    let out = head;
+    let i: int = 0;
+    while (i < this.spec.stages.length) {
+      let mark = "[ ]";
+      let tail = "";
+      if (this.done || i < this.stageAt) { mark = "[x]"; }
+      if (!this.done && i == this.stageAt) {
+        mark = "[>]";
+        let j: int = 0;
+        while (j < this.activeIds.length) {
+          tail = tail + " " + this.activeIds[j];
+          j = j + 1;
+        }
+      }
+      out = out + "\n  " + mark + " " + this.spec.stages[i].name + tail;
+      i = i + 1;
+    }
+    return out;
+  }
+
   // Starts the next stage, or finishes. spawn(task, steps, report) starts one
   // subagent and returns its id.
   advance(spawn: (task: string, steps: int, report: string) => string): void {
