@@ -1,5 +1,5 @@
 import { jsonMemberStart, jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
-import { ProviderConfig, authHeaders } from "../providers/openai.ts";
+import { ProviderConfig, authHeaders, liveApiKey } from "../providers/openai.ts";
 import { platformOf, qualifiedModel, displayModel } from "../providers/platform.ts";
 import { serverHost } from "../auth/server.ts";
 import { LiveProvider } from "../providers/live.ts";
@@ -88,7 +88,7 @@ export function parseModelIds(body: string): string[] {
 // reached or answers with anything but a 200 list. The path mirrors the chat
 // call (`baseUrl + "/v1/..."`) so whatever base works for turns works here.
 export function fetchModelIds(cfg: ProviderConfig): string[] {
-  let resp = http.request(cfg.baseUrl + "/v1/models", "GET", "", authHeaders(cfg.apiKey));
+  let resp = http.request(cfg.baseUrl + "/v1/models", "GET", "", authHeaders(liveApiKey(cfg.apiKey)));
   if (!resp.ok || resp.status != 200) {
     let none: string[] = [];
     return none;
