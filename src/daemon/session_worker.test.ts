@@ -49,7 +49,7 @@ function newWorker(runtimeDir: string): SessionWorker {
   let session = newSession();
   let gate = new Gate(MODE_AUTO_EDIT, 1000, "/repo", (c: string, t: string, s: string, a: string) => {}, () => {});
   let live = new LiveProvider({ baseUrl: "http://x", model: "m", apiKey: "k" }, [], new CancelWatch(), -1, new TurnTracker());
-  let tasks = new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit");
+  let tasks = new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit", "");
   return new SessionWorker(runtimeDir, session, gate, live, tasks);
 }
 

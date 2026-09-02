@@ -58,7 +58,7 @@ function newLive(): LiveProvider {
 
 function newTasks(): TaskManager {
   let cfg: ProviderConfig = { baseUrl: "http://x", model: "start-model", apiKey: "k" };
-  return new TaskManager("/repo", cfg, () => "auto-edit");
+  return new TaskManager("/repo", cfg, () => "auto-edit", "");
 }
 
 test("a mode.set dispatched on the daemon's session reaches two independent broadcast readers, the same mechanism two attached clients' pusher threads use", () => {

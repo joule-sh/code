@@ -48,7 +48,7 @@ function newLive(): LiveProvider {
 }
 
 function newTasks(): TaskManager {
-  return new TaskManager("/repo", { baseUrl: "http://x", model: "start-model", apiKey: "k" }, () => "auto-edit");
+  return new TaskManager("/repo", { baseUrl: "http://x", model: "start-model", apiKey: "k" }, () => "auto-edit", "");
 }
 
 function fakeUplink(): ShareController {

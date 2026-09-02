@@ -34,7 +34,7 @@ function newSession(): Session {
 }
 
 function newTasks(): TaskManager {
-  return new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit");
+  return new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit", "");
 }
 
 class FrameCapture {
