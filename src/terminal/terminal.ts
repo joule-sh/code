@@ -180,7 +180,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
     startSubagent: (task: string, steps: int, report: string) => tasks.startSubagent(task, steps, report),
-    startPipeline: (args: string) => tasks.startPipeline(args),
+    startPipeline: (args: string) => tasks.runPipeline(args, session),
     taskStatus: (id: string) => tasks.taskStatus(id),
   };
   registry.setTaskRunner(taskRunner);
