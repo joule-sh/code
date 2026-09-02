@@ -16,14 +16,16 @@ export class TaskManager {
   root: string;
   providerCfg: ProviderConfig;
   modeProvider: () => string;
+  scratchRel: string;
   nonce: string;
   board: TaskBoard;
   pipelines: Pipeline[];
 
-  constructor(root: string, providerCfg: ProviderConfig, modeProvider: () => string) {
+  constructor(root: string, providerCfg: ProviderConfig, modeProvider: () => string, scratchRel: string) {
     this.root = root;
     this.providerCfg = providerCfg;
     this.modeProvider = modeProvider;
+    this.scratchRel = scratchRel;
     this.nonce = `${Date.now()}`;
     this.board = new TaskBoard();
     this.pipelines = [];
@@ -47,7 +49,7 @@ export class TaskManager {
     fs.writeFileSync(outPath, "");
     fs.writeFileSync(inPath, "");
     let mode = this.modeProvider();
-    configureSubagent(this.providerCfg.baseUrl, this.providerCfg.model, this.providerCfg.apiKey, taskText, this.root, mode, outPath, inPath, cancelPath, steps, report);
+    configureSubagent(this.providerCfg.baseUrl, this.providerCfg.model, this.providerCfg.apiKey, taskText, this.root, mode, outPath, inPath, cancelPath, steps, report, this.scratchRel);
     spawnSubagent();
     this.board.registerAgentTask(new SubagentTask(id, taskText, outPath, inPath, cancelPath, mode));
     return id;

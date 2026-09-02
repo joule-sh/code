@@ -171,11 +171,12 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
   session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
-  session.injectSystemContext(scratchContextNote(ensureScratchDir(workspaceRoot, sessionName)));
+  let scratchRel = ensureScratchDir(workspaceRoot, sessionName);
+  session.injectSystemContext(scratchContextNote(scratchRel));
   if (resume.history != null) { session.history = resume.history; }
   live.setSession(session);
 
-  let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode);
+  let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode, scratchRel);
   tasksBox.set(tasks);
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),

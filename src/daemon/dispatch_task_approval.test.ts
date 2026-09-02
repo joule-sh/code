@@ -4,7 +4,7 @@ import { tryDispatchTaskApprovalReply } from "./dispatch_task_approval.ts";
 import { PROTOCOL_VERSION, ApprovalReplyFrame, encodeApprovalReply } from "../protocol/frames.ts";
 
 function newTasks(): TaskManager {
-  return new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit");
+  return new TaskManager("/repo", { baseUrl: "http://x", model: "m", apiKey: "k" }, () => "auto-edit", "");
 }
 
 test("an approval.reply matching the task board's active approval is consumed and clears it", () => {
