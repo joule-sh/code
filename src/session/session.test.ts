@@ -326,6 +326,33 @@ test("a denied tool call is recorded in history but not run", () => {
   expect(session.history[3].text.indexOf("denied") >= 0);
 });
 
+test("hitting the step ceiling emits E_STEP_LIMIT before turn.end, not silence", () => {
+  // Never an empty-calls reply, so the loop never finishes on its own and
+  // MAX_STEPS is what ends it.
+  let calls: ToolCallReq[] = [{ callId: "c1", tool: "read_file", args: "a.ts" }];
+  let sp = new StepProvider([okReply("still going", calls)]);
+  let provider: Provider = { ask: (h: Message[], d: (text: string) => void) => sp.ask(h, d) };
+  let echoer = new Echoer();
+  let tools: ToolRegistry = { run: (t: string, a: string) => echoer.run(t, a) };
+  let cap = new FrameCapture();
+  let session = new Session("/repo", "agent", provider, tools, allowAll());
+  session.subscribe((frameJson: string) => { cap.add(frameJson); });
+  session.submit("keep going forever");
+
+  let kinds = typesOf(cap.frames);
+  let sawErrorBeforeEnd = false;
+  let i = 0;
+  while (i < kinds.length) {
+    if (kinds[i] == ERROR && i + 1 < kinds.length && kinds[i + 1] == TURN_END) {
+      sawErrorBeforeEnd = true;
+    }
+    i = i + 1;
+  }
+  expect(sawErrorBeforeEnd);
+  expect(cap.frames[cap.frames.length - 2].indexOf("E_STEP_LIMIT") > 0);
+  expect(cap.frames[cap.frames.length - 1].indexOf(REASON_ERROR) > 0);
+});
+
 test("seq is monotonic across a whole turn", () => {
   let calls: ToolCallReq[] = [{ callId: "c1", tool: "read_file", args: "a.ts" }];
   let sp = new StepProvider([okReply("", calls), okReply("done", [])]);

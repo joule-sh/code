@@ -154,6 +154,12 @@ export class Session {
       }
       if (step >= MAX_STEPS) {
         endReason = REASON_ERROR;
+        // Named, not left to the reason field alone: reason:"error" alone is
+        // the same wire shape a provider failure produces, and the two call
+        // for opposite client behaviour - this one is a fresh step budget
+        // and another `input` away, that one is not.
+        let ceilingFrame: ErrorFrame = { v: PROTOCOL_VERSION, seq: this.takeSeq(), type: ERROR, code: "E_STEP_LIMIT", message: "hit the " + `${MAX_STEPS}` + "-step ceiling for one turn - send another input to continue" };
+        this.emit(encodeError(ceilingFrame));
         finished = true;
         continue;
       }
