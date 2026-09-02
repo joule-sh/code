@@ -1,4 +1,6 @@
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
+import { rememberSecret } from "../tools/dispatch.ts";
+import { liveApiKey } from "../providers/openai.ts";
 import { loadCredential } from "../auth/credentials.ts";
 import { displayModel } from "../providers/platform.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -85,6 +87,10 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   }
 
   let cfg = loadConfig(argv);
+  // The redactor is told the key this session actually resolved, so a key
+  // that came from config.json or a key file - neither of which puts it in
+  // the environment - is scrubbed from tool output like an env-borne one.
+  rememberSecret(liveApiKey(cfg.apiKey));
   if (cfg.apiKey == "") {
     console.log("joule-daemon: no credentials configured, run joule once interactively first");
     process.exit(1);

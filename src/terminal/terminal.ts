@@ -1,4 +1,6 @@
 import { isatty, rawEnable, rawDisable, readKey, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_CTRL_O, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN, KEY_ARROW_RIGHT, KEY_TAB, KEY_BACKTAB } from "../vendor/tty/tty.ts";
+import { rememberSecret } from "../tools/dispatch.ts";
+import { liveApiKey } from "../providers/openai.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { loadCredential } from "../auth/credentials.ts";
 import { sessionNameFlag, runningSessionsFor } from "../daemon/attach_lifecycle.ts";
@@ -63,6 +65,10 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
 
   applyConfiguredAccent();
   let cfg = loadConfig(argv);
+  // The redactor is told the key this session actually resolved, so a key
+  // that came from config.json or a key file - neither of which puts it in
+  // the environment - is scrubbed from tool output like an env-borne one.
+  rememberSecret(liveApiKey(cfg.apiKey));
   if (cfg.apiKey == "") {
     let onboarded = runOnboarding();
     cfg = { baseUrl: onboarded.baseUrl, model: onboarded.model, apiKey: onboarded.apiKey };

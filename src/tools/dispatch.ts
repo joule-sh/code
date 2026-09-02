@@ -17,6 +17,22 @@ const REDACTED: string = "[redacted]";
 // a value that came from one of these names never leaves in the clear.
 const SECRET_ENV_NAMES: string[] = ["JOULE_CODE_API_KEY"];
 
+// A secret this session resolved for itself rather than read from the
+// environment. The first-run wizard writes the key to config.json and
+// JOULE_CODE_API_KEY_FILE reads it from a file, and in both of those - the
+// ordinary cases - nothing ever puts it in the environment, so scanning the
+// environment alone protects the one arrangement and misses the two the
+// wizard actually produces.
+let g_known_secrets: string[] = [];
+
+export function rememberSecret(value: string): void {
+  if (value == "") { return; }
+  for (const held of g_known_secrets) {
+    if (held == value) { return; }
+  }
+  g_known_secrets.push(value);
+}
+
 // Every literal occurrence of any secret in the list, gone - not just the
 // `NAME=value` line an `env` dump would produce, since a value can surface
 // quoted, embedded in JSON, or copied into some other line entirely.
@@ -30,9 +46,15 @@ export function redactSecrets(text: string, secrets: string[]): string {
   return out;
 }
 
-function redactKnownSecrets(text: string): string {
+// Applied at the one place every tool result is built rather than inside each
+// tool: the first version redacted in `read` and `run` only, which left the
+// interactive session unprotected - a foreground run answers through
+// run_wait.ts and never reaches dispatchRun - and left `grep` able to read a
+// key straight back out of a file a run call had just written.
+export function redactKnownSecrets(text: string): string {
   let secrets: string[] = [];
   for (const name of SECRET_ENV_NAMES) { secrets.push(envOr(name, "")); }
+  for (const held of g_known_secrets) { secrets.push(held); }
   return redactSecrets(text, secrets);
 }
 
@@ -48,11 +70,11 @@ function joinWith(parts: string[], sep: string): string {
 }
 
 export function ok(output: string, truncated: bool): ToolResult {
-  return { ok: true, output: output, truncated: truncated };
+  return { ok: true, output: redactKnownSecrets(output), truncated: truncated };
 }
 
 export function fail(output: string): ToolResult {
-  return { ok: false, output: output, truncated: false };
+  return { ok: false, output: redactKnownSecrets(output), truncated: false };
 }
 
 function dispatchRead(root: string, args: string): ToolResult {
@@ -61,7 +83,7 @@ function dispatchRead(root: string, args: string): ToolResult {
   let limit = jsonIntMemberAt(args, 0, "limit");
   let r = readFile(root, path, offset, limit);
   if (!r.ok) { return fail(r.error); }
-  return ok(redactKnownSecrets(r.content), r.truncated);
+  return ok(r.content, r.truncated);
 }
 
 function dispatchWrite(root: string, args: string): ToolResult {
@@ -112,7 +134,7 @@ function dispatchRun(root: string, args: string): ToolResult {
   if (r.killed) { statusLine = statusLine + " (over budget: " + r.error + ")"; }
   let body = statusLine + "\n" + r.stdout;
   if (r.stderr != "") { body = body + "\nstderr:\n" + r.stderr; }
-  return ok(redactKnownSecrets(body), r.truncated);
+  return ok(body, r.truncated);
 }
 
 function dispatchSkill(root: string, args: string): ToolResult {
