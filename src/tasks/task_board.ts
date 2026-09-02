@@ -77,6 +77,16 @@ export class TaskBoard {
     return "";
   }
 
+  // What the agent left behind when it said nothing: the note names why it
+  // stopped. A stage that reports an empty string reads as a stage that
+  // passed with nothing to say, which is the opposite of what happened.
+  agentNote(id: string): string {
+    for (const t of this.agentTasks) {
+      if (t.id == id) { return t.finalNote; }
+    }
+    return "";
+  }
+
   findAgentTask(id: string): SubagentTask[] {
     for (const t of this.agentTasks) {
       if (t.id == id) { return [t]; }

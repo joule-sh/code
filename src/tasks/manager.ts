@@ -59,13 +59,25 @@ export class TaskManager {
     return "spawned subagent " + id + " (mode: " + mode + ") for: " + taskText + " - it runs on its own turn loop and reports back into this conversation when it finishes; check /tasks for progress, /tasks cancel " + id + " to ask it to stop between steps";
   }
 
+  // A stage's answer, or - when the agent said nothing - why it said nothing.
+  // An agent that died on a provider error accumulated no text, and passing
+  // that empty string on as the report hands the next stage nothing and tells
+  // the caller nothing went wrong.
+  reportFor(id: string): string {
+    let said = reportOf(this.board.agentAccumulated(id));
+    if (said != "") { return said; }
+    let note = this.board.agentNote(id);
+    if (note != "") { return "(no report) " + note; }
+    return "(no report)";
+  }
+
   // One stage transition, drawn for every client. Returns true when this
   // advance finished the pipeline.
   advancePipeline(p: Pipeline, session: Session): bool {
     let before = p.stageAt;
     let finished = p.poll(
       (id: string) => this.board.agentDone(id),
-      (id: string) => reportOf(this.board.agentAccumulated(id)),
+      (id: string) => this.reportFor(id),
       (task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
     if (!finished && p.stageAt != before) {
       let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TEXT_DELTA, turnId: pipelineTurnId(p.id), text: p.stageStartedText() + "\n" };
