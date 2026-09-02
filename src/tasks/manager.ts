@@ -9,6 +9,9 @@ import { Pipeline, parsePipelineSpec, reportOf } from "./pipeline.ts";
 
 export { backgroundTurnId, agentTurnId, isTaskTurnId };
 
+const PIPELINE_POLL_MS: int = 400;
+const PIPELINE_MAX_WAIT_MS: int = 900000;
+
 export class TaskManager {
   root: string;
   providerCfg: ProviderConfig;
@@ -56,7 +59,31 @@ export class TaskManager {
     return "spawned subagent " + id + " (mode: " + mode + ") for: " + taskText + " - it runs on its own turn loop and reports back into this conversation when it finishes; check /tasks for progress, /tasks cancel " + id + " to ask it to stop between steps";
   }
 
-  startPipeline(args: string): string {
+  // One stage transition, drawn for every client. Returns true when this
+  // advance finished the pipeline.
+  advancePipeline(p: Pipeline, session: Session): bool {
+    let before = p.stageAt;
+    let finished = p.poll(
+      (id: string) => this.board.agentDone(id),
+      (id: string) => reportOf(this.board.agentAccumulated(id)),
+      (task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
+    if (!finished && p.stageAt != before) {
+      let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TEXT_DELTA, turnId: pipelineTurnId(p.id), text: p.stageStartedText() + "\n" };
+      session.emit(encodeTextDelta(f));
+    }
+    if (finished) {
+      let ef: TurnEndFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TURN_END, turnId: pipelineTurnId(p.id), reason: REASON_DONE };
+      session.emit(encodeTurnEnd(ef));
+    }
+    return finished;
+  }
+
+  // The pipeline runs to its end inside the call that asked for it, and its
+  // consolidated report is what the call answers with. Anything else ends the
+  // turn the moment the plan is accepted: the caller has nothing to say yet,
+  // stops calling tools, and the stages then advance into a turn that is over
+  // - which is exactly what a delegated session cannot see.
+  runPipeline(args: string, session: Session): string {
     if (this.pipelines.length > 0 && !this.pipelines[this.pipelines.length - 1].done) {
       return "a pipeline is already running (" + this.pipelines[this.pipelines.length - 1].statusText() + ") - one at a time; wait for it or cancel its agents via /tasks";
     }
@@ -65,7 +92,20 @@ export class TaskManager {
     let id = this.board.freshId("pipe-");
     let p = new Pipeline(id, parsed.spec);
     this.pipelines.push(p);
-    return "pipeline " + id + " started with " + `${parsed.spec.stages.length}` + " stage(s) - stages advance on their own as agents finish, and the final reports land in this conversation; /tasks shows progress";
+    this.advancePipeline(p, session);
+
+    let waited: int = 0;
+    while (!p.done && waited < PIPELINE_MAX_WAIT_MS) {
+      process.sleep(PIPELINE_POLL_MS);
+      waited = waited + PIPELINE_POLL_MS;
+      this.board.poll(session);
+      this.advancePipeline(p, session);
+    }
+    if (!p.done) {
+      return "pipeline " + id + " is still running after " + `${PIPELINE_MAX_WAIT_MS / 1000}`
+        + "s and is no longer being waited on: " + p.statusText() + " - /tasks shows the rest";
+    }
+    return "pipeline " + id + " finished " + `${parsed.spec.stages.length}` + " stage(s).\n" + p.summary;
   }
 
   cancel(id: string): string {
@@ -129,25 +169,14 @@ export class TaskManager {
     this.board.setLatestApprovalOptionRows(first);
   }
 
+  // A pipeline normally finishes inside runPipeline. This keeps advancing one
+  // that outlived its call, so a pipeline abandoned at the wait cap still
+  // reaches its end and still reports.
   poll(session: Session): void {
     this.board.poll(session);
     for (const p of this.pipelines) {
       if (p.done) { continue; }
-      let before = p.stageAt;
-      let finished = p.poll(
-        (id: string) => this.board.agentDone(id),
-        (id: string) => reportOf(this.board.agentAccumulated(id)),
-        (task: string, steps: int, report: string) => this.spawnOne(task, steps, report));
-      // Stage transitions render in every client - the terminal tags the
-      // lines, the console builds its pipeline card from them - so they go
-      // out as frames on the pipeline's own turn, not into model history.
-      if (!finished && p.stageAt != before) {
-        let f: TextDeltaFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TEXT_DELTA, turnId: pipelineTurnId(p.id), text: p.stageStartedText() + "\n" };
-        session.emit(encodeTextDelta(f));
-      }
-      if (finished) {
-        let ef: TurnEndFrame = { v: PROTOCOL_VERSION, seq: session.takeSeq(), type: TURN_END, turnId: pipelineTurnId(p.id), reason: REASON_DONE };
-        session.emit(encodeTurnEnd(ef));
+      if (this.advancePipeline(p, session)) {
         session.note("[pipeline " + p.id + " finished]\n" + p.summary);
       }
     }
