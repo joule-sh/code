@@ -1,5 +1,12 @@
 import { Pipeline, parsePipelineSpec, fillPrior, joinReports, reportOf, MAX_PIPELINE_STAGES, MAX_STAGE_TASKS, MAX_PIPELINE_TASKS } from "./pipeline.ts";
-import { clampSteps, withReportDirective, looksLikeLoneJson, needsAskingLite } from "./subagent_worker.ts";
+import { clampSteps, withReportDirective, looksLikeLoneJson, needsAskingLite, withScratchNote } from "./subagent_worker.ts";
+
+test("a subagent is told where its scratch directory is, and only when there is one", () => {
+  let noted = withScratchNote("base", ".joule/scratch/abc123");
+  expect(noted.indexOf(".joule/scratch/abc123") > 0);
+  expect(noted.indexOf("base") == 0);
+  expect(withScratchNote("base", "") == "base");
+});
 import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, MODE_PLAN } from "../approval/gate.ts";
 
 test("a subagent reads the mode the way the session's own gate reads it", () => {

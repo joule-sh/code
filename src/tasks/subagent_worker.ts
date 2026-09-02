@@ -4,6 +4,7 @@ import { subagentToolSchemas } from "../tools/schemas.ts";
 import { dispatchCoreTool } from "../tools/dispatch.ts";
 import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO } from "../approval/gate.ts";
 import { classifyCommand } from "../approval/command_safety.ts";
+import { scratchContextNote } from "../session/scratch.ts";
 import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { appendMailbox, findMailboxEntry } from "./mailbox.ts";
 import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, encodeSubagentToolCallPayload, encodeSubagentToolResultPayload, encodeSubagentApprovalPayload, encodeSubagentErrorPayload } from "./subagent_protocol.ts";
@@ -14,6 +15,14 @@ const APPROVAL_TIMEOUT_MS: int = 120000;
 const APPROVAL_POLL_MS: int = 150;
 
 const SUBAGENT_SYSTEM_PROMPT: string = "You are a subagent spawned by another agent to work one scoped task independently. Use the read, write, edit, list, grep, and run tools to make real progress, then reply in plain text summarizing what you did and found. You cannot spawn further subagents. Keep going until the task is actually done or you are certain it cannot be done, rather than stopping after the first step.";
+
+// The scratch directory the session was told about, said again here: an agent
+// that is not told where to work puts its files wherever the task's wording
+// suggests, and for a pipeline stage that means the repo.
+export function withScratchNote(prompt: string, scratchRel: string): string {
+  if (scratchRel == "") { return prompt; }
+  return prompt + " " + scratchContextNote(scratchRel);
+}
 
 export function clampSteps(asked: int): int {
   if (asked <= 0) { return DEFAULT_SUBAGENT_STEPS; }
@@ -47,8 +56,9 @@ let g_agent_in: string = "";
 let g_agent_cancel: string = "";
 let g_agent_steps: int = 0;
 let g_agent_report: string = "";
+let g_agent_scratch: string = "";
 
-export function configureSubagent(baseUrl: string, model: string, apiKey: string, task: string, root: string, mode: string, outPath: string, inPath: string, cancelPath: string, steps: int, report: string): void {
+export function configureSubagent(baseUrl: string, model: string, apiKey: string, task: string, root: string, mode: string, outPath: string, inPath: string, cancelPath: string, steps: int, report: string, scratchRel: string): void {
   g_agent_base_url = baseUrl;
   g_agent_model = model;
   g_agent_api_key = apiKey;
@@ -124,7 +134,7 @@ function checkSubagentApproval(alwaysAllowed: string[], localCallId: string, too
 
 export function subagentLoop(): int {
   let history: Message[] = [];
-  history.push({ role: ROLE_SYSTEM, text: withReportDirective(SUBAGENT_SYSTEM_PROMPT, g_agent_report), toolCallId: "", toolCalls: [] });
+  history.push({ role: ROLE_SYSTEM, text: withReportDirective(withScratchNote(SUBAGENT_SYSTEM_PROMPT, g_agent_scratch), g_agent_report), toolCallId: "", toolCalls: [] });
   history.push({ role: ROLE_USER, text: g_agent_task, toolCallId: "", toolCalls: [] });
 
   let tools: ToolSchema[] = subagentToolSchemas();

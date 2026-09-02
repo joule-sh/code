@@ -144,7 +144,8 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   session.injectSystemContext(loadWorkspaceInstructions(workspaceRoot));
   session.injectSystemContext(startupSkillsText(workspaceRoot));
   session.injectSystemContext(startupMemoryText());
-  session.injectSystemContext(scratchContextNote(ensureScratchDir(workspaceRoot, sessionName)));
+  let scratchRel = ensureScratchDir(workspaceRoot, sessionName);
+  session.injectSystemContext(scratchContextNote(scratchRel));
   let resumeRequested = (envOr("JOULE_DAEMON_RESUME", "")) == "1";
   if (resumeRequested) {
     let prior = loadWorkspaceSession(workspaceRoot, sessionName);
@@ -153,7 +154,7 @@ export function runDaemon(argv: string[], workspaceRoot: string, sessionName: st
   sessionBox.set(session);
   live.setSession(session);
 
-  let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode);
+  let tasks = new TaskManager(workspaceRoot, cfg, () => gate.mode, scratchRel);
   let taskRunner: TaskRunner = {
     startBackgroundRun: (command: string) => tasks.startBackgroundRun(command),
     startSubagent: (task: string, steps: int, report: string) => tasks.startSubagent(task, steps, report),
