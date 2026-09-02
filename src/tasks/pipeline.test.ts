@@ -1,5 +1,5 @@
 import { Pipeline, parsePipelineSpec, fillPrior, joinReports, reportOf, MAX_PIPELINE_STAGES, MAX_STAGE_TASKS, MAX_PIPELINE_TASKS } from "./pipeline.ts";
-import { clampSteps, withReportDirective, looksLikeLoneJson, needsAskingLite, withScratchNote } from "./subagent_worker.ts";
+import { clampSteps, withReportDirective, looksLikeLoneJson, needsAskingLite, withScratchNote, configureSubagent, subagentScratchDir } from "./subagent_worker.ts";
 
 test("a subagent is told where its scratch directory is, and only when there is one", () => {
   let noted = withScratchNote("base", ".joule/scratch/abc123");
@@ -211,4 +211,14 @@ test("the step budget clamps at both ends and the directive only appears when as
   expect(looksLikeLoneJson("  {\"a\":1}  "));
   expect(!looksLikeLoneJson("prose then {\"a\":1}"));
   expect(!looksLikeLoneJson(""));
+});
+
+// configureSubagent used to take scratchRel and never assign it, so the note
+// was always empty and the subagent was told nothing - the earlier test called
+// withScratchNote directly and so proved nothing about the wiring.
+test("configureSubagent actually keeps the scratch directory it is handed", () => {
+  configureSubagent("http://x", "m", "k", "task", "/repo", "safe-auto", "/tmp/o", "/tmp/i", "/tmp/c", 3, "", ".joule/scratch/keyed");
+  expect(subagentScratchDir() == ".joule/scratch/keyed");
+  configureSubagent("http://x", "m", "k", "task", "/repo", "safe-auto", "/tmp/o", "/tmp/i", "/tmp/c", 3, "", "");
+  expect(subagentScratchDir() == "");
 });

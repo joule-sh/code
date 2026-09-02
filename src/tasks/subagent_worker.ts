@@ -70,6 +70,14 @@ export function configureSubagent(baseUrl: string, model: string, apiKey: string
   g_agent_cancel = cancelPath;
   g_agent_steps = clampSteps(steps);
   g_agent_report = report;
+  g_agent_scratch = scratchRel;
+}
+
+// For the test that this parameter is kept at all: the first version of
+// configureSubagent took scratchRel and dropped it on the floor, and a test
+// that called withScratchNote directly could not see that.
+export function subagentScratchDir(): string {
+  return g_agent_scratch;
 }
 
 function isReadToolLite(tool: string): bool {
