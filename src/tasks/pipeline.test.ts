@@ -1,5 +1,20 @@
 import { Pipeline, parsePipelineSpec, fillPrior, joinReports, reportOf, MAX_PIPELINE_STAGES, MAX_STAGE_TASKS, MAX_PIPELINE_TASKS } from "./pipeline.ts";
-import { clampSteps, withReportDirective, looksLikeLoneJson } from "./subagent_worker.ts";
+import { clampSteps, withReportDirective, looksLikeLoneJson, needsAskingLite } from "./subagent_worker.ts";
+import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO, MODE_PLAN } from "../approval/gate.ts";
+
+test("a subagent reads the mode the way the session's own gate reads it", () => {
+  expect(!needsAskingLite(MODE_FULL_AUTO, "write"));
+  expect(!needsAskingLite(MODE_FULL_AUTO, "run"));
+  // safe-auto is the default, and it is the one this used to get wrong: every
+  // write from a subagent stopped for an approval the session would not ask.
+  expect(!needsAskingLite(MODE_SAFE_AUTO, "write"));
+  expect(!needsAskingLite(MODE_SAFE_AUTO, "edit"));
+  expect(needsAskingLite(MODE_SAFE_AUTO, "run"));
+  expect(!needsAskingLite(MODE_AUTO_EDIT, "write"));
+  expect(needsAskingLite(MODE_AUTO_EDIT, "run"));
+  expect(needsAskingLite(MODE_READ_ONLY, "write"));
+  expect(needsAskingLite(MODE_PLAN, "write"));
+});
 
 test("a well-formed spec parses with its stages in order", () => {
   let p = parsePipelineSpec("{\"stages\":[{\"name\":\"survey\",\"tasks\":[\"look around\"],\"report\":\"\",\"steps\":0},{\"name\":\"verify\",\"tasks\":[\"check {{prior}}\"],\"report\":\"{\\\"verdict\\\":\\\"pass\\\"}\",\"steps\":5}]}");

@@ -2,7 +2,9 @@ import { Message, ROLE_SYSTEM, ROLE_USER, ROLE_ASSISTANT, ROLE_TOOL } from "../s
 import { ProviderConfig, ToolSchema, streamChat } from "../providers/openai.ts";
 import { subagentToolSchemas } from "../tools/schemas.ts";
 import { dispatchCoreTool } from "../tools/dispatch.ts";
-import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_FULL_AUTO } from "../approval/gate.ts";
+import { MODE_READ_ONLY, MODE_AUTO_EDIT, MODE_SAFE_AUTO, MODE_FULL_AUTO } from "../approval/gate.ts";
+import { classifyCommand } from "../approval/command_safety.ts";
+import { jsonStringMemberAt } from "https://lumen-lang.org/package/std-contrib/ai/core/jsonscan.ts";
 import { appendMailbox, findMailboxEntry } from "./mailbox.ts";
 import { TAG_DELTA, TAG_TOOLCALL, TAG_TOOLRESULT, TAG_APPROVAL_REQUEST, TAG_ERROR, TAG_DONE, TAG_CANCELLED, encodeSubagentToolCallPayload, encodeSubagentToolResultPayload, encodeSubagentApprovalPayload, encodeSubagentErrorPayload } from "./subagent_protocol.ts";
 
@@ -71,8 +73,13 @@ function isAlwaysAllowed(list: string[], tool: string): bool {
   return false;
 }
 
-function needsAskingLite(mode: string, tool: string): bool {
+// The same reading of the mode the session's own gate has. A subagent that
+// asks about a write its parent would have made unattended is not being
+// careful, it is asking on the parent's behalf about a decision the parent
+// already made.
+export function needsAskingLite(mode: string, tool: string): bool {
   if (mode == MODE_FULL_AUTO) { return false; }
+  if (mode == MODE_SAFE_AUTO) { return tool == "run"; }
   if (mode == MODE_AUTO_EDIT) { return tool == "run"; }
   return true;
 }
@@ -99,6 +106,12 @@ function checkSubagentApproval(alwaysAllowed: string[], localCallId: string, too
   if (isReadToolLite(tool)) { return { approved: true, remember: false }; }
   if (g_agent_mode == MODE_READ_ONLY) { return { approved: false, remember: false }; }
   if (!needsAskingLite(g_agent_mode, tool)) { return { approved: true, remember: false }; }
+  // In safe-auto the parent runs a command the classifier calls safe without
+  // asking, so a subagent running the same command must not ask either.
+  if (g_agent_mode == MODE_SAFE_AUTO && tool == "run"
+    && classifyCommand(jsonStringMemberAt(args, 0, "command"), g_agent_root).autoRun) {
+    return { approved: true, remember: false };
+  }
   if (isAlwaysAllowed(alwaysAllowed, tool)) { return { approved: true, remember: false }; }
 
   let summary = tool + " " + args;
