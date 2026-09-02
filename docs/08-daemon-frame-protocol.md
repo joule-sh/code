@@ -290,14 +290,27 @@ turn.end        turnId=t3  reason=done
 
 `turnId` is `t` followed by a counter that resets when the daemon restarts. It
 is on every frame belonging to the turn, which is how a client attributes text
-and tool activity when more than one thing is in flight.
+and tool activity when more than one thing is in flight - and it is what makes
+"my turn is over" the right question, not "a turn is over": a daemon a client
+attaches to after it already has history replays every prior `turn.start` /
+`turn.end` pair on `resume {"since":-1}`, in order, before anything from input
+this client is about to send. A client that waits for "the next `turn.end`"
+after sending `input`, rather than the `turn.end` whose `turnId` matches the
+`turn.start` that echoed its own prompt, can bind to one of those - a turn
+that already finished, sometimes in milliseconds, because it never ran
+anything: it was history, replayed. A client that does not need to preserve
+history across a specific daemon sidesteps the whole class of bug by giving
+each job its own session name, so there is no history to replay.
 
 `turn.end` is the only reliable end. `reason` is `done`, `cancelled` (a
 `cancel` frame landed, or the turn was cancelled mid-tool) or `error` (the
-provider failed, or the turn hit its step ceiling). An `error` frame is emitted
-before the `turn.end` that reports `error`, carrying the provider's code and
-message - `E_STREAM` and `E_EMPTY_ANSWER` are the two the OpenAI-shaped
-provider produces.
+provider failed, or the turn hit its step ceiling). An `error` frame is always
+emitted before a `turn.end` that reports `error`, carrying a code to tell the
+two apart: `E_STREAM` and `E_EMPTY_ANSWER` are what the OpenAI-shaped provider
+produces on a real failure, `E_STEP_LIMIT` is the step ceiling (8 steps to one
+turn) and is not a failure the way the other two are - the daemon's own step
+budget just reset, and another `input` continues the same work rather than
+starting over.
 
 `turn.end` is also where the daemon persists: the subscriber in `daemon.ts`
 calls `saveWorkspaceSession` on every `turn.end`, writing the history to
@@ -346,7 +359,10 @@ environment with nobody in it (#344), and a client sets it by sending
 `mode.set` after attaching - the daemon has no flag for it.
 
 When the gate needs a person, the daemon emits `approval.request` with a
-`callId`, and the turn blocks until a reply lands or 120 seconds pass. The
+`callId`, and the turn blocks until a reply lands or 120 seconds pass - at
+which point the call is denied, the same outcome as an explicit `deny`, so a
+client with nobody attached to answer should send `mode.set` to `full-auto`
+before it sends `input`, not rely on the timeout as a substitute. The
 reply names the call and the decision:
 
 ```json
