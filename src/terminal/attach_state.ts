@@ -26,6 +26,10 @@ export class CommandOutcome {
     this.leave = true;
   }
 
+  switchTo(target: string): void {
+    this.switchTarget = target;
+  }
+
   renameTo(target: string): void {
     this.renameTarget = target;
     this.leave = true;
@@ -53,6 +57,13 @@ test("renaming records the new name and asks the loop to end", () => {
   expect(o.leave);
   expect(o.renameTarget == "planning");
   expect(o.switchTarget == "");
+});
+
+test("switching in place records the target but does not end the loop", () => {
+  let o = new CommandOutcome();
+  o.switchTo("review");
+  expect(!o.leave);
+  expect(o.switchTarget == "review");
 });
 
 test("a client state starts on the model it was given with no turn in flight", () => {

@@ -128,11 +128,12 @@ def run():
 
 
 def run_session_command_scenario():
-    """/session in the standalone terminal: with only one session running it
-    just names it (like /model and /mode with nothing to pick between); with
-    a second one running it opens the picker, and choosing a different name
-    leaves this terminal after warming the target - without stopping either
-    daemon, since "switch" is never "stop"."""
+    """/session moves this terminal into another session without exiting.
+    With only one session running it just names it (like /model and /mode
+    with nothing to pick between); with a second one running it opens the
+    picker, and choosing a different name lands in that session in the same
+    process - both daemons still up, since "switch" is never "stop", and the
+    shell never gets control back."""
     work_dir = scratch.scratch_dir("joule-session-cmd-pty-")
     repo_dir = os.path.join(work_dir, "repo")
     home_dir = os.path.join(work_dir, "home")
@@ -154,17 +155,33 @@ def run_session_command_scenario():
 
         default_session.write(b"\x1b[B")  # down arrow, to the review row
         default_session.write("\r")
-        # Switching warms the target daemon before this terminal leaves, on
-        # top of the review session's own daemon already running - the same
-        # two-daemons-at-once cost as the ctrl-d waits above.
-        default_session.wait_for("keeps running", timeout=45.0)
-        ok(True, "choosing a different session says the one being left keeps running")
-        exited = default_session.wait_exit(45.0)
-        ok(exited, "the terminal exits after switching, rather than staying open on the old session")
+        default_session.wait_for("now in the review session", timeout=45.0)
+        ok(True, "choosing a different session lands in it rather than printing a command to run")
+
+        still_running = not default_session.wait_exit(3.0)
+        ok(still_running, "the terminal stays open on the target session instead of exiting to the shell")
 
         ports = daemon_ports(home_dir)
         ok("" in ports and "review" in ports,
-           "switching warmed the target without stopping either session's daemon, got %r" % ports)
+           "both sessions' daemons are still up after the switch, got %r" % ports)
+
+        default_session.write("/session\r")
+        default_session.wait_for("switch session", timeout=10.0)
+        default_session.write(b"\x1b[B")
+        default_session.write("\r")
+        default_session.wait_for("now in the default session", timeout=45.0)
+        ok(True, "switching back returns to the session left behind, still in the same process")
+
+        default_session.write("/session planning\r")
+        default_session.wait_for("now in the planning session", timeout=60.0)
+        ok(True, "switching to a name with no session running starts that session and lands in it")
+
+        ports = daemon_ports(home_dir)
+        ok("planning" in ports and "" in ports and "review" in ports,
+           "the newly started session has its own daemon beside the other two, got %r" % ports)
+
+        ok(not default_session.wait_exit(3.0),
+           "the terminal is still running after three switches in one process")
     finally:
         if default_session is not None:
             default_session.close()

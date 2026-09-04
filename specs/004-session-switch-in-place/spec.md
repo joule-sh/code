@@ -224,6 +224,17 @@ a switch and confirm nothing changed.
   in. Switching away preserves it, switching back restores it, and the target
   session shows its own unsent text or an empty line. Unsent text MUST NOT
   follow the user into another session.
+
+  Implementation note, added after building it: in the attached terminal this
+  is currently satisfied vacuously, because the input line is always empty at
+  the moment of a switch. `/session <name>` consumes the line when it is
+  submitted, and the picker swallows every key that is not an arrow or Enter,
+  so a draft and a switch cannot coexist there today. The per-session store is
+  still in place and unit-tested, because it is what guarantees the second half
+  of the rule: the target's input line is loaded from its own draft, so it can
+  never inherit the previous session's text. The rule becomes observable the
+  moment any path allows a switch with a non-empty line, which the standalone
+  terminal and a future picker that accepts typing would both create.
 - **FR-013**: A switch MUST show the target session's transcript in full, the
   same content that starting that session directly shows today. No part of it
   is trimmed on the grounds that the user arrived by switching.
@@ -263,9 +274,10 @@ a switch and confirm nothing changed.
 - **SC-006**: A failed switch leaves the user in the session they started in,
   with their unsent text intact, in 100% of harness runs. There is no state in
   which a switch has left one session without having joined another.
-- **SC-007**: Text typed and not sent is restored on returning to its session,
-  and never appears in another session, across at least three switches in a
-  harness run.
+- **SC-007**: The input line after a switch holds the target session's own
+  unsent text, never the text of the session just left. Covered by unit tests
+  on the per-session store; see the implementation note under FR-012 for why
+  the attached terminal cannot yet reach a non-empty case end to end.
 
 ## Assumptions
 
