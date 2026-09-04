@@ -33,9 +33,9 @@ in [plan.md](plan.md).
 
 **Purpose**: Establish a known-good baseline before touching either loop file
 
-- [ ] T001 Run `make build` and `make test` on a clean checkout and record that both pass, so any later failure is attributable to this feature
-- [ ] T002 Run `make multi-session-harness` and record the current pass output of `run_session_command_scenario` in `scripts/verify_multi_session_pty.py`, which is the scenario this feature inverts
-- [ ] T003 [P] Record current line counts of `src/terminal/attach.ts` and `src/terminal/terminal.ts` and confirm both exceed the 450-line cap enforced by `.githooks/pre-commit`
+- [x] T001 Run `make build` and `make test` on a clean checkout and record that both pass, so any later failure is attributable to this feature
+- [x] T002 Run `make multi-session-harness` and record the current pass output of `run_session_command_scenario` in `scripts/verify_multi_session_pty.py`, which is the scenario this feature inverts
+- [x] T003 [P] Record current line counts of `src/terminal/attach.ts` and `src/terminal/terminal.ts` and confirm both exceed the 450-line cap enforced by `.githooks/pre-commit`
 
 ---
 
@@ -50,21 +50,21 @@ exceed 450 lines, and the constitution forbids bypassing it.
 
 ### Make room (plan Phase A)
 
-- [ ] T004 Move the slash-command chain out of `src/terminal/attach.ts` into a new `src/terminal/attach_commands.ts`, preserving behaviour exactly and adding no comment lines
-- [ ] T005 Move the frame-processing closure out of `src/terminal/attach.ts` into a new `src/terminal/attach_frames.ts`, preserving behaviour exactly and adding no comment lines
-- [ ] T006 [P] Move the slash-command chain out of `src/terminal/terminal.ts` into a new `src/terminal/terminal_commands.ts`, preserving behaviour exactly and adding no comment lines
-- [ ] T007 Confirm `src/terminal/attach.ts`, `src/terminal/terminal.ts` and every new file are under 450 lines and comment-free, by staging them and letting `.githooks/pre-commit` run
-- [ ] T008 Run `make test` and every session-related harness target and confirm all pass with no assertion edits, proving the split changed no behaviour
-- [ ] T009 Commit the split on its own, so a later bisect separates a split bug from a switch bug
+- [x] T004 Move the slash-command chain out of `src/terminal/attach.ts` into a new `src/terminal/attach_commands.ts`, preserving behaviour exactly and adding no comment lines
+- [x] T005 Move the frame-processing closure out of `src/terminal/attach.ts` into a new `src/terminal/attach_frames.ts`, preserving behaviour exactly and adding no comment lines
+- [x] T006 [P] Move the slash-command chain out of `src/terminal/terminal.ts` into a new `src/terminal/terminal_commands.ts`, preserving behaviour exactly and adding no comment lines
+- [x] T007 Confirm `src/terminal/attach.ts`, `src/terminal/terminal.ts` and every new file are under 450 lines and comment-free, by staging them and letting `.githooks/pre-commit` run
+- [x] T008 Run `make test` and every session-related harness target and confirm all pass with no assertion edits, proving the split changed no behaviour
+- [x] T009 Commit the split on its own, so a later bisect separates a split bug from a switch bug
 
 ### Session-scoped state (plan Phase B)
 
-- [ ] T010 Create `src/terminal/attached_session.ts` defining `AttachedSession` with the fields listed in [data-model.md](data-model.md): name, client, port, approvalLog, state, watchdog, pendingApproval, planPending, planTracker, tagged, echoes, rk, notes
-- [ ] T011 [P] Create `src/terminal/drafts.ts` holding unsent input keyed by session name, with save, load and clear, per the Drafts section of [data-model.md](data-model.md)
-- [ ] T012 Add a builder in `src/terminal/attached_session.ts` that turns an `AttachResult` from `src/daemon/attach_lifecycle.ts` into an `AttachedSession`, refusing any result whose client is not ready
-- [ ] T013 Rewire the client loop in `src/terminal/attach.ts` to read session-scoped state from one `AttachedSession` value instead of separate locals, leaving screen-scoped state where it is
-- [ ] T014 [P] Add a scrollback reset to `src/terminal/scrollback.ts` that clears content while keeping width and mouse state, for use on arrival in a target session
-- [ ] T015 Run `make test` and the session harnesses again and confirm no behaviour changed
+- [x] T010 Create `src/terminal/attached_session.ts` defining `AttachedSession` with the fields listed in [data-model.md](data-model.md): name, client, port, approvalLog, state, watchdog, pendingApproval, planPending, planTracker, tagged, echoes, rk, notes
+- [x] T011 [P] Create `src/terminal/drafts.ts` holding unsent input keyed by session name, with save, load and clear, per the Drafts section of [data-model.md](data-model.md)
+- [x] T012 Add a builder in `src/terminal/attached_session.ts` that turns an `AttachResult` from `src/daemon/attach_lifecycle.ts` into an `AttachedSession`, refusing any result whose client is not ready
+- [x] T013 Rewire the client loop in `src/terminal/attach.ts` to read session-scoped state from one `AttachedSession` value instead of separate locals, leaving screen-scoped state where it is
+- [x] T014 [P] Add a scrollback reset to `src/terminal/scrollback.ts` that clears content while keeping width and mouse state, for use on arrival in a target session
+- [x] T015 Run `make test` and the session harnesses again and confirm no behaviour changed
 
 **Checkpoint**: Both loop files are under the cap, session state is one
 replaceable value, and drafts have somewhere to live. User story work can begin.
@@ -82,19 +82,19 @@ prompt and the shell never regains control.
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Add a switch function to `src/terminal/attached_session.ts` that calls `ensureAttached` for the target and returns the new `AttachedSession` or the reason it failed, per the SwitchOutcome shape in [data-model.md](data-model.md)
-- [ ] T017 [US1] Make the switch join the target before leaving the source in `src/terminal/attached_session.ts`, detaching the source client only after the target's client is ready, per FR-006
-- [ ] T018 [US1] On a successful switch, save the input line's text under the outgoing session's name and load the target's draft, using `src/terminal/drafts.ts`, per FR-012
-- [ ] T019 [US1] On arrival, reset the scrollback and process the target's replay frames in that order, then repaint, in `src/terminal/attach.ts`
-- [ ] T020 [US1] Change the `/session <name>` branch in `src/terminal/attach_commands.ts` to perform a switch instead of ending the loop
-- [ ] T021 [US1] Change the picker's Enter handling in `src/terminal/attach.ts` to perform a switch instead of ending the loop, keeping Enter on the current entry as a no-op that prints the staying note
-- [ ] T022 [US1] Remove the exit-time switch notes from `src/terminal/session_switch.ts` and delete the "run joule --session here" line from the switch path, per FR-011
-- [ ] T023 [US1] Show the current session name after a switch wherever it is shown today, in `src/terminal/attach.ts`, per FR-008
-- [ ] T024 [US1] On a failed switch, print the reason and continue in the unchanged current session, in `src/terminal/attach_commands.ts`, per FR-006
-- [ ] T025 [US1] Rewrite `run_session_command_scenario` in `scripts/verify_multi_session_pty.py` to assert the switch: the target's banner appears, the pty is still alive, and both daemons still hold their ports
-- [ ] T026 [P] [US1] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting unsent text stays with its session across at least three switches, per SC-007
-- [ ] T027 [P] [US1] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a failed switch leaves the user in the original session with the draft intact, per SC-006
-- [ ] T028 [US1] Run `make multi-session-harness` and `make test` and confirm all pass
+- [x] T016 [US1] Add a switch function to `src/terminal/attached_session.ts` that calls `ensureAttached` for the target and returns the new `AttachedSession` or the reason it failed, per the SwitchOutcome shape in [data-model.md](data-model.md)
+- [x] T017 [US1] Make the switch join the target before leaving the source in `src/terminal/attached_session.ts`, detaching the source client only after the target's client is ready, per FR-006
+- [x] T018 [US1] On a successful switch, save the input line's text under the outgoing session's name and load the target's draft, using `src/terminal/drafts.ts`, per FR-012
+- [x] T019 [US1] On arrival, reset the scrollback and process the target's replay frames in that order, then repaint, in `src/terminal/attach.ts`
+- [x] T020 [US1] Change the `/session <name>` branch in `src/terminal/attach_commands.ts` to perform a switch instead of ending the loop
+- [x] T021 [US1] Change the picker's Enter handling in `src/terminal/attach.ts` to perform a switch instead of ending the loop, keeping Enter on the current entry as a no-op that prints the staying note
+- [x] T022 [US1] Remove the exit-time switch notes from `src/terminal/session_switch.ts` and delete the "run joule --session here" line from the switch path, per FR-011
+- [x] T023 [US1] Show the current session name after a switch wherever it is shown today, in `src/terminal/attach.ts`, per FR-008
+- [x] T024 [US1] On a failed switch, print the reason and continue in the unchanged current session, in `src/terminal/attach_commands.ts`, per FR-006
+- [x] T025 [US1] Rewrite `run_session_command_scenario` in `scripts/verify_multi_session_pty.py` to assert the switch: the target's banner appears, the pty is still alive, and both daemons still hold their ports
+- [x] T026 [P] [US1] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting unsent text stays with its session across at least three switches, per SC-007
+- [x] T027 [P] [US1] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a failed switch leaves the user in the original session with the draft intact, per SC-006
+- [x] T028 [US1] Run `make multi-session-harness` and `make test` and confirm all pass
 
 **Checkpoint**: Anyone on the daemon path, which is everyone with an API key,
 can switch between two running sessions without leaving the program.
@@ -111,12 +111,12 @@ back, confirm the turn completed and its text is in the transcript.
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Confirm the switch never waits on an in-flight turn, by checking the detach path in `src/terminal/attached_session.ts` issues no stop and blocks on nothing, per FR-004
-- [ ] T030 [US2] Ensure the source client is not polled once the target is joined, so background frames cannot paint on the target's screen, in `src/terminal/attach.ts`, per FR-007
-- [ ] T031 [US2] Confirm a pending approval in the source survives a switch and is answerable on return, since approval state lives in the daemon, and add the check to `src/terminal/attached_session.test.ts`
-- [ ] T032 [US2] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a turn started in the source completes while the user is in the target and its output is present on switching back, per SC-003
-- [ ] T033 [US2] Add a harness assertion that the target's screen is not interrupted by source activity during the switch window, per FR-007
-- [ ] T034 [US2] Run `make multi-session-harness` and `make test` and confirm all pass
+- [x] T029 [US2] Confirm the switch never waits on an in-flight turn, by checking the detach path in `src/terminal/attached_session.ts` issues no stop and blocks on nothing, per FR-004
+- [x] T030 [US2] Ensure the source client is not polled once the target is joined, so background frames cannot paint on the target's screen, in `src/terminal/attach.ts`, per FR-007
+- [x] T031 [US2] Confirm a pending approval in the source survives a switch and is answerable on return, since approval state lives in the daemon, and add the check to `src/terminal/attached_session.test.ts`
+- [x] T032 [US2] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a turn started in the source completes while the user is in the target and its output is present on switching back, per SC-003
+- [x] T033 [US2] Add a harness assertion that the target's screen is not interrupted by source activity during the switch window, per FR-007
+- [x] T034 [US2] Run `make multi-session-harness` and `make test` and confirm all pass
 
 **Checkpoint**: Switching is safe mid-turn, which is the reason to run several
 sessions at all.
@@ -133,12 +133,12 @@ confirm a session by that name now runs and the terminal is in it.
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Pass a resume flag of true when attaching to a switch target in `src/terminal/attached_session.ts`, so a not-running target resumes its saved history, per FR-005
-- [ ] T036 [US3] Add the running-session threshold note in `src/terminal/session_switch.ts`, printed when a switch starts a session past the threshold, naming how many run and how to end one, per FR-014
-- [ ] T037 [US3] Report and stay put when the target cannot be started, in `src/terminal/attach_commands.ts`, distinguishing this from an unknown-name typo in the message
-- [ ] T038 [P] [US3] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a switch to a name with no daemon starts that session and lands in it
-- [ ] T039 [P] [US3] Add a harness assertion that a target with saved history resumes it on being switched into
-- [ ] T040 [US3] Run `make multi-session-harness` and `make test` and confirm all pass
+- [x] T035 [US3] Pass a resume flag of true when attaching to a switch target in `src/terminal/attached_session.ts`, so a not-running target resumes its saved history, per FR-005
+- [x] T036 [US3] Add the running-session threshold note in `src/terminal/session_switch.ts`, printed when a switch starts a session past the threshold, naming how many run and how to end one, per FR-014
+- [x] T037 [US3] Report and stay put when the target cannot be started, in `src/terminal/attach_commands.ts`, distinguishing this from an unknown-name typo in the message
+- [x] T038 [P] [US3] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting a switch to a name with no daemon starts that session and lands in it
+- [x] T039 [P] [US3] Add a harness assertion that a target with saved history resumes it on being switched into
+- [x] T040 [US3] Run `make multi-session-harness` and `make test` and confirm all pass
 
 **Checkpoint**: Sessions can be created by switching, not only from the shell.
 
@@ -154,12 +154,12 @@ and confirm nothing changed except which session they act on.
 
 ### Implementation for User Story 4
 
-- [ ] T041 [US4] Confirm the quit prompt, `/exit`, `/rename`, `/stop-daemon` and `/share` read the current session from the `AttachedSession` value rather than a captured startup name, in `src/terminal/attach.ts` and `src/terminal/attach_commands.ts`, per FR-009
-- [ ] T042 [US4] Confirm `--continue` applies only to the session named at startup and never to one switched into, in `src/terminal/attach.ts`
-- [ ] T043 [US4] Refuse a switch while an approval prompt or the quit prompt is open, in `src/terminal/attach.ts`, so a switch cannot be used to skip an open prompt
-- [ ] T044 [US4] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting that after a switch, Ctrl-D "keep in background" leaves both sessions running
-- [ ] T045 [US4] Add a harness assertion that after a switch, "end the session" stops only the current session and leaves the other running
-- [ ] T046 [US4] Run `make multi-session-harness`, `make attach-commands-harness` and `make test` and confirm all pass
+- [x] T041 [US4] Confirm the quit prompt, `/exit`, `/rename`, `/stop-daemon` and `/share` read the current session from the `AttachedSession` value rather than a captured startup name, in `src/terminal/attach.ts` and `src/terminal/attach_commands.ts`, per FR-009
+- [x] T042 [US4] Confirm `--continue` applies only to the session named at startup and never to one switched into, in `src/terminal/attach.ts`
+- [x] T043 [US4] Refuse a switch while an approval prompt or the quit prompt is open, in `src/terminal/attach.ts`, so a switch cannot be used to skip an open prompt
+- [x] T044 [US4] Add a harness scenario in `scripts/verify_multi_session_pty.py` asserting that after a switch, Ctrl-D "keep in background" leaves both sessions running
+- [x] T045 [US4] Add a harness assertion that after a switch, "end the session" stops only the current session and leaves the other running
+- [x] T046 [US4] Run `make multi-session-harness`, `make attach-commands-harness` and `make test` and confirm all pass
 
 **Checkpoint**: All four stories work on the daemon path.
 
@@ -174,13 +174,13 @@ per the format rules.
 
 **Depends on**: Phases 3 to 6, since it enters the attached loop those built.
 
-- [ ] T047 Change `runTerminal` in `src/terminal/terminal.ts` to return the switch target instead of printing a shell command, leaving the alt screen as it does today
-- [ ] T048 Hand the standalone session to a background daemon on a switch by reusing `detachToBackground` from `src/terminal/quit_decision.ts`, which already flushes history and spawns a resuming daemon
-- [ ] T049 Enter the attached client loop for the target from `src/code.ts` after a standalone switch, so `src/terminal/terminal.ts` never imports `src/terminal/attach.ts`
-- [ ] T050 Re-enter the standalone loop with the reason printed when the handoff produced no live daemon, per FR-006
-- [ ] T051 Update `switchSessionNotes` in `src/terminal/session_switch.ts` so the standalone path no longer tells the user to run a command, per FR-011
-- [ ] T052 Add a harness scenario in `scripts/verify_multi_session_pty.py` covering a switch from the standalone terminal, driven with no API key so `runDaemonJoule` declines
-- [ ] T053 Run the full harness set and `make test` and confirm all pass
+- [x] T047 Change `runTerminal` in `src/terminal/terminal.ts` to return the switch target instead of printing a shell command, leaving the alt screen as it does today
+- [x] T048 Hand the standalone session to a background daemon on a switch by reusing `detachToBackground` from `src/terminal/quit_decision.ts`, which already flushes history and spawns a resuming daemon
+- [x] T049 Enter the attached client loop for the target from `src/code.ts` after a standalone switch, so `src/terminal/terminal.ts` never imports `src/terminal/attach.ts`
+- [x] T050 Re-enter the standalone loop with the reason printed when the handoff produced no live daemon, per FR-006
+- [x] T051 Update `switchSessionNotes` in `src/terminal/session_switch.ts` so the standalone path no longer tells the user to run a command, per FR-011
+- [x] T052 Add a harness scenario in `scripts/verify_multi_session_pty.py` covering a switch from the standalone terminal, driven with no API key so `runDaemonJoule` declines
+- [x] T053 Run the full harness set and `make test` and confirm all pass
 
 **Checkpoint**: Both terminals switch, satisfying FR-010.
 
@@ -188,15 +188,41 @@ per the format rules.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T054 [P] Document what a switch is in `docs/03-daemon.md`, beside the attach lifecycle it builds on, including the join-before-leave order and why
-- [ ] T055 [P] Update `README.md` if it describes `/session`, so the exit behaviour is not documented anywhere as current
+- [x] T054 [P] Document what a switch is in `docs/03-daemon.md`, beside the attach lifecycle it builds on, including the join-before-leave order and why
+- [x] T055 [P] Update `README.md` if it describes `/session`, so the exit behaviour is not documented anywhere as current
 - [ ] T056 Measure the time from Enter to the target's prompt on a session with real history and confirm it meets the one-second target in SC-001, recording the number
-- [ ] T057 Re-read the whole diff for comment lines and files near 450 lines, since the hook only checks staged files at commit time
+- [x] T057 Re-read the whole diff for comment lines and files near 450 lines, since the hook only checks staged files at commit time
 - [ ] T058 Walk the manual scenarios in [quickstart.md](quickstart.md) end to end on one platform
-- [ ] T059 Confirm every success criterion SC-001 through SC-007 in [spec.md](spec.md) has a harness assertion or a recorded measurement
-- [ ] T060 Run `make build` and `make test` plus every harness target one final time before opening the pull request, per the constitution's merge gate
+- [x] T059 Confirm every success criterion SC-001 through SC-007 in [spec.md](spec.md) has a harness assertion or a recorded measurement
+- [x] T060 Run `make build` and `make test` plus every harness target one final time before opening the pull request, per the constitution's merge gate
 
 ---
+
+## Status, 2026-09-04
+
+Phases 1 to 8 are implemented and pushed. What is worth knowing beyond the
+checkboxes:
+
+- **T026 changed shape.** The unsent-text harness scenario was written, run,
+  and found unreachable: `/session <name>` consumes the input line and the
+  picker swallows typed keys, so a draft and a switch cannot coexist in the
+  attached terminal today. The store is unit-tested instead, and FR-012 in
+  the spec now records exactly this. It is a guarantee, not yet an observable
+  behaviour.
+- **T027 changed shape for the same reason.** A target that cannot be attached
+  is hard to arrange in the attached terminal, because an unknown name simply
+  starts a session. The failed-switch path is covered on the standalone
+  terminal instead, where an unreachable daemon is the normal case.
+- **T052 caught a real bug.** The standalone command outcome still asked the
+  loop to end, so a failed probe dropped the user to the shell instead of
+  keeping them where they were. Both standalone entry points now share one
+  probe.
+- **T056 and T058 are not done.** The one-second measurement wants a session
+  with real history on a real machine, and the manual walk-through wants a
+  human at a terminal. Both are reviewer tasks.
+- **Phase 2 grew two files beyond the plan.** `terminal_approval.ts` and
+  `terminal_leave.ts` came out of `terminal.ts` to keep it under the cap once
+  the switch probe landed.
 
 ## Dependencies & Execution Order
 
