@@ -43,3 +43,4 @@ belong in the index.
 | [001-frames](001-frames/spec.md) | the vocabulary the terminal, relay and browser share |
 | [002-pairing](002-pairing/spec.md) | how a browser earns the right to drive a terminal |
 | [003-transport](003-transport/spec.md) | WebSocket for the terminal and browser links, SSE only to the model |
+| [004-session-switch-in-place](004-session-switch-in-place/spec.md) | Spec Kit feature: `/session` moves the terminal to another session instead of exiting |
