@@ -1,5 +1,14 @@
 <!--
-Sync Impact Report
+Sync Impact Report (1.1.0)
+- Version change: 1.0.0 → 1.1.0
+- Added: a Development Workflow rule forbidding Co-Authored-By trailers in
+  commit messages, however the commit was produced. MINOR, because it adds
+  guidance to an existing section rather than removing or redefining a
+  principle.
+- Templates checked: no template references commit trailers, so none needed
+  an edit.
+
+Sync Impact Report (1.0.0)
 - Version change: (template) → 1.0.0
 - Modified principles: none (initial ratification)
 - Added sections: Core Principles (I–III), Constraints, Development Workflow, Governance
@@ -70,6 +79,11 @@ proof deterministic and free.
 - **Order of artifacts.** `spec.md`, then `plan.md`, then `tasks.md`, then code.
   A plan MUST record any deviation from a principle above under its Constitution
   Check, with the reason, before implementation starts.
+- **Commit messages carry no co-authorship trailers.** A commit message MUST NOT
+  contain a `Co-Authored-By:` trailer, for a tool or for a person. The message
+  says what changed and why it had to change; who held the keyboard is the
+  commit's author field and the branch it arrived on. This applies however the
+  commit was produced, including by an agent.
 - **Merge gate.** A pull request is mergeable only when all of the following hold:
   1. `make build` and `make test` are green in the test workflow.
   2. The pre-commit hook ran on every commit; nothing was committed with
@@ -92,4 +106,4 @@ description says which principle changed and why. Every `/speckit-plan` run chec
 the plan against the principles above and records the result in the plan's
 Constitution Check section; a reviewer MUST verify that section before approving.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-04 | **Last Amended**: 2026-09-04
+**Version**: 1.1.0 | **Ratified**: 2026-09-04 | **Last Amended**: 2026-09-04
