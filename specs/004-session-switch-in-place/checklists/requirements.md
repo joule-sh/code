@@ -39,6 +39,22 @@
 - One Assumptions bullet sketches how the standalone terminal might switch. It
   is labelled a planning decision, not a requirement, so `/speckit-plan` is
   free to choose otherwise.
-- No clarification questions were needed. The scope choices with no obvious
-  default (other workspaces, relay sessions, background notices) are recorded
-  under Assumptions as out of scope or optional.
+- Scope choices with no obvious default (other workspaces, relay sessions,
+  background notices) are recorded under Assumptions as out of scope or
+  optional.
+
+### Re-validated after the 2026-09-04 clarification session
+
+All 16 items still pass; none changed state. Four answers were integrated and
+tightened requirements that were previously silent rather than wrong:
+
+- Unsent input on a switch had no stated behaviour. Now FR-012, an edge case,
+  and SC-007.
+- The order of leaving and joining was unstated, so a failed switch had no
+  defined outcome. FR-006 now fixes the order, with SC-006 to check it.
+- Transcript volume on arrival was unstated. Now FR-013.
+- Nothing bounded how many sessions could accumulate. Now FR-014, advisory.
+
+The "requirements are testable and unambiguous" and "edge cases are identified"
+items were the closest to failing before this session and are the ones most
+improved by it.

@@ -28,6 +28,15 @@ Both terminals this codebase has behave this way: the standalone one, which
 owns its own history, and the daemon-attached one, which talks to a daemon that
 owns the history.
 
+## Clarifications
+
+### Session 2026-09-04
+
+- Q: When you switch sessions with half-typed text in the input line, what happens to that text? → A: It is kept for the session you left and restored when you switch back; the target starts with its own draft, or empty.
+- Q: If joining the target fails, what should happen? → A: Join the target first and only leave the current session once the join succeeded, so a failed switch never leaves the user without a session.
+- Q: How much of a long transcript should a switch repaint? → A: All of it, exactly as starting `joule --session <name>` shows today. No cap.
+- Q: Should the number of sessions running at once be limited? → A: No limit. Print a one-line note when a switch starts a session beyond a threshold, and proceed.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Pick a running session and land in it (Priority: P1)
@@ -165,8 +174,13 @@ a switch and confirm nothing changed.
   it is the same as a not-running name: start it or report why not.
 - Terminal state that belongs to the screen and not the session, such as mouse
   reporting and colour, carries over the switch. State that belongs to the
-  session, such as mode, model, pending approval and transcript, comes from the
-  target.
+  session, such as mode, model, pending approval, transcript and unsent input,
+  comes from the target.
+- The switch is refused by the target while the current session is still joined.
+  Nothing is lost: the user is told why and is still in the session they were
+  in, with their unsent text intact.
+- Several switches in a row, or a switch back and forth, leave each session's
+  unsent text with its own session rather than accumulating on one of them.
 - A switch requested while an approval prompt or the quit prompt is open. The
   open prompt is answered or dismissed first; a switch is not a way to skip it.
 - `--continue` was given at startup. It applies to the session the program
@@ -188,8 +202,10 @@ a switch and confirm nothing changed.
   turn. It completes while that turn continues in the background.
 - **FR-005**: Switching to a name that is not running MUST start that session,
   resuming its saved history when there is one, and then land in it.
-- **FR-006**: When the target cannot be entered, the terminal MUST stay in the
-  current session, print the reason, and continue accepting input.
+- **FR-006**: A switch MUST join the target before leaving the current session.
+  When the target cannot be joined, the terminal MUST still be in the current
+  session, having never left it, and MUST print the reason and continue
+  accepting input.
 - **FR-007**: The session left behind MUST NOT draw on, or take over, the
   screen of the session the user is now in. At most it may cause a one-line
   notice.
@@ -204,6 +220,17 @@ a switch and confirm nothing changed.
 - **FR-011**: The prompts and notes printed on a switch MUST no longer tell the
   user to run a command in the shell to get there, since they are already
   there.
+- **FR-012**: Text typed but not sent MUST stay with the session it was typed
+  in. Switching away preserves it, switching back restores it, and the target
+  session shows its own unsent text or an empty line. Unsent text MUST NOT
+  follow the user into another session.
+- **FR-013**: A switch MUST show the target session's transcript in full, the
+  same content that starting that session directly shows today. No part of it
+  is trimmed on the grounds that the user arrived by switching.
+- **FR-014**: Starting a session by switching MUST NOT be blocked by how many
+  sessions are already running. When the switch would take the workspace past a
+  threshold of running sessions, the terminal MUST print one line saying how
+  many are running and how to end one, then continue.
 
 ### Key Entities
 
@@ -233,14 +260,27 @@ a switch and confirm nothing changed.
 - **SC-005**: Every existing harness that exercises `/session`, quit, rename,
   multi-session and two-client behaviour passes unchanged, except the one that
   asserted the exit-and-print behaviour, which is updated to assert the switch.
+- **SC-006**: A failed switch leaves the user in the session they started in,
+  with their unsent text intact, in 100% of harness runs. There is no state in
+  which a switch has left one session without having joined another.
+- **SC-007**: Text typed and not sent is restored on returning to its session,
+  and never appears in another session, across at least three switches in a
+  harness run.
 
 ## Assumptions
 
 - Several sessions on one workspace already run side by side and survive a
   terminal leaving them. This feature relies on that and does not change it.
 - Switching is a new attach to the target followed by a detach from the source,
-  not a merge of two sessions. The target's transcript is whatever it already
-  holds; nothing from the source is copied into it.
+  in that order, not a merge of two sessions. The target's transcript is
+  whatever it already holds; nothing from the source is copied into it. Both
+  are briefly connected at once, which the workspace already tolerates today
+  when a switch warms the target before exiting.
+- Unsent text is per session and lives only as long as the terminal does. It is
+  not written to disk and does not survive quitting.
+- The threshold in FR-014 is a number the implementation picks, expected to be
+  around five running sessions. It only ever produces a note, never a refusal,
+  so the exact value is not load-bearing.
 - The picker keeps listing only running sessions. Starting a not-running one is
   done by typing its name.
 - The standalone terminal may satisfy this by moving its session under the
