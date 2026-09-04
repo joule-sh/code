@@ -34,6 +34,17 @@ commands and makes commits there, on your machine.
 `/help` lists the commands. `joule --continue` reopens the most recent session
 for that directory.
 
+## Several sessions at once
+
+One directory can run more than one conversation. `joule --session review`
+starts or reopens the one called `review`; a plain `joule` is the unnamed one.
+
+`/session` lists the ones running and moves you to another without leaving
+joule: the session you pick takes the screen, and the one you left keeps
+running in the background, finishing whatever it was doing. `/session <name>`
+goes straight there, and starts that session if it is not running yet.
+`joule --stop --session <name>` ends one.
+
 ## Connect a model
 
 - A joule.sh account - run `/login`

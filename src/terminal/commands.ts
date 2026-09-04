@@ -67,7 +67,7 @@ export function commandList(): CommandInfo[] {
     { name: "/help", args: "", description: "show this help" },
     { name: "/model", args: "[name]", description: "show or set the model" },
     { name: "/mode", args: "[mode]", description: "show or set the approval mode (read-only, auto-edit, full-auto)" },
-    { name: "/session", args: "[name]", description: "list this workspace's running sessions to switch between, or switch to one by name" },
+    { name: "/session", args: "[name]", description: "list this workspace's running sessions, or move to one by name without leaving joule" },
     { name: "/rename", args: "<new-name>", description: "move this session's history to a new name and leave for it" },
     { name: "/share", args: "", description: "print the pairing URL for this session" },
     { name: "/login", args: "[server]", description: "sign in through a browser, to joule.sh or to a server you name" },
