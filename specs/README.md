@@ -25,6 +25,17 @@ review.
 **Deliberately not in scope.** With the consequence recorded, so that a
 limitation is a choice and not a surprise later.
 
+## Spec Kit
+
+[GitHub Spec Kit](https://github.com/github/spec-kit) is installed too:
+`.specify/` holds its scripts and templates, `.claude/skills/speckit-*` the
+`/speckit-specify`, `/speckit-plan`, `/speckit-tasks` and `/speckit-implement`
+skills, and `.specify/memory/constitution.md` the project principles. It writes
+into this same directory, `NNN-short-name/`, and continues the numbering, so a
+directory here is either a decision record (`spec.md` alone, the sections
+above) or a Spec Kit feature (`spec.md` plus `plan.md` and `tasks.md`). Both
+belong in the index.
+
 ## Index
 
 | spec | what it settles |
