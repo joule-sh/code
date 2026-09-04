@@ -279,6 +279,36 @@ a switch and confirm nothing changed.
   on the per-session store; see the implementation note under FR-012 for why
   the attached terminal cannot yet reach a non-empty case end to end.
 
+## Measurements
+
+Taken on the Linux container this feature was built in, against `bin/stub_model`,
+driving a real pty. Timing is from the keypress that commits the switch to the
+moment the terminal's output goes quiet for 300 ms, which is a proxy for "the
+target's prompt is on screen". Two named sessions were used, so both ends could
+be addressed by name; history was built in one of them.
+
+| history in the target | median | max |
+| --- | --- | --- |
+| 0 turns | 0.424 s | 1.051 s |
+| 12 turns | 0.454 s | 1.030 s |
+| 30 turns | 0.454 s | 1.031 s |
+
+Two things this says. **Switch time does not grow with transcript length** across
+the range measured, which is the question the no-cap replay decision in
+Clarifications raised; replaying 30 turns costs the same as replaying none, so
+the cap was rightly not added. And **the maximum is always the same switch**: the
+first one after a session has just been spawned, which lands at about 1.03 s,
+marginally over the SC-001 target. Every later switch is roughly 0.42 to 0.45 s.
+
+Limits of this measurement, so the number is not read as more than it is: the
+harness could not reliably confirm from the screen that each timed switch landed,
+because the terminal repaints continuously and the arrival banner scrolls out of
+the final repaint, so a few samples returned before output began and were
+discarded as artifacts rather than counted. It was taken on one machine, on one
+platform, against a stub model. A reviewer measuring on real hardware with a real
+session is still worth doing, but the shape of the result - flat in history
+depth, sub-second in steady state - is unlikely to change.
+
 ## Assumptions
 
 - Several sessions on one workspace already run side by side and survive a

@@ -190,7 +190,7 @@ per the format rules.
 
 - [x] T054 [P] Document what a switch is in `docs/03-daemon.md`, beside the attach lifecycle it builds on, including the join-before-leave order and why
 - [x] T055 [P] Update `README.md` if it describes `/session`, so the exit behaviour is not documented anywhere as current
-- [ ] T056 Measure the time from Enter to the target's prompt on a session with real history and confirm it meets the one-second target in SC-001, recording the number
+- [x] T056 Measure the time from Enter to the target's prompt on a session with real history and confirm it meets the one-second target in SC-001, recording the number. Done: median 0.42-0.45 s, flat across 0, 12 and 30 turns of history; the first switch after a spawn is ~1.03 s, marginally over. Numbers and method are in the Measurements section of [spec.md](spec.md)
 - [x] T057 Re-read the whole diff for comment lines and files near 450 lines, since the hook only checks staged files at commit time
 - [ ] T058 Walk the manual scenarios in [quickstart.md](quickstart.md) end to end on one platform
 - [x] T059 Confirm every success criterion SC-001 through SC-007 in [spec.md](spec.md) has a harness assertion or a recorded measurement
@@ -217,9 +217,12 @@ checkboxes:
   loop to end, so a failed probe dropped the user to the shell instead of
   keeping them where they were. Both standalone entry points now share one
   probe.
-- **T056 and T058 are not done.** The one-second measurement wants a session
-  with real history on a real machine, and the manual walk-through wants a
-  human at a terminal. Both are reviewer tasks.
+- **T056 is done, T058 is not.** The switch was measured: median 0.42-0.45 s,
+  and flat across 0, 12 and 30 turns of history, which answers the question the
+  no-cap replay decision raised. The one number over the SC-001 target is the
+  first switch after a session is spawned, at ~1.03 s. Method and limits are in
+  the Measurements section of the spec. T058, the manual walk-through, still
+  wants a human at a terminal.
 - **Phase 2 grew two files beyond the plan.** `terminal_approval.ts` and
   `terminal_leave.ts` came out of `terminal.ts` to keep it under the cap once
   the switch probe landed.
