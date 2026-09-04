@@ -21,11 +21,6 @@ export class CommandOutcome {
     this.renameTarget = "";
   }
 
-  leaveFor(target: string): void {
-    this.switchTarget = target;
-    this.leave = true;
-  }
-
   switchTo(target: string): void {
     this.switchTarget = target;
   }
@@ -40,14 +35,6 @@ test("a fresh outcome neither leaves nor names a target", () => {
   let o = new CommandOutcome();
   expect(!o.leave);
   expect(o.switchTarget == "");
-  expect(o.renameTarget == "");
-});
-
-test("leaving for a session records the target and asks the loop to end", () => {
-  let o = new CommandOutcome();
-  o.leaveFor("review");
-  expect(o.leave);
-  expect(o.switchTarget == "review");
   expect(o.renameTarget == "");
 });
 

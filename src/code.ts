@@ -1,7 +1,7 @@
 import { VERSION } from "./version.ts";
 import { runDemo } from "./demo/demo.ts";
 import { runTerminal } from "./terminal/terminal.ts";
-import { runAttach, runDaemonJoule, runStop } from "./terminal/attach.ts";
+import { runAttach, runDaemonJoule, runDaemonJouleFor, runStop } from "./terminal/attach.ts";
 import { ENSURE_COMMAND, hasEnsureCommand, runDaemonEnsure } from "./daemon/ensure_cli.ts";
 import { cleanScratch } from "./session/scratch.ts";
 import { workspaceRoot } from "./vendor/platform/platform.ts";
@@ -44,7 +44,13 @@ if (hasFlagIn(currentArgs(), "--version")) {
 } else {
   let attempt = runDaemonJoule(currentArgs());
   if (!attempt.attached) {
-    runTerminal(currentArgs(), attempt.notes);
+    let target = runTerminal(currentArgs(), attempt.notes);
+    if (target != "") {
+      let moved = runDaemonJouleFor(currentArgs(), target);
+      if (!moved.attached) {
+        for (const n of moved.notes) { console.log(n); }
+      }
+    }
   }
 }
 

@@ -64,6 +64,10 @@ export function runStop(argv: string[]): void {
 }
 
 export function runDaemonJoule(argv: string[]): DaemonAttempt {
+  return runDaemonJouleFor(argv, sessionNameFlag(argv));
+}
+
+export function runDaemonJouleFor(argv: string[], sessionName: string): DaemonAttempt {
   let workspaceRoot = currentWorkspaceRoot();
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
@@ -73,7 +77,6 @@ export function runDaemonJoule(argv: string[]): DaemonAttempt {
   let cfg = loadConfig(argv);
   if (cfg.apiKey == "") { return declined([]); }
   let serverBase = loadServerOrigin(argv);
-  let sessionName = sessionNameFlag(argv);
   let wantsResume = hasContinueFlag(argv);
   let result = ensureAttached(workspaceRoot, sessionName, wantsResume);
   if (!result.client.socketReady) {

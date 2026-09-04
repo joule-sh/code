@@ -109,7 +109,7 @@ function handleSession(d: LocalCommandDeps, arg: string, out: CommandOutcome): v
     d.paint();
     return;
   }
-  out.leaveFor(arg);
+  out.switchTo(arg);
 }
 
 function handleTasks(d: LocalCommandDeps, arg: string): void {

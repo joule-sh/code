@@ -1302,3 +1302,69 @@ lives in the daemon, not in the terminal, so closing the terminal is not
 the same as ending the conversation. That is why Ctrl-C offers walking
 away and keeping it running as a real option beside stopping it, rather
 than assuming either.
+
+## Switching sessions without leaving (spec 004)
+
+`/session <name>`, and Enter on a row in the `/session` picker, used to end
+the program: it warmed the target's daemon, printed `run joule --session
+<name> here to enter it`, and dropped the user back to the shell to type
+that command. It no longer does. The full reasoning is in
+[spec 004](../specs/004-session-switch-in-place/spec.md); what the code
+does is here.
+
+**A switch is an attach, a detach and a repaint, in that order.** Nothing
+in the protocol changed and no frame was added. `ensureAttached` already
+returns the target session's whole transcript as `pending`, which is how
+any late-joining client sees history, so entering a session from inside a
+running terminal is the same operation as entering it from the shell.
+
+**The target is joined before the source is left.** `switchSession`
+(`src/terminal/attached_session.ts`) calls `ensureAttached` first and only
+detaches the old client once the new one is ready. A target that cannot be
+attached therefore costs nothing: the terminal is still in the session it
+was in, with its input line untouched, and prints one line saying why. The
+opposite order would have a failure mode where the terminal has left one
+session without joining another, and the rejoin can fail too.
+
+**Session-scoped state lives in one value that a switch replaces.**
+`AttachedSession` holds the client, port, approval log, model and turn
+state, watchdog, echo tracker, pending approval, plan state, tagged turns
+and turn-status tracker. `adopt` swaps all of it at once. It is mutated in
+place rather than rebound, because the loop's `setMode` and `sendInput`
+closures capture the session and would otherwise keep publishing to the
+daemon the user just left. Screen-scoped state - scrollback, input line,
+input history, mouse reporting, colour, sign-in, the update prompts - is
+outside it and survives untouched.
+
+**The session left behind is detached, not stopped and not waited on.** A
+turn in flight keeps running in its daemon, and a pending approval stays
+pending, because both live in the daemon rather than in the terminal. The
+old client is detached rather than left polling, which is what keeps its
+frames off the screen of the session the user is now in.
+
+**Unsent input is kept per session name** in `Drafts`
+(`src/terminal/drafts.ts`), so the target's input line is loaded from its
+own draft and can never inherit the previous session's text. In the
+attached terminal that is currently a guarantee rather than something a
+user can observe: `/session <name>` consumes the input line when it is
+submitted, and the picker swallows every key that is not an arrow or
+Enter, so a draft and a switch cannot coexist there yet. It becomes
+observable the moment a path allows switching with a non-empty line.
+
+**The standalone terminal switches by joining the daemon world.** It owns
+its own history and cannot leave a turn running, so `runTerminal` probes
+the target with `ensureAttached` while still in its own loop, and only if
+that succeeds does it leave, flush its history and hand its session to a
+background daemon through `detachToBackground` - the same handoff Ctrl-D
+"keep in background" already performed. `src/code.ts` then enters the
+attached loop for the target, so a standalone terminal switches once into
+the attached world and every switch after that is in place. Note that this
+success path needs a daemon that is reachable at switch time but was not
+at startup, since an unreachable daemon is the main reason the standalone
+terminal is running at all; the failure path, staying put with a reason,
+is the common one and is what the harness covers.
+
+**Five sessions on one workspace prints a note**, not a refusal
+(`crowdedWorkspaceNote`). Each session is a separate background process,
+and switching makes starting one cheap enough that a workspace can collect
+them without the user noticing.

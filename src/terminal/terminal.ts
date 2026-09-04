@@ -3,7 +3,7 @@ import { rememberSecret } from "../tools/dispatch.ts";
 import { liveApiKey } from "../providers/openai.ts";
 import { loadConfig, loadServerOrigin } from "../providers/config.ts";
 import { loadCredential } from "../auth/credentials.ts";
-import { sessionNameFlag, runningSessionsFor } from "../daemon/attach_lifecycle.ts";
+import { sessionNameFlag, runningSessionsFor, ensureAttached } from "../daemon/attach_lifecycle.ts";
 import { displayModel, qualifiedModel, wireModel } from "../providers/platform.ts";
 import { runOnboarding } from "./onboarding.ts";
 import { allToolSchemas } from "../tools/schemas.ts";
@@ -25,7 +25,9 @@ import { workspaceRoot as currentWorkspaceRoot } from "../vendor/platform/platfo
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingModelPick, PendingQuitDecision, PendingSessionPick, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_COUNT } from "./input_state.ts";
 import { fetchModelIds, buildModelEntries, openModelPick, tryHandleModelPickArrow, tryHandleModelPickEnter, tryHandleModelPickChar } from "./model_picker.ts";
 import { openQuitDecision, repaintQuitDecision, detachToBackground } from "./quit_decision.ts";
-import { openSessionPick, repaintSessionPick, tryHandleSessionPickArrow, tryHandleSessionPickChar, currentSessionLine, stayingNote, switchSessionNotes, pickableSessions } from "./session_switch.ts";
+import { openSessionPick, repaintSessionPick, tryHandleSessionPickArrow, tryHandleSessionPickChar, currentSessionLine, stayingNote, pickableSessions } from "./session_switch.ts";
+import { switchFailureNote } from "./attached_session.ts";
+import { printLeaveNotes } from "./terminal_leave.ts";
 import { renameTargetCheck, renameNotes } from "./session_rename.ts";
 import { modeFlagResult, promptFlag } from "./startup_flags.ts";
 import { ApprovalDeps, emitApprovalRequest, pollApprovalKeys } from "./terminal_approval.ts";
@@ -58,11 +60,11 @@ import { isPointerKey, handlePointerKey, applyMouseState } from "./mouse_select.
 const STDIN: int = 0;
 const RELAY_POLL_MS: int = 100;
 
-export function runTerminal(argv: string[], startupNotes: string[]): void {
+export function runTerminal(argv: string[], startupNotes: string[]): string {
   if (!isatty(STDIN)) {
     console.log("joule needs a real terminal");
     process.exit(1);
-    return;
+    return "";
   }
 
   applyConfiguredAccent();
@@ -125,7 +127,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   if (modeChoice.error != "") {
     console.log(modeChoice.error);
     process.exit(1);
-    return;
+    return "";
   }
   if (modeChoice.mode != "") { gate.mode = modeChoice.mode; }
   gate.setOnAutoAllowed((callId: string, tool: string, summary: string, args: string) => emitApprovalSettled(live.sessionSlot, tracker.current, callId, summary, args));
@@ -215,6 +217,15 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   };
   let cmdDeps = new LocalCommandDeps(sb, input, rk, gate, session, live, bridge, tasks, mouse, signin, modelPick, sessionPick, server, workspaceRoot, sessionName);
 
+  let canEnter = (target: string): bool => {
+    let probe = ensureAttached(workspaceRoot, target, true);
+    probe.client.detach();
+    if (probe.client.socketReady) { return true; }
+    for (const n of switchFailureNote(target, probe.notes)) { sb.append("\n" + styleBanner(n)); }
+    drawScreen(sb, input, gate.mode, rk);
+    return false;
+  };
+
   sb.append(buildWelcomeBox(displayModel(cfg), workspaceRoot, gate.mode, server.base));
   sb.append("\n\n" + styleBanner("joule - type a request, /help for commands, ctrl-d to quit") + skillsStartupNote(workspaceRoot));
   for (const n of startupNotes) { sb.append("\n" + styleBanner(n)); }
@@ -233,8 +244,8 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   }
 
   let running = true;
-  let detachRequested = false;
   let switchTarget = "";
+  let detachRequested = false;
   let renameTarget = "";
   while (running) {
     let k = readKeyTimeout(STDIN, RELAY_POLL_MS);
@@ -384,11 +395,11 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
       sessionPick.close();
       if (chosen == sessionName) {
         sb.append(stayingNote(sessionName));
-      } else {
+        drawScreen(sb, input, gate.mode, rk);
+      } else if (canEnter(chosen)) {
         switchTarget = chosen;
         running = false;
       }
-      drawScreen(sb, input, gate.mode, rk);
       continue;
     }
 
@@ -413,7 +424,12 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
     sb.append("\n" + stylePrompt("> ") + line);
 
     let outcome = runLocalCommand(cmdDeps, cmd, planDecisionOpen, attachToRelay);
-    if (outcome.switchTarget != "") { switchTarget = outcome.switchTarget; }
+    if (outcome.switchTarget != "") {
+      if (canEnter(outcome.switchTarget)) {
+        switchTarget = outcome.switchTarget;
+        running = false;
+      }
+    }
     if (outcome.renameTarget != "") { renameTarget = outcome.renameTarget; }
     if (outcome.leave) { running = false; }
   }
@@ -423,19 +439,7 @@ export function runTerminal(argv: string[], startupNotes: string[]): void {
   leaveScreen(mouse);
   rawDisable(STDIN);
 
-  if (detachRequested) {
-    for (const line of detachToBackground(workspaceRoot, sessionName, session.history)) {
-      console.log(line);
-    }
-  }
-  if (switchTarget != "") {
-    for (const line of switchSessionNotes(workspaceRoot, sessionName, switchTarget, session.history)) {
-      console.log(line);
-    }
-  }
-  if (renameTarget != "") {
-    for (const line of renameNotes(workspaceRoot, sessionName, renameTarget, session.history)) {
-      console.log(line);
-    }
-  }
+  printLeaveNotes(workspaceRoot, sessionName, session.history, detachRequested, switchTarget, renameTarget);
+
+  return switchTarget;
 }

@@ -7,7 +7,7 @@ import { PlanOfferTracker } from "./attach_plan.ts";
 import { TurnWatchdog } from "./attach_watchdog.ts";
 import { LocalPrompts } from "./attach_echo.ts";
 import { DaemonClient } from "../daemon/attach_client.ts";
-import { AttachResult, ensureAttached, attachedMode, attachedModel } from "../daemon/attach_lifecycle.ts";
+import { AttachResult, ensureAttached, attachedMode, attachedModel, runningSessionsFor } from "../daemon/attach_lifecycle.ts";
 import { Drafts } from "./drafts.ts";
 import { sessionDisplayName } from "./session_switch.ts";
 
@@ -86,6 +86,13 @@ export function switchFailureNote(target: string, notes: string[]): string[] {
   return lines;
 }
 
+export const BUSY_WORKSPACE_SESSIONS: int = 5;
+
+export function crowdedWorkspaceNote(running: int): string {
+  if (running < BUSY_WORKSPACE_SESSIONS) { return ""; }
+  return "this workspace now has " + `${running}` + " sessions running, each with its own background process - /session lists them, and joule --stop --session <name> ends one";
+}
+
 export function switchSession(sess: AttachedSession, workspaceRoot: string, target: string, drafts: Drafts, input: InputLine): SwitchResult {
   let result = ensureAttached(workspaceRoot, target, true);
   if (!result.client.socketReady) {
@@ -101,7 +108,12 @@ export function switchSession(sess: AttachedSession, workspaceRoot: string, targ
   leaving.detach();
   input.setBuf(drafts.load(target));
 
-  return new SwitchResult(true, result.pending, result.notes);
+  let notes: string[] = [];
+  for (const n of result.notes) { notes.push(n); }
+  let crowded = crowdedWorkspaceNote(runningSessionsFor(workspaceRoot).length);
+  if (crowded != "") { notes.push(crowded); }
+
+  return new SwitchResult(true, result.pending, notes);
 }
 
 test("a failed switch says which session could not be entered and that we stayed", () => {
@@ -115,6 +127,24 @@ test("a failed switch says which session could not be entered and that we stayed
 test("the default session reads as default in a failure note, never as blank", () => {
   let lines = switchFailureNote("", []);
   expect(lines[0].includes("default"));
+});
+
+test("a workspace under the threshold gets no crowding note", () => {
+  expect(crowdedWorkspaceNote(1) == "");
+  expect(crowdedWorkspaceNote(BUSY_WORKSPACE_SESSIONS - 1) == "");
+});
+
+test("at the threshold the note counts the sessions and says how to end one", () => {
+  let note = crowdedWorkspaceNote(BUSY_WORKSPACE_SESSIONS);
+  expect(note.includes(`${BUSY_WORKSPACE_SESSIONS}`));
+  expect(note.includes("joule --stop --session"));
+});
+
+test("the crowding note never refuses, it only counts", () => {
+  let note = crowdedWorkspaceNote(40);
+  expect(note.includes("40"));
+  expect(!note.includes("cannot"));
+  expect(!note.includes("refus"));
 });
 
 test("a switch result carries its replay only when it succeeded", () => {

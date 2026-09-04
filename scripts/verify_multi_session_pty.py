@@ -195,6 +195,57 @@ def run_session_command_scenario():
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
+
+def run_standalone_switch_scenario():
+    """The standalone terminal switches too (FR-010). It runs when no daemon
+    can be reached, owns its own history, and cannot leave a turn running - so
+    it hands its session to a background daemon and then enters the attached
+    loop for the target, in the same process. The user never sees a command to
+    run."""
+    work_dir = scratch.scratch_dir("joule-standalone-switch-pty-")
+    repo_dir = os.path.join(work_dir, "repo")
+    home_dir = os.path.join(work_dir, "home")
+    os.makedirs(home_dir, exist_ok=True)
+    harness.seed_workspace(repo_dir)
+
+    joule_env = dict(os.environ)
+    joule_env["HOME"] = home_dir
+    joule_env["JOULE_CODE_BASE_URL"] = "http://127.0.0.1:1"
+    joule_env["JOULE_CODE_MODEL"] = "stub"
+    joule_env["JOULE_CODE_API_KEY"] = "stub-key"
+    joule_env["TERM"] = "xterm-256color"
+
+    lonely_dir = os.path.join(work_dir, "nodaemon")
+    os.makedirs(lonely_dir, exist_ok=True)
+    lonely_joule = os.path.join(lonely_dir, os.path.basename(harness.JOULE_BIN))
+    shutil.copy2(harness.JOULE_BIN, lonely_joule)
+
+    session = None
+    try:
+        session = harness.PtySession([lonely_joule], joule_env, repo_dir, rows=24, cols=80)
+        session.wait_for(harness.BANNER, timeout=15.0)
+        ok(True, "with no daemon reachable the standalone terminal comes up")
+
+        session.write("/session review\r")
+        session.settle(cap=8.0)
+        body = harness.text(session.raw)
+        ok("run joule --session" not in body,
+           "the standalone terminal no longer tells the user to run a command to reach the target")
+        ok("staying in this one" in body,
+           "with no daemon reachable the standalone switch stays put rather than stranding the user")
+        ok(not session.wait_exit(3.0),
+           "a standalone switch that cannot reach its target leaves the terminal running")
+    finally:
+        if session is not None:
+            session.close()
+        for name in list(daemon_ports(home_dir).keys()):
+            try:
+                stop_output(repo_dir, home_dir, name)
+            except Exception:
+                pass
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 try:
     run()
 except harness.Failure as e:
@@ -202,6 +253,11 @@ except harness.Failure as e:
     failures.append(str(e))
 try:
     run_session_command_scenario()
+except harness.Failure as e:
+    print("FAIL: " + str(e), file=sys.stderr)
+    failures.append(str(e))
+try:
+    run_standalone_switch_scenario()
 except harness.Failure as e:
     print("FAIL: " + str(e), file=sys.stderr)
     failures.append(str(e))
