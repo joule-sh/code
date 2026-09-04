@@ -1266,3 +1266,39 @@ with a message that says why; and, with the variable set, `broadcast.log` and
 Unit coverage is `src/daemon/startup.test.ts` (the flag and directory
 decisions, without a daemon) and two cases in
 `src/daemon/session_worker.test.ts` for `runInitialPrompt`.
+
+## What the attached client's own code no longer says out loud
+
+`src/terminal/attach.ts` was split below the 450-line cap when the
+in-place session switch was built (spec
+[004-session-switch-in-place](../specs/004-session-switch-in-place/spec.md)),
+and the comments it carried came out with the move, since a source file
+here holds none. What they said is worth keeping, so it is here.
+
+**Why "quit and end the session" waits twenty ticks, not fifty.**
+`QUIT_STOP_ACK_TICKS` is deliberately shorter than the wait `joule --stop`
+uses. That command's whole job is stopping, so it can afford five seconds.
+Ctrl-D is someone walking away from a terminal, and holding their screen
+for five seconds to watch a daemon acknowledge is worse than letting them
+go. A short wait still catches the common idle case. An unacknowledged
+stop has still reached the daemon; the note printed on the way out says so
+and points at `joule --stop` for the case where it lingers.
+
+**Why stopping is a handshake and not a fire-and-forget.** Ending the
+session publishes the stop frame and then holds the socket open long
+enough to see the `daemon.stopping` that answers it, the same handshake
+`joule --stop` performs. Publishing and detaching immediately would race
+the write.
+
+**Why the open prompts swallow every key.** While the Ctrl-C quit prompt
+or the `/session` picker is open it owns the keyboard: arrows move the
+choice, Enter or an option's initial picks one, and for the quit prompt a
+second Ctrl-C or Ctrl-D is a fast "quit". Everything else is swallowed
+rather than allowed to leak into the input line, so a stray keystroke
+cannot half-answer a prompt and half-type a request.
+
+**Why leaving is a choice at all.** In the attached terminal the session
+lives in the daemon, not in the terminal, so closing the terminal is not
+the same as ending the conversation. That is why Ctrl-C offers walking
+away and keeping it running as a real option beside stopping it, rather
+than assuming either.

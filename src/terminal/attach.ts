@@ -1,6 +1,9 @@
 import { isatty, rawEnable, rawDisable, readKeyTimeout, KEY_CHAR, KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_D, KEY_EOF, KEY_TIMEOUT, KEY_ARROW_UP, KEY_ARROW_DOWN } from "../vendor/tty/tty.ts";
 import { PROTOCOL_VERSION, INPUT, CANCEL, APPROVAL_REPLY, SESSION_HELLO, APPROVAL_REQUEST, TURN_START, TURN_END, TEXT_DELTA, MODE_SET, MODE_CHANGED, MODEL_SET, MODEL_CHANGED, TASKS_REQUEST, DAEMON_STOP, DAEMON_STOPPING, SHARE_REQUEST, frameType, frameTurnId, encodeInput, encodeCancel, encodeApprovalReply, decodeSessionHello, decodeApprovalRequest, decodeTurnStart, decodeModeChanged, decodeModelChanged, decodeDaemonStopping, decodeTextDelta, encodeModeSet, encodeModelSet, encodeTasksRequest, encodeDaemonStop, encodeShareRequest } from "../protocol/frames.ts";
 import { InputLine, InputHistory, PendingApproval, PendingUpdateOffer, PendingPlanDecision, PendingQuitDecision, PendingSessionPick, quitDecisionOptionForChar, QUIT_DECISION_KEEP, QUIT_DECISION_QUIT, QUIT_DECISION_STAY, approvalOptionForChar, APPROVAL_OPTION_DENY, APPROVAL_OPTION_COUNT } from "./input_state.ts";
+import { ClientState } from "./attach_state.ts";
+import { CommandDeps, runAttachCommand, attachHelpText } from "./attach_commands.ts";
+import { FrameDeps, processAttachFrames } from "./attach_frames.ts";
 import { openQuitDecision, repaintQuitDecision, backgroundKeptNotes } from "./quit_decision.ts";
 import { warmSessionNotes, sessionDisplayName, joulePlusSession, openSessionPick, repaintSessionPick, stayingNote, pickableSessions } from "./session_switch.ts";
 import { renameTargetCheck, renameNotes } from "./session_rename.ts";
@@ -41,17 +44,8 @@ import { applyMouseState } from "./mouse_select.ts";
 const STDIN: int = 0;
 const POLL_MS: int = 100;
 
-// How long "quit and end the session" waits for the daemon to acknowledge the
-// stop before giving up on hearing it. `joule --stop` waits five seconds, but
-// that is a command whose whole job is stopping; here someone is walking away
-// from a terminal, so a short wait that still catches the common idle case
-// beats holding the screen. An unacknowledged stop still reached the daemon -
-// the note says so, and points at `joule --stop`.
 const QUIT_STOP_ACK_TICKS: int = 20;
 
-// "Quit and end the session" has to actually reach the daemon: publish the
-// stop, then hold the socket open long enough for the DAEMON_STOPPING that
-// answers it, the same handshake `joule --stop` does.
 function stopDaemonAndWait(client: DaemonClient): bool {
   client.publish(encodeDaemonStop({ v: PROTOCOL_VERSION, seq: 0, type: DAEMON_STOP }));
   let acked = false;
@@ -66,11 +60,6 @@ function stopDaemonAndWait(client: DaemonClient): bool {
 
 export function runStop(argv: string[]): void {
   runAttachStop(currentWorkspaceRoot(), sessionNameFlag(argv));
-}
-
-function attachHelpText(): string {
-  return helpText()
-    + "\n/stop-daemon    ask this workspace's daemon to stop (any attached client may; it takes effect once any in-flight turn finishes, see docs/03-daemon.md)";
 }
 
 export function runDaemonJoule(argv: string[]): DaemonAttempt {
@@ -134,18 +123,6 @@ function resumeNoteFor(argv: string[], workspaceRoot: string, sessionName: strin
   return "";
 }
 
-class ClientState {
-  model: string;
-  turnId: string;
-  stopReason: string;
-
-  constructor(model: string) {
-    this.model = model;
-    this.turnId = "";
-    this.stopReason = "";
-  }
-}
-
 function runClientLoop(argv: string[], workspaceRoot: string, sessionName: string, initialModel: string, serverBase: ServerOrigin, result: AttachResult, wantsResume: bool, announceDaemon: bool): void {
   applyConfiguredAccent();
   let modeChoice = modeFlagResult(argv);
@@ -185,67 +162,16 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
     watchdog.noteRequestSent(Date.now());
   };
 
+  let frameDeps = new FrameDeps(sb, input, rk, approvalLog, state, pendingApproval, planPending, planTracker, tagged, echoes, watchdog);
   let processFrames = (frames: string[], isReplay: bool): bool => {
-    let daemonStopped = false;
-    for (const f of frames) {
-      if (!isReplay) { watchdog.noteDaemonAnswered(); }
-      let t = frameType(f);
-      let tagged1 = isTaskTurnId(frameTurnId(f));
-      if (tagged1) {
-        appendTaggedFrame(sb, tagged, f);
-      } else {
-        appendFrame(sb, rk, f);
-      }
-      if (t == SESSION_HELLO) {
-        let hello = decodeSessionHello(f);
-        if (hello != null) { approvalLog.mode = hello.mode; state.model = hello.model; }
-      }
-      if (t == TURN_START) {
-        let start = decodeTurnStart(f);
-        if (start != null) {
-          state.turnId = start.turnId;
-          if (!tagged1 && start.prompt != "" && !echoes.claim(start.prompt)) {
-            sb.append("\n" + stylePrompt("> ") + start.prompt);
-          }
-        }
-        if (!tagged1) { planTracker.noteTurnStart(); }
-      }
-      if (t == TEXT_DELTA && !tagged1) {
-        let delta = decodeTextDelta(f);
-        if (delta != null) { planTracker.noteAssistantText(delta.text); }
-      }
-      if (t == APPROVAL_REQUEST) {
-        let req = decodeApprovalRequest(f);
-        if (req != null) {
-          beginApprovalBlockLocal(sb, pendingApproval, req.callId, req.tool, req.summary, req.detail);
-        }
-      }
-      if (t == MODE_CHANGED) {
-        let modeChanged = decodeModeChanged(f);
-        if (modeChanged != null) {
-          if (modeChanged.mode == MODE_PLAN && approvalLog.mode != MODE_PLAN) { planPending.setPreviousMode(approvalLog.mode); }
-          approvalLog.mode = modeChanged.mode;
-        }
-      }
-      if (t == MODEL_CHANGED) {
-        let modelChanged = decodeModelChanged(f);
-        if (modelChanged != null) { state.model = modelChanged.model; }
-      }
-      if (t == DAEMON_STOPPING) {
-        let stopping = decodeDaemonStopping(f);
-        state.stopReason = "an attached client asked it to stop";
-        if (stopping != null) { state.stopReason = stopping.reason; }
-        daemonStopped = true;
-      }
-      if (t == TURN_END && !tagged1) { maybeOfferPlanDecision(planPending, planTracker, approvalLog.mode, sb, f); }
-      drawScreen(sb, input, approvalLog.mode, rk);
-    }
-    return daemonStopped;
+    return processAttachFrames(frameDeps, frames, isReplay);
   };
 
   let mouse = enterScreen();
   applyMouseState(sb, mouse.on);
   rawEnable(STDIN);
+
+  let cmdDeps = new CommandDeps(sb, input, rk, approvalLog, state, client, mouse, signin, sessionPick, serverBase, workspaceRoot, sessionName);
 
   sb.append(buildWelcomeBox(state.model, workspaceRoot, approvalLog.mode, serverBase.base) + skillsStartupNote(workspaceRoot));
   if (announceDaemon) {
@@ -308,9 +234,6 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
       continue;
     }
 
-    // While the Ctrl-C prompt is open it owns the keyboard: arrows move the
-    // choice, a number or its initial picks one, and a second Ctrl-C/Ctrl-D is
-    // a fast "quit". Anything else is swallowed so it cannot leak to the input.
     if (quitDecision.isPending()) {
       if (k.kind == KEY_ARROW_UP) { if (quitDecision.moveSelection(-1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
       if (k.kind == KEY_ARROW_DOWN) { if (quitDecision.moveSelection(1)) { repaintQuitDecision(sb, quitDecision); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
@@ -331,9 +254,6 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
       continue;
     }
 
-    // The /session picker owns the keyboard the same way: arrows move the
-    // choice, enter picks it - the current session's own row means stay -
-    // and anything else is swallowed rather than leaking into the input.
     if (sessionPick.isPending()) {
       if (k.kind == KEY_ARROW_UP) { if (sessionPick.moveSelection(-1)) { repaintSessionPick(sb, sessionPick, sessionName); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
       if (k.kind == KEY_ARROW_DOWN) { if (sessionPick.moveSelection(1)) { repaintSessionPick(sb, sessionPick, sessionName); drawScreen(sb, input, approvalLog.mode, rk); } continue; }
@@ -363,8 +283,6 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
         input.clear();
         drawScreen(sb, input, approvalLog.mode, rk);
       } else {
-        // The session lives in the daemon, not here, so leaving is a real
-        // choice: walk away and it keeps running, or say so and it stops.
         openQuitDecision(quitDecision, sb);
         drawScreen(sb, input, approvalLog.mode, rk);
       }
@@ -465,99 +383,10 @@ function runClientLoop(argv: string[], workspaceRoot: string, sessionName: strin
 
     sb.append("\n" + stylePrompt("> ") + line);
 
-    if (cmd.kind == CMD_HELP) { sb.append("\n" + attachHelpText()); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-    if (cmd.kind == CMD_SKILLS) { let skillInput = runSkillCommand(workspaceRoot, cmd.arg, sb); drawScreen(sb, input, approvalLog.mode, rk); if (skillInput != "") { sendInput(skillInput); } continue; }
-
-    if (cmd.kind == CMD_MODEL) {
-      if (cmd.arg == "") {
-        sb.append("\nmodel: " + state.model);
-      } else {
-        client.publish(encodeModelSet({ v: PROTOCOL_VERSION, seq: 0, type: MODEL_SET, model: cmd.arg }));
-      }
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_MODE) {
-      if (cmd.arg == "") {
-        sb.append("\nmode: " + approvalLog.mode);
-      } else {
-        setMode(cmd.arg);
-      }
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_SESSION) {
-      if (cmd.arg == "") {
-        let names = pickableSessions(workspaceRoot, sessionName);
-        if (names.length <= 1) {
-          sb.append("\nsession: " + sessionDisplayName(sessionName));
-        } else {
-          openSessionPick(sessionPick, sb, names, sessionName);
-        }
-      } else if (cmd.arg == sessionName) {
-        sb.append("\nalready in the " + sessionDisplayName(sessionName) + " session");
-      } else {
-        switchTarget = cmd.arg;
-        running = false;
-        continue;
-      }
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_RENAME) {
-      let check = renameTargetCheck(workspaceRoot, cmd.arg, sessionName, runningSessionsFor(workspaceRoot));
-      if (!check.ok) {
-        sb.append(check.error);
-        drawScreen(sb, input, approvalLog.mode, rk);
-      } else {
-        renameTarget = cmd.arg.trim();
-        running = false;
-      }
-      continue;
-    }
-
-    if (cmd.kind == CMD_SHARE) {
-      client.publish(encodeShareRequest({ v: PROTOCOL_VERSION, seq: 0, type: SHARE_REQUEST }));
-      sb.append("\nasking the daemon to share this session over the relay");
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_LOGIN) {
-      beginSignIn(sb, input, signin, serverBase, cmd.arg);
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_LOGOUT) { sb.append(logoutText(serverBase.base, cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-
-    if (cmd.kind == CMD_CAT) {
-      sb.append(catText(workspaceRoot, cmd.arg));
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_MEMORY) { sb.append(memoryCommandText(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-
-    if (cmd.kind == CMD_MOUSE) { sb.append(runMouseCommand(mouse, cmd.arg)); applyMouseState(sb, mouse.on); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-
-    if (cmd.kind == CMD_COLOR) { sb.append(runColorCommand(cmd.arg)); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-
-    if (cmd.kind == CMD_TASKS) {
-      client.publish(encodeTasksRequest({ v: PROTOCOL_VERSION, seq: 0, type: TASKS_REQUEST, arg: cmd.arg }));
-      drawScreen(sb, input, approvalLog.mode, rk);
-      continue;
-    }
-
-    if (cmd.kind == CMD_CLEAR) { sb.clear(); drawScreen(sb, input, approvalLog.mode, rk); continue; }
-
-    if (cmd.kind == CMD_EXIT) { running = false; continue; }
-
-    sb.append("\nunknown command: /" + cmd.arg);
-    drawScreen(sb, input, approvalLog.mode, rk);
+    let outcome = runAttachCommand(cmdDeps, cmd, setMode, sendInput);
+    if (outcome.switchTarget != "") { switchTarget = outcome.switchTarget; }
+    if (outcome.renameTarget != "") { renameTarget = outcome.renameTarget; }
+    if (outcome.leave) { running = false; }
   }
 
   let stopAcked = false;
