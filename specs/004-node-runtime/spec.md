@@ -51,4 +51,37 @@ API (Lumen spec 508, decision 3).
   lines.
 - [ ] T003 `make node`, `make node-test`, `node-skip.txt` with reasons.
 - [ ] T004 `npm/code-js/` package and `scripts/verify_npm_js.mjs`.
-- [ ] T005 Record the per-file parity table from Lumen 506 T006 here.
+- [x] T005 Record the per-file parity table from Lumen 506 T006 here.
+
+## Node target parity (Lumen 506 T006)
+
+`lumen/tools/joule_node_tests.sh /home/user/code` (Lumen commit adding spec
+506's remaining tasks) ran every `src/**/*.test.ts` file under both `lumen
+test` and `lumen test --target node`, after building the two C shims with
+`zig cc -c ... -o ...` (no `// @link-node` twin exists yet, so `make node`
+itself is not runnable -- this is a raw per-file compile+run sweep, not
+`make node-test`).
+
+Result: **109/109 native, 38/109 node** (38 match, 71 do not). Every
+mismatch is a node-target *compile* failure, not a runtime difference, and
+every one falls into exactly the two gaps this spec's T002 and Lumen spec
+508 already name:
+
+| reason | count | cause |
+| --- | --- | --- |
+| `E_FFI_NODE_LINK` | 50 | `plat_*`/`tty_*` externs have no `// @link-node` JS twin (this spec's T002: `platform_shim.mjs`, `tty_shim.mjs`) |
+| `E_TARGET_UNSUPPORTED` | 21 | the file's import graph reaches `providers/openai.ts`'s `http.request`/`stream` (Lumen spec 508 — the node target does not support the `http` client/server surface yet) |
+
+No file failed for any other reason, and no file that passed natively
+failed on node for a reason unrelated to these two. Once T002 lands, the
+`E_FFI_NODE_LINK` files should flip to passing without further changes; the
+`E_TARGET_UNSUPPORTED` files are blocked on Lumen 508 (`node-skip.txt`
+candidates until then, per this spec's T003 and SC-001).
+
+Files that already match (pass on both targets), for reference: 38 files
+across `approval/`, `auth/server`, `daemon/{daemon_log,dispatch_mode}`,
+`protocol/frames`, `relay/{pairing,query,store,web/smoke}`,
+`session/{frontmatter,history_guard,project_instructions,session,session_dangling}`,
+`tasks/subagent_protocol`, most of `terminal/*` that doesn't touch tty/mouse
+raw I/O, `tools/{files,jail,shell_quote}`, and
+`update/{archive,platform,settings,version_compare}`.
