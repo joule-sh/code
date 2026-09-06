@@ -17,3 +17,4 @@ scripts/__pycache__/
 scripts/editor_window/node_modules/
 scripts/editor_window/.vscode-test/
 /dist/
+*.node/
