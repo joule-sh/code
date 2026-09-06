@@ -405,10 +405,7 @@ test("with no width set nothing is wrapped, which is what the tests above assume
 test("appendFixed keeps a block at one row per line however narrow the terminal is", () => {
   let sb = new Scrollback();
   sb.setWidth(20);
-  sb.appendFixed("
-    > 1. Yes
-      2. Yes, and don't ask again for run this session
-      3. No");
+  sb.appendFixed("\n    > 1. Yes\n      2. Yes, and don't ask again for run this session\n      3. No");
   expect(sb.lines.length == 4);
   expect(sb.lines[3] == "      3. No");
 });
@@ -416,8 +413,7 @@ test("appendFixed keeps a block at one row per line however narrow the terminal 
 test("a collapsed group's marker counts the rows it actually hid, wrapping included", () => {
   let sb = new Scrollback();
   sb.setWidth(20);
-  sb.appendCollapsible("head", "one line that is far too long for this width
-two", 2);
+  sb.appendCollapsible("head", "one line that is far too long for this width\ntwo", 2);
   let group = sb.groups[sb.groups.length - 1];
   expect(group.size() == sb.lines.length - group.bodyStart);
   expect(sb.lines[group.markerRow].indexOf(`${group.size()}`) >= 0);

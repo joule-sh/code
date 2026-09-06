@@ -43,9 +43,26 @@ API (Lumen spec 508, decision 3).
   lands.
 - **SC-003**: `make build` and `make test` are unchanged.
 
+## Measured
+
+`node /home/user/lumen/specs/501-node-runtime/probe/run_tests.mjs` from this
+repo's root, before and after T001 (raw per-file plain-Node import sweep of
+`src/**/*.test.ts` -- separate from `make test`, which built and ran green
+throughout on the native `lumen` target):
+
+- Before: `{"files":109,"clean":14,"partial":11,"importError":84,"pass":221,"fail":155}`
+- After: `{"files":109,"clean":18,"partial":13,"importError":78,"pass":353,"fail":175}`
+
+The five raw-newline literals were themselves import-time syntax errors under
+plain Node (a bare line break inside a `"..."` string is invalid JS/TS), so
+fixing them alone drops `importError` by 6 and raises `pass` by 132. The
+remaining `importError` entries are unrelated `ERR_UNSUPPORTED_ESM_URL_SCHEME`
+failures from `https://` package imports, which plain Node's loader cannot
+resolve and which T001 does not touch.
+
 ## Tasks
 
-- [ ] T001 Fix the five raw-newline literals (no behaviour change; `make
+- [x] T001 Fix the five raw-newline literals (no behaviour change; `make
   test` green).
 - [ ] T002 Write `tty_shim.mjs` and `platform_shim.mjs`; add `// @link-node`
   lines.

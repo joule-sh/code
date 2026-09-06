@@ -268,8 +268,7 @@ test("a base URL already naming the completions endpoint is used verbatim", () =
 test("a file: key is read at call time, and a missing file is an empty key", () => {
   expect(liveApiKey("sk-plain") == "sk-plain");
   let path = "/tmp/joule-key-test";
-  fs.writeFileSync(path, "tok-123
-");
+  fs.writeFileSync(path, "tok-123\n");
   expect(liveApiKey("file:" + path) == "tok-123");
   fs.writeFileSync(path, "tok-456");
   expect(liveApiKey("file:" + path) == "tok-456");

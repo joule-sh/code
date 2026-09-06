@@ -123,8 +123,7 @@ export function planDecisionOptionsBlock(selected: int): string {
   let out = "";
   let i = 0;
   while (i < PLAN_DECISION_OPTION_COUNT) {
-    out = out + "
-" + planDecisionOptionRow(i, selected);
+    out = out + "\n" + planDecisionOptionRow(i, selected);
     i = i + 1;
   }
   return out;
@@ -152,8 +151,7 @@ export function quitDecisionOptionsBlock(selected: int): string {
   let out = "";
   let i = 0;
   while (i < QUIT_DECISION_OPTION_COUNT) {
-    out = out + "
-" + quitDecisionOptionRow(i, selected);
+    out = out + "\n" + quitDecisionOptionRow(i, selected);
     i = i + 1;
   }
   return out;

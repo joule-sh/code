@@ -222,10 +222,8 @@ test("paging keys keep working with reporting off, so scrolling never depends on
 test("a selection spanning a collapsed group copies only what is on screen", () => {
   let sb = new Scrollback();
   sb.append("before");
-  sb.appendCollapsible("head", "hidden one
-hidden two", 2);
-  sb.append("
-after");
+  sb.appendCollapsible("head", "hidden one\nhidden two", 2);
+  sb.append("\nafter");
   let sel = sb.selection;
   sel.begin(0, 1);
   sel.extend(sb.lineCount() - 1, COL_END);
@@ -239,10 +237,8 @@ after");
 test("expanding the group brings its rows back into what a selection copies", () => {
   let sb = new Scrollback();
   sb.append("before");
-  sb.appendCollapsible("head", "hidden one
-hidden two", 2);
-  sb.append("
-after");
+  sb.appendCollapsible("head", "hidden one\nhidden two", 2);
+  sb.append("\nafter");
   sb.toggleLastGroup();
   let sel = sb.selection;
   sel.begin(0, 1);
@@ -253,10 +249,8 @@ after");
 test("the copied line count is what was actually copied, not the span it was dragged over", () => {
   let sb = new Scrollback();
   sb.append("before");
-  sb.appendCollapsible("head", "hidden one
-hidden two", 2);
-  sb.append("
-after");
+  sb.appendCollapsible("head", "hidden one\nhidden two", 2);
+  sb.append("\nafter");
   let sel = sb.selection;
   sel.begin(0, 1);
   sel.extend(sb.lineCount() - 1, COL_END);

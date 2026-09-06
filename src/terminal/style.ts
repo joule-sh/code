@@ -54,13 +54,11 @@ export function setAccentByName(name: string): bool {
 
 export function wrap(color: string, text: string): string {
   let start = 0;
-  while (start < text.length && text.charAt(start) == "
-") {
+  while (start < text.length && text.charAt(start) == "\n") {
     start = start + 1;
   }
   let end = text.length;
-  while (end > start && text.charAt(end - 1) == "
-") {
+  while (end > start && text.charAt(end - 1) == "\n") {
     end = end - 1;
   }
   if (start >= end) {
