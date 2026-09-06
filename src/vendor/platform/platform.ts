@@ -1,4 +1,5 @@
 // @link ./platform_shim.o
+// @link-node ./platform_shim.mjs
 declare function plat_env(name: string): string;
 declare function plat_env_present(name: string): int;
 declare function plat_append(path: string, text: string): int;

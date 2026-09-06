@@ -64,8 +64,49 @@ resolve and which T001 does not touch.
 
 - [x] T001 Fix the five raw-newline literals (no behaviour change; `make
   test` green).
-- [ ] T002 Write `tty_shim.mjs` and `platform_shim.mjs`; add `// @link-node`
+- [x] T002 Write `tty_shim.mjs` and `platform_shim.mjs`; add `// @link-node`
   lines.
+
+  Verified against the Node target the Lumen emitter's own tests use
+  (`lumen test --target node`), not just compiled: `tty.ts`'s 19 embedded
+  tests and `platform.ts`'s 14 all pass under `--target node`, matching the
+  native pass count exactly. `lumen compile --target node src/code.ts`
+  advances past every FFI declaration in both files with zero
+  `E_FFI_NODE_LINK` errors, now stopping only at spec 508's
+  `E_TARGET_UNSUPPORTED` on `http.request` in `providers/openai.ts` — the
+  one remaining, unscheduled gap.
+
+  Real implementations, not stubs: `tty_raw_enable`/`disable` only ever run
+  on stdin in this codebase (verified: every call site is `rawEnable(STDIN)`
+  / `rawDisable(STDIN)`), so the twin uses `process.stdin.setRawMode` and
+  reports failure honestly for any other fd, matching the native shim's
+  `tcgetattr`-fails-on-non-tty case. `tty_read_byte`/`tty_read_byte_timeout`
+  are the hard part: Node exposes no `poll()`/blocking-read-with-timeout, so
+  the twin primes the fd non-blocking the same way Node's own I/O
+  primitives do — constructing a paused `tty.ReadStream`/`net.Socket` over
+  the fd and keeping it alive (no private-API hacks) — then reads with
+  `fs.readSync` in an `EAGAIN`-retry loop, bounded by a deadline for the
+  timeout variant. Verified on a real pty (Python's `pty.openpty`, a set
+  window size, raw mode, real key bytes written with a timing gap) that
+  blocking reads, timeout reads, and the timeout itself (a real ~200ms
+  measured wait) all behave like the C shim. The native shim's own
+  test-only pipe (`tty_open_test_pipe`) has no Node equivalent to a raw
+  `pipe(2)` syscall, so its twin uses a `mkfifo` temp file instead — the
+  standard POSIX substitute, opened non-blocking on the read end.
+
+  `platform_shim.mjs`: `plat_env`/`plat_append`/`plat_chmod` map directly to
+  `process.env`/`fs`; `plat_gc_interior_pointers` is Boehm-GC-specific and
+  meaningless under V8, so it always reports 1 (matching the invariant the
+  native build maintains); `plat_port_open`'s native POSIX branch is
+  unconditionally -1 already (checked in `platform_shim.c`), so the twin
+  matches it exactly rather than attempting a synchronous Windows probe
+  Node's `net` module has no primitive for.
+
+  The generic probe (`run_tests.mjs`, a type-strip-and-run prelude with no
+  compiler) reads the same as after T001 — `{"pass":353,"fail":175}` —
+  because `// @link-node` is a Lumen-compiler concept the probe's plain-Node
+  prelude has no notion of; T002's real verification is the `lumen test
+  --target node` pass counts above, run against the actual compiler.
 - [ ] T003 `make node`, `make node-test`, `node-skip.txt` with reasons.
 - [ ] T004 `npm/code-js/` package and `scripts/verify_npm_js.mjs`.
 - [x] T005 Record the per-file parity table from Lumen 506 T006 here.

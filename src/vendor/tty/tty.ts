@@ -1,4 +1,5 @@
 // @link ./tty_shim.o
+// @link-node ./tty_shim.mjs
 declare function tty_isatty(fd: int): int;
 declare function tty_raw_enable(fd: int): int;
 declare function tty_raw_disable(fd: int): int;
